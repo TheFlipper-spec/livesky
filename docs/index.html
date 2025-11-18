@@ -518,7 +518,7 @@
 </head>
 <body class="text-white light:text-slate-950 selection:bg-cyan-300/40">
   <div id="weather-effects"></div>
-  <div id="loader">
+  <div id="loader" class="hidden">
     <div class="spinner"></div>
   </div>
 
@@ -1359,10 +1359,18 @@
         return;
       }
       if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-        el.updated.textContent = state.lang === 'ru' ? 'Геолокация работает только по HTTPS' : 'Geolocation requires HTTPS';
+        el.updated.textContent = state.lang === 'ru' ? 'Геолокация работает только по HTTPS или localhost. Введите город вручную.' : 'Geolocation requires HTTPS or localhost. Enter city manually.';
+        // Fallback to default city (e.g., Moscow)
+        geocodeCity(state.lang === 'ru' ? 'Москва' : 'Moscow').then(({ lat, lon, label }) => {
+          state.coords = { latitude: lat, longitude: lon };
+          fetchWeather(lat, lon, label);
+        }).catch(() => {
+          el.updated.textContent = state.lang === 'ru' ? 'Ошибка загрузки по умолчанию' : 'Default load error';
+        });
         return;
       }
       el.updated.textContent = state.lang === 'ru' ? 'Запрос геолокации...' : 'Requesting geolocation...';
+      showLoader();
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           const { latitude, longitude } = pos.coords;
@@ -1371,7 +1379,15 @@
         },
         (err) => {
           console.error(err);
-          el.updated.textContent = state.lang === 'ru' ? 'Ошибка геолокации. Введите город.' : 'Geolocation error. Enter city.';
+          hideLoader();
+          el.updated.textContent = state.lang === 'ru' ? 'Ошибка геолокации. Введите город вручную.' : 'Geolocation error. Enter city manually.';
+          // Fallback to default city
+          geocodeCity(state.lang === 'ru' ? 'Москва' : 'Moscow').then(({ lat, lon, label }) => {
+            state.coords = { latitude: lat, longitude: lon };
+            fetchWeather(lat, lon, label);
+          }).catch(() => {
+            el.updated.textContent = state.lang === 'ru' ? 'Ошибка загрузки по умолчанию' : 'Default load error';
+          });
         },
         { timeout: 10000 }
       );
@@ -1424,12 +1440,14 @@
       const value = el.cityInput.value.trim();
       if (!value) return;
       el.updated.textContent = state.lang === 'ru' ? 'Поиск города…' : 'Searching city...';
+      showLoader();
       try {
         const { lat, lon, label } = await geocodeCity(value);
         state.coords = { latitude: lat, longitude: lon };
         state.placeName = label;
         fetchWeather(lat, lon, label);
       } catch (error) {
+        hideLoader();
         el.updated.textContent = error.message;
       }
     });
