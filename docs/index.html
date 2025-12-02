@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   
-  <!-- Phosphor Icons (High Quality Icons) -->
+  <!-- Phosphor Icons -->
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
   <style>
@@ -29,7 +29,67 @@
       --text-primary: #ffffff;
       --text-secondary: #94a3b8;
       --accent: #22d3ee;
+      --scroll-thumb: rgba(255, 255, 255, 0.2);
+      --scroll-track: transparent;
+      --scroll-thumb-hover: rgba(255, 255, 255, 0.4);
     }
+
+    /* --- LIGHT THEME OVERRIDES --- */
+    [data-theme="light"] {
+      --glass-bg: rgba(255, 255, 255, 0.75);
+      --glass-border: rgba(0, 0, 0, 0.08);
+      --glass-highlight: rgba(0, 0, 0, 0.03);
+      --text-primary: #1e293b;
+      --text-secondary: #475569;
+      --accent: #7c3aed; /* Purple */
+      --scroll-thumb: rgba(30, 41, 59, 0.2);
+      --scroll-track: rgba(0, 0, 0, 0.02);
+      --scroll-thumb-hover: rgba(124, 58, 237, 0.6);
+    }
+
+    /* CSS Hacks to adapt Tailwind text colors for Light Theme */
+    [data-theme="light"] .text-white { color: #1e293b !important; }
+    [data-theme="light"] .text-slate-100 { color: #334155 !important; }
+    [data-theme="light"] .text-slate-200 { color: #334155 !important; }
+    [data-theme="light"] .text-slate-300 { color: #475569 !important; }
+    [data-theme="light"] .text-slate-400 { color: #64748b !important; }
+    [data-theme="light"] .text-slate-500 { color: #94a3b8 !important; }
+    
+    /* Swap Cyan for Purple in Light Theme */
+    [data-theme="light"] .text-cyan-100 { color: #a78bfa !important; } /* Daily icons */
+    [data-theme="light"] .text-cyan-200 { color: #8b5cf6 !important; } /* Snow/Icons */
+    [data-theme="light"] .text-cyan-300 { color: #7c3aed !important; } /* Accents */
+    [data-theme="light"] .text-cyan-400 { color: #6d28d9 !important; }
+    [data-theme="light"] .text-blue-300 { color: #2563eb !important; } /* Rain text */
+    [data-theme="light"] .text-blue-400 { color: #3b82f6 !important; } 
+
+    /* Logo Gradient Override for Light Theme */
+    [data-theme="light"] #logo-box {
+      background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%) !important;
+      box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.3) !important;
+    }
+    /* Logo Icon color inside the box (must remain white or become light) */
+    [data-theme="light"] #logo-box i { color: #ffffff !important; }
+    
+    /* Logo Text Override */
+    [data-theme="light"] #logo-title { color: #4c1d95 !important; text-shadow: none !important; } /* Deep purple */
+
+    /* Adjust Glass Opacity for Light Theme */
+    [data-theme="light"] .bg-white\/5 { background-color: rgba(0,0,0,0.05) !important; }
+    [data-theme="light"] .bg-white\/10 { background-color: rgba(0,0,0,0.08) !important; }
+    [data-theme="light"] .bg-white\/20 { background-color: rgba(0,0,0,0.15) !important; }
+    [data-theme="light"] .border-white\/5 { border-color: rgba(0,0,0,0.05) !important; }
+    [data-theme="light"] .border-white\/10 { border-color: rgba(0,0,0,0.1) !important; }
+    [data-theme="light"] .border-white\/20 { border-color: rgba(0,0,0,0.2) !important; }
+    [data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(0,0,0,0.1) !important; }
+
+    /* Fix Input Fields */
+    [data-theme="light"] #city-input { color: #1e293b !important; }
+    [data-theme="light"] #city-input::placeholder { color: #64748b !important; }
+    [data-theme="light"] #search-form { background: rgba(255,255,255,0.5); border-color: rgba(0,0,0,0.1); }
+
+    /* Map filter */
+    [data-theme="light"] #map { filter: grayscale(0%) contrast(1.0); }
 
     body {
       font-family: "Montserrat", sans-serif;
@@ -38,59 +98,64 @@
       overflow-x: hidden;
       background-color: #0f172a;
       margin: 0;
+      user-select: none; 
+      transition: color 0.5s ease;
     }
+
+    /* --- CUSTOM SCROLLBAR --- */
+    ::-webkit-scrollbar { width: 10px; }
+    ::-webkit-scrollbar-track { background: var(--scroll-track); }
+    ::-webkit-scrollbar-thumb {
+      background: var(--scroll-thumb);
+      border-radius: 5px;
+      border: 2px solid transparent;
+      background-clip: content-box;
+      transition: background 0.3s;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
 
     /* --- BACKGROUND SYSTEM --- */
     #bg-container {
-      position: fixed;
-      inset: 0;
-      z-index: -2;
+      position: fixed; inset: 0; z-index: -2;
       background-color: #0f172a;
+      transition: background-color 0.8s ease;
     }
+    
+    [data-theme="light"] #bg-container { background-color: #f1f5f9; }
 
     .bg-layer {
-      position: absolute;
-      inset: 0;
-      opacity: 0;
+      position: absolute; inset: 0; opacity: 0;
       transition: opacity 1.2s ease-in-out;
-      background-size: cover;
-      background-position: center;
+      background-size: cover; background-position: center;
     }
+    .bg-layer.active { opacity: 1; }
 
-    .bg-layer.active {
-      opacity: 1;
-    }
-
-    /* Top Gradient Overlay for Header Contrast */
     .header-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 140px;
+      position: fixed; top: 0; left: 0; width: 100%; height: 140px;
       background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 100%);
-      z-index: -1;
-      pointer-events: none;
+      z-index: -1; pointer-events: none; transition: opacity 0.5s;
     }
+    [data-theme="light"] .header-overlay { opacity: 0.2; }
 
     /* --- GLASS UI --- */
     .glass {
       background: var(--glass-bg);
-      backdrop-filter: blur(16px);
-      -webkit-backdrop-filter: blur(16px);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border);
       box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
       transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
-    .glass-panel { 
-      border-radius: 24px; 
-    }
+    .glass-panel { border-radius: 24px; }
     
     .glass:hover { 
       border-color: rgba(255, 255, 255, 0.25); 
       background: rgba(30, 41, 59, 0.7);
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    }
+    [data-theme="light"] .glass:hover {
+      border-color: rgba(0, 0, 0, 0.15);
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: 0 15px 45px rgba(124, 58, 237, 0.15);
     }
 
     .glass-input {
@@ -103,75 +168,59 @@
       background: rgba(0, 0, 0, 0.4);
       box-shadow: 0 0 15px rgba(34, 211, 238, 0.2);
     }
-
-    /* --- ANIMATIONS & EFFECTS --- */
-    #weather-effects {
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      z-index: -1;
-      overflow: hidden;
+    [data-theme="light"] .glass-input:focus-within {
+      background: rgba(255, 255, 255, 0.8);
+      box-shadow: 0 0 15px rgba(124, 58, 237, 0.2);
     }
 
+    /* --- ANIMATIONS & UI ELEMENTS --- */
+    #weather-effects { position: fixed; inset: 0; pointer-events: none; z-index: -1; overflow: hidden; }
+    
     @keyframes float { 0% { transform: translateY(0px); } 50% { transform: translateY(-10px); } 100% { transform: translateY(0px); } }
     .animate-float { animation: float 6s ease-in-out infinite; }
 
-    /* Custom Scrollbar */
     .hide-scrollbar::-webkit-scrollbar { display: none; }
     .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-    /* Scroll Buttons */
     .scroll-btn {
-      position: absolute;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 20;
-      background: rgba(15, 23, 42, 0.8);
-      border: 1px solid rgba(255,255,255,0.2);
-      color: white;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      opacity: 0;
-      transition: opacity 0.3s, background 0.3s;
+      position: absolute; top: 50%; transform: translateY(-50%); z-index: 20;
+      background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(255,255,255,0.2);
+      color: white; width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      opacity: 0; transition: opacity 0.3s, background 0.3s;
     }
+    [data-theme="light"] .scroll-btn { background: rgba(255, 255, 255, 0.8); border: 1px solid rgba(0,0,0,0.1); color: #1e293b; }
+    
     .scroll-container:hover .scroll-btn { opacity: 1; }
     .scroll-btn:hover { background: var(--accent); border-color: var(--accent); color: black; }
+    [data-theme="light"] .scroll-btn:hover { color: white; }
     .scroll-btn.left { left: 10px; }
     .scroll-btn.right { right: 10px; }
 
-    /* Autocomplete */
     #autocomplete-list {
       position: absolute; top: 110%; left: 0; right: 0;
-      background: rgba(15, 23, 42, 0.95); 
-      backdrop-filter: blur(20px);
-      border: 1px solid var(--glass-border);
-      border-radius: 16px; 
-      max-height: 250px; 
-      overflow-y: auto; 
-      z-index: 100;
+      background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border); border-radius: 16px; 
+      max-height: 250px; overflow-y: auto; z-index: 100;
       box-shadow: 0 20px 50px rgba(0,0,0,0.5);
       animation: fadeIn 0.2s ease-out;
+    }
+    [data-theme="light"] #autocomplete-list {
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 20px 50px rgba(0,0,0,0.15);
     }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 
     .suggestion-item { 
-      padding: 14px 16px; 
-      cursor: pointer; 
+      padding: 14px 16px; cursor: pointer; 
       border-bottom: 1px solid rgba(255,255,255,0.05); 
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transition: background 0.2s;
+      display: flex; align-items: center; gap: 10px; transition: background 0.2s;
     }
+    [data-theme="light"] .suggestion-item { border-bottom: 1px solid rgba(0,0,0,0.05); }
     .suggestion-item:last-child { border-bottom: none; }
     .suggestion-item:hover { background: rgba(34, 211, 238, 0.15); }
+    [data-theme="light"] .suggestion-item:hover { background: rgba(124, 58, 237, 0.1); }
 
-    /* Map */
     #map { height: 220px; width: 100%; border-radius: 16px; z-index: 1; opacity: 0.85; filter: grayscale(20%) contrast(1.1); transition: opacity 0.3s; }
     #map:hover { opacity: 1; }
 
@@ -181,37 +230,34 @@
       z-index: 200; display: flex; align-items: center; justify-content: center;
       opacity: 0; pointer-events: none; transition: opacity 0.3s ease; padding: 1rem;
     }
+    [data-theme="light"] .modal-overlay { background: rgba(255, 255, 255, 0.6); }
     .modal-overlay.active { opacity: 1; pointer-events: auto; }
     .modal-content {
-      background: #1e293b; 
-      border: 1px solid rgba(255,255,255,0.1); 
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-      border-radius: 24px;
+      background: #1e293b; border: 1px solid rgba(255,255,255,0.1); 
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-radius: 24px;
       width: 100%; max-width: 500px; max-height: 85vh; overflow-y: auto;
       transform: scale(0.95) translateY(20px); transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
+    [data-theme="light"] .modal-content {
+      background: #ffffff;
+      border: 1px solid rgba(0,0,0,0.05);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+    }
     .modal-overlay.active .modal-content { transform: scale(1) translateY(0); }
 
-    /* --- CUSTOM LOADER ANIMATION --- */
+    /* Loader */
     .sun-loader {
-      width: 60px; height: 60px;
-      border-radius: 50%;
+      width: 60px; height: 60px; border-radius: 50%;
       background: radial-gradient(circle, #facc15 40%, transparent 41%);
-      position: relative;
-      animation: spin 8s linear infinite;
+      position: relative; animation: spin 8s linear infinite;
     }
     .sun-rays {
-      position: absolute; inset: 0;
-      border: 2px dashed #facc15;
-      border-radius: 50%;
-      animation: spin-rev 12s linear infinite;
+      position: absolute; inset: 0; border: 2px dashed #facc15;
+      border-radius: 50%; animation: spin-rev 12s linear infinite;
     }
     .cloud-loader {
-      position: absolute;
-      bottom: -10px; right: -15px;
-      font-size: 48px;
-      color: white;
-      text-shadow: 0 5px 15px rgba(0,0,0,0.3);
+      position: absolute; bottom: -10px; right: -15px; font-size: 48px;
+      color: white; text-shadow: 0 5px 15px rgba(0,0,0,0.3);
       animation: bounce 2s ease-in-out infinite;
     }
     @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -223,24 +269,17 @@
 
 <body data-theme="adaptive">
   
-  <!-- Contrast Overlay for Header -->
   <div class="header-overlay"></div>
-
-  <!-- Background System -->
   <div id="bg-container">
     <div id="bg-layer-1" class="bg-layer active" style="background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);"></div>
     <div id="bg-layer-2" class="bg-layer"></div>
   </div>
-  
-  <!-- Particle Effects Layer -->
   <div id="weather-effects"></div>
 
-  <!-- Cool Loader -->
+  <!-- Loader -->
   <div id="loader" class="fixed inset-0 z-[300] flex flex-col items-center justify-center bg-slate-900 transition-opacity duration-700">
     <div class="relative w-24 h-24 flex items-center justify-center mb-6">
-       <!-- Sun -->
        <div class="sun-loader"><div class="sun-rays"></div></div>
-       <!-- Cloud Icon Overlay -->
        <i class="ph-fill ph-cloud cloud-loader"></i>
     </div>
     <p id="loader-text" class="text-cyan-300 font-semibold tracking-wider uppercase text-xs animate-pulse text-center px-4">
@@ -250,23 +289,28 @@
 
   <div class="max-w-6xl mx-auto px-4 py-6 md:py-10 space-y-8 relative z-10">
     
-    <!-- Header -->
+    <!-- HEADER -->
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-6">
       <div class="flex items-center gap-4 group cursor-default">
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300">
+        <!-- Logo Icon Box -->
+        <div id="logo-box" class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300">
           <i class="ph-fill ph-wind text-2xl text-white"></i>
         </div>
         <div>
-          <!-- Added drop-shadow-md for better contrast -->
-          <h1 class="text-2xl font-bold tracking-tight text-white leading-none drop-shadow-md">LiveSky</h1>
+          <h1 id="logo-title" class="text-2xl font-bold tracking-tight text-white leading-none drop-shadow-md">LiveSky</h1>
           <p class="text-xs text-cyan-200 font-medium tracking-wider opacity-90 drop-shadow-sm">PRO WEATHER</p>
         </div>
       </div>
       
       <div class="flex gap-3 self-start md:self-auto">
+        <!-- КНОПКА ПОЛНОЭКРАННОГО РЕЖИМА -->
+        <button id="fullscreenToggle" onclick="toggleFullscreen()" class="glass px-4 py-2.5 rounded-full flex items-center gap-2 hover:bg-white/10 transition-all group" title="Режим экрана">
+          <i id="fs-icon" class="ph ph-corners-out text-xl text-cyan-300 transition-transform group-hover:scale-110"></i>
+        </button>
+
         <button id="themeToggle" class="glass px-5 py-2.5 rounded-full flex items-center gap-2.5 hover:bg-white/10 transition-all group">
           <i class="ph ph-paint-brush-broad text-xl text-cyan-300 group-hover:rotate-12 transition-transform"></i>
-          <span id="themeText" class="font-medium text-sm text-slate-200">Адаптивная</span>
+          <span id="themeText" class="font-medium text-sm text-slate-200 hidden sm:inline">Адаптивная</span>
         </button>
         
         <button id="langToggle" class="glass px-5 py-2.5 rounded-full flex items-center gap-2.5 hover:bg-white/10 transition-all group">
@@ -281,11 +325,8 @@
       
       <!-- Big Weather Card -->
       <div class="lg:col-span-8 glass glass-panel p-6 md:p-10 relative overflow-hidden flex flex-col justify-between min-h-[400px] cursor-pointer group" onclick="showAdviceModal()">
-        
-        <!-- Decoration Gradient -->
         <div class="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[80px] rounded-full pointer-events-none"></div>
 
-        <!-- Top Row -->
         <div class="flex justify-between items-start relative z-10">
           <div>
             <div class="flex items-center gap-2 text-cyan-300 mb-1">
@@ -295,16 +336,13 @@
             <p id="current-date" class="text-slate-300 font-medium text-sm pl-6 drop-shadow-sm">--</p>
           </div>
           <div class="text-right">
-             <!-- Realtime Clock -->
              <div class="flex items-center gap-2 bg-black/20 px-3 py-1 rounded-full backdrop-blur-md border border-white/5 shadow-lg">
                <i class="ph ph-clock text-cyan-300"></i>
                <p id="realtime-clock" class="text-lg font-mono font-semibold text-white">--:--</p>
              </div>
-             <!-- REMOVED LOCAL TIME TEXT HERE -->
           </div>
         </div>
 
-        <!-- Middle Row (Temp & Icon) -->
         <div class="flex flex-col md:flex-row items-center md:justify-between mt-8 relative z-10">
           <div class="flex flex-col items-center md:items-start text-center md:text-left">
             <div class="flex items-start">
@@ -318,7 +356,6 @@
           </div>
         </div>
 
-        <!-- Click Hint -->
         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center backdrop-blur-[2px] z-20 rounded-3xl">
           <div class="bg-white/10 px-6 py-3 rounded-full border border-white/20 flex items-center gap-3 transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
             <i class="ph-fill ph-info text-cyan-300 text-xl"></i>
@@ -326,11 +363,9 @@
           </div>
         </div>
 
-        <!-- Bottom Stats (Fixed Mobile Layout) -->
         <div class="grid grid-cols-3 gap-3 md:gap-4 mt-8 relative z-10">
           <div class="bg-white/5 border border-white/5 p-3 md:p-4 rounded-2xl text-center hover:bg-white/10 transition-colors">
             <i class="ph ph-thermometer text-2xl text-slate-400 mb-2"></i>
-            <!-- Changed text size and spacing for mobile -->
             <p class="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold mb-1 tracking-normal md:tracking-widest truncate" data-translate="feels_like">Ощущается</p>
             <p id="feels-like" class="text-lg font-bold text-white">--°</p>
           </div>
@@ -349,7 +384,6 @@
 
       <!-- Sidebar -->
       <div class="lg:col-span-4 space-y-6 flex flex-col h-full">
-        <!-- Search -->
         <div class="glass glass-panel p-2 relative z-50">
           <form id="search-form" class="glass-input rounded-xl flex items-center pr-2">
             <div class="pl-3 text-slate-400"><i class="ph ph-magnifying-glass text-xl"></i></div>
@@ -361,7 +395,6 @@
           <div id="autocomplete-list" class="hidden"></div>
         </div>
 
-        <!-- Map -->
         <div class="glass glass-panel p-1.5 flex-grow relative overflow-hidden group">
           <div id="map"></div>
           <div class="absolute bottom-4 right-4 bg-slate-900/80 backdrop-blur text-white px-3 py-1 rounded-lg text-xs font-bold pointer-events-none z-[400] border border-white/10">
@@ -369,7 +402,6 @@
           </div>
         </div>
 
-        <!-- Sun Times -->
         <div class="glass glass-panel p-5 grid grid-cols-2 gap-6 relative overflow-hidden">
            <div class="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-indigo-500/10 pointer-events-none"></div>
           <div class="text-center relative z-10">
@@ -398,14 +430,9 @@
            <span data-translate="hourly">Почасовой прогноз</span>
          </h3>
       </div>
-      
-      <!-- Scroll Buttons -->
       <button class="scroll-btn left" onclick="scrollHourly(-200)"><i class="ph-bold ph-caret-left"></i></button>
       <button class="scroll-btn right" onclick="scrollHourly(200)"><i class="ph-bold ph-caret-right"></i></button>
-
-      <div id="hourly-strip" class="flex gap-4 overflow-x-auto hide-scrollbar scroll-smooth pb-2">
-        <!-- JS injected -->
-      </div>
+      <div id="hourly-strip" class="flex gap-4 overflow-x-auto hide-scrollbar scroll-smooth pb-2"></div>
     </div>
 
     <!-- Daily Forecast -->
@@ -420,9 +447,7 @@
           <span data-translate="monthly_btn">16 Дней</span>
         </button>
       </div>
-      <div id="daily-strip" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        <!-- JS injected -->
-      </div>
+      <div id="daily-strip" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3"></div>
     </div>
 
     <footer class="text-center text-slate-500 text-xs py-8">
@@ -433,12 +458,9 @@
   <!-- DETAILS MODAL -->
   <div id="modal" class="modal-overlay">
     <div class="modal-content glass relative">
-      <!-- Close Button -->
       <button id="modal-close-btn" class="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/20 flex items-center justify-center transition-colors z-50">
         <i class="ph-bold ph-x text-white"></i>
       </button>
-
-      <!-- Content -->
       <div class="p-6 md:p-8">
         <h3 id="modal-title" class="text-2xl font-bold text-white mb-1 flex items-center gap-2">Details</h3>
         <p id="modal-subtitle" class="text-slate-400 text-sm mb-6">Анализ погоды</p>
@@ -448,40 +470,76 @@
   </div>
 
   <script>
-    // --- CONFIG & STATE ---
+    // --- FULLSCREEN TOGGLE LOGIC (FIXED) ---
+    let isFullscreen = false;
+
+    function toggleFullscreen() {
+      // Сначала проверяем доступность API pywebview
+      if (window.pywebview && window.pywebview.api) {
+         window.pywebview.api.toggle_fullscreen()
+           .then((newState) => {
+               // Python возвращает актуальное состояние (True/False)
+               isFullscreen = newState;
+               updateFsIcon();
+           })
+           .catch(err => {
+             console.error("Fullscreen API Error:", err);
+             // Если API вернул ошибку, пробуем нативный метод как запасной вариант
+             nativeFullscreenToggle();
+           });
+      } else {
+        // Если запущен в браузере без pywebview
+        nativeFullscreenToggle();
+      }
+    }
+
+    function nativeFullscreenToggle() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().then(() => {
+          isFullscreen = true;
+          updateFsIcon();
+        }).catch(err => console.log(err));
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().then(() => {
+            isFullscreen = false;
+            updateFsIcon();
+          });
+        }
+      }
+    }
+
+    function updateFsIcon() {
+      const icon = document.getElementById('fs-icon');
+      if (isFullscreen) {
+        icon.classList.remove('ph-corners-out');
+        icon.classList.add('ph-corners-in');
+      } else {
+        icon.classList.remove('ph-corners-in');
+        icon.classList.add('ph-corners-out');
+      }
+    }
+
+    // --- APP LOGIC ---
     const state = {
-      lang: 'ru', // 'ru' | 'en'
-      themeMode: 'adaptive',
-      lat: 55.7558,
-      lon: 37.6173,
-      locationName: 'Москва',
-      countryCode: 'RU',
-      weatherData: null,
-      clockInterval: null,
+      lang: 'ru', themeMode: 'adaptive', lat: 55.7558, lon: 37.6173,
+      locationName: 'Москва', countryCode: 'RU', weatherData: null, clockInterval: null,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone 
     };
 
-    // Random Loading Phrases
     const loadingPhrases = {
-      ru: [
-        "Сканируем облака...", "Измеряем скорость ветра...", "Договариваемся с дождем...",
-        "Калибруем барометр...", "Ловим солнечные лучи...", "Проверяем атмосферу..."
-      ],
-      en: [
-        "Scanning clouds...", "Measuring wind speed...", "Consulting the rain...",
-        "Calibrating barometer...", "Catching sun rays...", "Checking atmosphere..."
-      ]
+      ru: ["Сканируем облака...", "Измеряем скорость ветра...", "Договариваемся с дождем...", "Калибруем барометр...", "Ловим солнечные лучи...", "Проверяем атмосферу..."],
+      en: ["Scanning clouds...", "Measuring wind speed...", "Consulting the rain...", "Calibrating barometer...", "Catching sun rays...", "Checking atmosphere..."],
+      es: ["Escaneando nubes...", "Midiendo viento...", "Consultando la lluvia...", "Calibrando barómetro...", "Atrapando rayos de sol...", "Verificando atmósfera..."]
     };
 
-    // Dictionary
     const dictionary = {
       ru: {
         feels_like: 'Ощущается', wind: 'Ветер', humidity: 'Влажность', search_ph: 'Найти город...',
         sunrise: 'Восход', sunset: 'Закат', hourly: 'Почасовой прогноз', daily: 'Ближайшие дни',
-        monthly_btn: '16 дней', 
-        modal_hourly: 'Погода в', modal_daily: 'Прогноз на',
+        monthly_btn: '16 дней', modal_hourly: 'Погода в', modal_daily: 'Прогноз на',
         rain_chance: 'Вероятность', uv: 'УФ-индекс', press: 'Давление',
-        theme_adaptive: 'Адаптивная', theme_standard: 'Темная', error_city: 'Город не найден',
+        theme_adaptive: 'Адаптивная', theme_standard: 'Темная', theme_light: 'Светлая', error_city: 'Город не найден',
         advice_cold: 'На улице прохладно. Наденьте куртку или пальто.',
         advice_freezing: 'Мороз! Обязательно шапка, шарф и теплая зимняя одежда.',
         advice_hot: 'Сильная жара! Пейте больше воды и носите головной убор.',
@@ -491,16 +549,14 @@
         advice_rain_stops: 'Дождь закончится примерно в ',
         advice_clear: 'Осадков в ближайшее время не ожидается.',
         advice_windy: 'Сильный ветер! Будьте осторожны под деревьями.',
-        advice_title: 'Совет от LiveSky',
-        analysis_title: 'Анализ погоды'
+        advice_title: 'Совет от LiveSky', analysis_title: 'Анализ погоды'
       },
       en: {
         feels_like: 'Feels Like', wind: 'Wind', humidity: 'Humidity', search_ph: 'Find city...',
         sunrise: 'Sunrise', sunset: 'Sunset', hourly: 'Hourly Forecast', daily: 'Next Days',
-        monthly_btn: '16 Days', 
-        modal_hourly: 'Weather at', modal_daily: 'Forecast for',
+        monthly_btn: '16 Days', modal_hourly: 'Weather at', modal_daily: 'Forecast for',
         rain_chance: 'Chance', uv: 'UV Index', press: 'Pressure',
-        theme_adaptive: 'Adaptive', theme_standard: 'Dark', error_city: 'City not found',
+        theme_adaptive: 'Adaptive', theme_standard: 'Dark', theme_light: 'Light', error_city: 'City not found',
         advice_cold: 'It is chilly outside. Wear a jacket or coat.',
         advice_freezing: 'Freezing! Hat, scarf and warm winter clothes are a must.',
         advice_hot: 'Very hot! Drink water and wear a hat.',
@@ -510,88 +566,83 @@
         advice_rain_stops: 'Rain ending around ',
         advice_clear: 'No precipitation expected soon.',
         advice_windy: 'Strong winds! Be careful under trees.',
-        advice_title: 'LiveSky Advice',
-        analysis_title: 'Weather Analysis'
+        advice_title: 'LiveSky Advice', analysis_title: 'Weather Analysis'
+      },
+      es: {
+        feels_like: 'Sensación', wind: 'Viento', humidity: 'Humedad', search_ph: 'Buscar ciudad...',
+        sunrise: 'Amanecer', sunset: 'Atardecer', hourly: 'Pronóstico por hora', daily: 'Próximos días',
+        monthly_btn: '16 Días', modal_hourly: 'Tiempo a las', modal_daily: 'Pronóstico para',
+        rain_chance: 'Probabilidad', uv: 'Índice UV', press: 'Presión',
+        theme_adaptive: 'Adaptable', theme_standard: 'Oscuro', theme_light: 'Claro', error_city: 'Ciudad no encontrada',
+        advice_cold: 'Hace frío. Usa chaqueta o abrigo.',
+        advice_freezing: '¡Helada! Gorro, bufanda y ropa de invierno obligatorios.',
+        advice_hot: '¡Mucho calor! Bebe agua y usa sombrero.',
+        advice_warm: 'Cálido y cómodo. Buen tiempo para pasear.',
+        advice_rain_now: 'Está lloviendo. ¡No olvides el paraguas!',
+        advice_rain_soon: 'Lluvia pronto (a las ',
+        advice_rain_stops: 'Lluvia termina sobre las ',
+        advice_clear: 'No se esperan precipitaciones pronto.',
+        advice_windy: '¡Viento fuerte! Cuidado bajo los árboles.',
+        advice_title: 'Consejo LiveSky', analysis_title: 'Análisis del tiempo'
       }
     };
 
-    // Phosphor Icon Mapping
     const weatherCodes = {
-      0: { ru: 'Ясно', en: 'Clear', icon: 'ph-sun', type: 'clear' },
-      1: { ru: 'Преим. ясно', en: 'Mainly clear', icon: 'ph-sun-dim', type: 'clear' },
-      2: { ru: 'Облачно', en: 'Partly cloudy', icon: 'ph-cloud-sun', type: 'cloudy' },
-      3: { ru: 'Пасмурно', en: 'Overcast', icon: 'ph-cloud', type: 'cloudy' },
-      45: { ru: 'Туман', en: 'Fog', icon: 'ph-cloud-fog', type: 'cloudy' },
-      48: { ru: 'Изморозь', en: 'Rime fog', icon: 'ph-cloud-fog', type: 'cloudy' },
-      51: { ru: 'Морось', en: 'Drizzle', icon: 'ph-cloud-rain', type: 'rain' },
-      53: { ru: 'Морось', en: 'Drizzle', icon: 'ph-cloud-rain', type: 'rain' },
-      55: { ru: 'Сильная морось', en: 'Dense drizzle', icon: 'ph-cloud-rain', type: 'rain' },
-      61: { ru: 'Дождь', en: 'Slight rain', icon: 'ph-cloud-rain', type: 'rain' },
-      63: { ru: 'Дождь', en: 'Rain', icon: 'ph-cloud-rain', type: 'rain' },
-      65: { ru: 'Ливень', en: 'Heavy rain', icon: 'ph-cloud-rain', type: 'rain' },
-      71: { ru: 'Снег', en: 'Snow', icon: 'ph-snowflake', type: 'snow' },
-      73: { ru: 'Снегопад', en: 'Snow fall', icon: 'ph-snowflake', type: 'snow' },
-      75: { ru: 'Сильный снег', en: 'Heavy snow', icon: 'ph-snowflake', type: 'snow' },
-      77: { ru: 'Снежные зерна', en: 'Snow grains', icon: 'ph-snowflake', type: 'snow' },
-      80: { ru: 'Ливни', en: 'Showers', icon: 'ph-cloud-rain', type: 'rain' },
-      81: { ru: 'Ливни', en: 'Showers', icon: 'ph-cloud-rain', type: 'rain' },
-      82: { ru: 'Сильные ливни', en: 'Violent showers', icon: 'ph-cloud-lightning', type: 'rain' },
-      85: { ru: 'Снежные ливни', en: 'Snow showers', icon: 'ph-snowflake', type: 'snow' },
-      86: { ru: 'Снежные ливни', en: 'Snow showers', icon: 'ph-snowflake', type: 'snow' },
-      95: { ru: 'Гроза', en: 'Thunderstorm', icon: 'ph-cloud-lightning', type: 'rain' },
-      96: { ru: 'Гроза с градом', en: 'Thunderstorm hail', icon: 'ph-cloud-lightning', type: 'rain' },
-      99: { ru: 'Сильная гроза', en: 'Heavy thunderstorm', icon: 'ph-cloud-lightning', type: 'rain' }
+      0: { ru: 'Ясно', en: 'Clear', es: 'Despejado', icon: 'ph-sun', type: 'clear' },
+      1: { ru: 'Преим. ясно', en: 'Mainly clear', es: 'Mayormente despejado', icon: 'ph-sun-dim', type: 'clear' },
+      2: { ru: 'Облачно', en: 'Partly cloudy', es: 'Parcialmente nublado', icon: 'ph-cloud-sun', type: 'cloudy' },
+      3: { ru: 'Пасмурно', en: 'Overcast', es: 'Nublado', icon: 'ph-cloud', type: 'cloudy' },
+      45: { ru: 'Туман', en: 'Fog', es: 'Niebla', icon: 'ph-cloud-fog', type: 'cloudy' },
+      48: { ru: 'Изморозь', en: 'Rime fog', es: 'Niebla helada', icon: 'ph-cloud-fog', type: 'cloudy' },
+      51: { ru: 'Морось', en: 'Drizzle', es: 'Llovizna', icon: 'ph-cloud-rain', type: 'rain' },
+      53: { ru: 'Морось', en: 'Drizzle', es: 'Llovizna', icon: 'ph-cloud-rain', type: 'rain' },
+      55: { ru: 'Сильная морось', en: 'Dense drizzle', es: 'Llovizna densa', icon: 'ph-cloud-rain', type: 'rain' },
+      61: { ru: 'Дождь', en: 'Slight rain', es: 'Lluvia ligera', icon: 'ph-cloud-rain', type: 'rain' },
+      63: { ru: 'Дождь', en: 'Rain', es: 'Lluvia', icon: 'ph-cloud-rain', type: 'rain' },
+      65: { ru: 'Ливень', en: 'Heavy rain', es: 'Lluvia fuerte', icon: 'ph-cloud-rain', type: 'rain' },
+      71: { ru: 'Снег', en: 'Snow', es: 'Nieve', icon: 'ph-snowflake', type: 'snow' },
+      73: { ru: 'Снегопад', en: 'Snow fall', es: 'Nevada', icon: 'ph-snowflake', type: 'snow' },
+      75: { ru: 'Сильный снег', en: 'Heavy snow', es: 'Nieve fuerte', icon: 'ph-snowflake', type: 'snow' },
+      77: { ru: 'Снежные зерна', en: 'Snow grains', es: 'Granizo de nieve', icon: 'ph-snowflake', type: 'snow' },
+      80: { ru: 'Ливни', en: 'Showers', es: 'Chubascos', icon: 'ph-cloud-rain', type: 'rain' },
+      81: { ru: 'Ливни', en: 'Showers', es: 'Chubascos', icon: 'ph-cloud-rain', type: 'rain' },
+      82: { ru: 'Сильные ливни', en: 'Violent showers', es: 'Chubascos violentos', icon: 'ph-cloud-lightning', type: 'rain' },
+      85: { ru: 'Снежные ливни', en: 'Snow showers', es: 'Chubascos de nieve', icon: 'ph-snowflake', type: 'snow' },
+      86: { ru: 'Снежные ливни', en: 'Snow showers', es: 'Chubascos de nieve', icon: 'ph-snowflake', type: 'snow' },
+      95: { ru: 'Гроза', en: 'Thunderstorm', es: 'Tormenta', icon: 'ph-cloud-lightning', type: 'rain' },
+      96: { ru: 'Гроза с градом', en: 'Thunderstorm hail', es: 'Tormenta con granizo', icon: 'ph-cloud-lightning', type: 'rain' },
+      99: { ru: 'Сильная гроза', en: 'Heavy thunderstorm', es: 'Tormenta fuerte', icon: 'ph-cloud-lightning', type: 'rain' }
     };
 
-    // DOM Elements
     const el = {
-      loader: document.getElementById('loader'),
-      loaderText: document.getElementById('loader-text'),
-      bgContainer: document.getElementById('bg-container'),
-      location: document.getElementById('location'),
-      date: document.getElementById('current-date'),
-      clock: document.getElementById('realtime-clock'),
-      temp: document.getElementById('temperature'),
-      cond: document.getElementById('condition'),
-      bigIcon: document.getElementById('weather-icon-big'),
-      feels: document.getElementById('feels-like'),
-      wind: document.getElementById('wind-speed'),
-      hum: document.getElementById('humidity'),
-      sunrise: document.getElementById('sunrise'),
-      sunset: document.getElementById('sunset'),
-      hStrip: document.getElementById('hourly-strip'),
-      dStrip: document.getElementById('daily-strip'),
-      effects: document.getElementById('weather-effects'),
-      langBtn: document.getElementById('langToggle'),
-      langText: document.getElementById('langText'),
-      themeBtn: document.getElementById('themeToggle'),
-      themeText: document.getElementById('themeText'),
-      searchForm: document.getElementById('search-form'),
-      input: document.getElementById('city-input'),
-      autoList: document.getElementById('autocomplete-list'),
-      locateBtn: document.getElementById('locate-btn'),
-      modal: document.getElementById('modal'),
-      modalTitle: document.getElementById('modal-title'),
-      modalSubtitle: document.getElementById('modal-subtitle'),
-      modalBody: document.getElementById('modal-body'),
-      modalClose: document.getElementById('modal-close-btn'),
+      loader: document.getElementById('loader'), loaderText: document.getElementById('loader-text'),
+      bgContainer: document.getElementById('bg-container'), location: document.getElementById('location'),
+      date: document.getElementById('current-date'), clock: document.getElementById('realtime-clock'),
+      temp: document.getElementById('temperature'), cond: document.getElementById('condition'),
+      bigIcon: document.getElementById('weather-icon-big'), feels: document.getElementById('feels-like'),
+      wind: document.getElementById('wind-speed'), hum: document.getElementById('humidity'),
+      sunrise: document.getElementById('sunrise'), sunset: document.getElementById('sunset'),
+      hStrip: document.getElementById('hourly-strip'), dStrip: document.getElementById('daily-strip'),
+      effects: document.getElementById('weather-effects'), langBtn: document.getElementById('langToggle'),
+      langText: document.getElementById('langText'), themeBtn: document.getElementById('themeToggle'),
+      themeText: document.getElementById('themeText'), searchForm: document.getElementById('search-form'),
+      input: document.getElementById('city-input'), autoList: document.getElementById('autocomplete-list'),
+      locateBtn: document.getElementById('locate-btn'), modal: document.getElementById('modal'),
+      modalTitle: document.getElementById('modal-title'), modalSubtitle: document.getElementById('modal-subtitle'),
+      modalBody: document.getElementById('modal-body'), modalClose: document.getElementById('modal-close-btn'),
       monthlyBtn: document.getElementById('monthly-btn')
     };
 
-    let mapInst = null;
-    let mapMark = null;
+    let mapInst = null, mapMark = null, mapTileLayer = null;
 
-    // --- INIT ---
     function init() {
-      // Random Loader Text
       const ph = loadingPhrases[state.lang];
       el.loaderText.textContent = ph[Math.floor(Math.random() * ph.length)];
-
-      // Init Map
       mapInst = L.map('map', { zoomControl: false, attributionControl: false }).setView([state.lat, state.lon], 10);
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mapInst);
+      
+      // Default to Dark
+      mapTileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(mapInst);
 
-      // Events
       el.langBtn.onclick = toggleLang;
       el.themeBtn.onclick = toggleTheme;
       el.searchForm.onsubmit = handleSearch;
@@ -609,7 +660,11 @@
     function t(k) { return dictionary[state.lang][k] || k; }
 
     function toggleLang() {
-      state.lang = state.lang === 'ru' ? 'en' : 'ru';
+      // Cycle RU -> EN -> ES
+      if (state.lang === 'ru') state.lang = 'en';
+      else if (state.lang === 'en') state.lang = 'es';
+      else state.lang = 'ru';
+      
       el.langText.textContent = state.lang.toUpperCase();
       el.input.placeholder = t('search_ph');
       updateThemeLabel();
@@ -618,57 +673,62 @@
     }
 
     function toggleTheme() {
-      state.themeMode = state.themeMode === 'adaptive' ? 'standard' : 'adaptive';
+      // Cycle Adaptive -> Light -> Standard(Dark)
+      if (state.themeMode === 'adaptive') state.themeMode = 'light';
+      else if (state.themeMode === 'light') state.themeMode = 'standard';
+      else state.themeMode = 'adaptive';
+      
       document.body.dataset.theme = state.themeMode;
       updateThemeLabel();
+      updateMapTheme();
       if(state.weatherData) updateBackground(state.weatherData);
+      
+      // Notify Python about theme change
+      if (window.pywebview && window.pywebview.api) {
+          window.pywebview.api.set_window_theme(state.themeMode)
+            .catch(err => console.log('Theme sync error:', err));
+      }
+    }
+
+    function updateMapTheme() {
+      if(!mapInst || !mapTileLayer) return;
+      if(state.themeMode === 'light') {
+        mapTileLayer.setUrl('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png');
+      } else {
+        mapTileLayer.setUrl('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png');
+      }
     }
 
     function updateThemeLabel() {
-      el.themeText.textContent = t(state.themeMode === 'adaptive' ? 'theme_adaptive' : 'theme_standard');
+      const map = { adaptive: 'theme_adaptive', standard: 'theme_standard', light: 'theme_light' };
+      el.themeText.textContent = t(map[state.themeMode]);
     }
 
-    // --- TIMEZONE FIXED CLOCK ---
     function startClock() {
       if (state.clockInterval) clearInterval(state.clockInterval);
-
       const update = () => {
         const now = new Date();
         try {
-          // TIME IN TARGET CITY
-          el.clock.textContent = now.toLocaleTimeString(state.lang === 'ru' ? 'ru-RU' : 'en-US', { 
-            timeZone: state.timezone, 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          });
-
-          // DATE IN TARGET CITY
+          // Use 'es-ES' for spanish, 'ru-RU' for russian, 'en-US' for english
+          const locale = state.lang === 'ru' ? 'ru-RU' : (state.lang === 'es' ? 'es-ES' : 'en-US');
+          el.clock.textContent = now.toLocaleTimeString(locale, { timeZone: state.timezone, hour: '2-digit', minute: '2-digit' });
           const dOpts = {weekday:'long', day:'numeric', month:'long', timeZone: state.timezone};
-          el.date.textContent = now.toLocaleDateString(state.lang==='ru'?'ru':'en', dOpts);
-
+          el.date.textContent = now.toLocaleDateString(locale, dOpts);
         } catch (e) {
           el.clock.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
       };
-
       update(); 
       state.clockInterval = setInterval(update, 1000);
     }
 
-    function scrollHourly(amount) {
-      el.hStrip.scrollBy({ left: amount, behavior: 'smooth' });
-    }
+    function scrollHourly(amount) { el.hStrip.scrollBy({ left: amount, behavior: 'smooth' }); }
 
-    // --- API & LOGIC ---
     function getUserLocation() {
       showLoader();
       if(!navigator.geolocation) { fetchWeather(); return; }
       navigator.geolocation.getCurrentPosition(
-        pos => {
-          state.lat = pos.coords.latitude;
-          state.lon = pos.coords.longitude;
-          reverseGeo(state.lat, state.lon).then(() => fetchWeather());
-        },
+        pos => { state.lat = pos.coords.latitude; state.lon = pos.coords.longitude; reverseGeo(state.lat, state.lon).then(() => fetchWeather()); },
         () => fetchWeather()
       );
     }
@@ -685,31 +745,22 @@
         const d = await r.json();
         state.locationName = d.city || d.locality || d.principalSubdivision || 'Unknown';
         state.countryCode = d.countryCode || '';
-      } catch { 
-        state.locationName = `${lat.toFixed(2)}, ${lon.toFixed(2)}`; 
-      }
+      } catch { state.locationName = `${lat.toFixed(2)}, ${lon.toFixed(2)}`; }
     }
 
     async function fetchWeather() {
       showLoader();
       try {
         const p = new URLSearchParams({
-          latitude: state.lat, longitude: state.lon,
-          current_weather: true,
+          latitude: state.lat, longitude: state.lon, current_weather: true,
           hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,relativehumidity_2m,surface_pressure',
           daily: 'temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,weathercode,uv_index_max',
-          timezone: 'auto',
-          forecast_days: 16
+          timezone: 'auto', forecast_days: 16
         });
         const res = await fetch(`https://api.open-meteo.com/v1/forecast?${p}`);
         if(!res.ok) throw new Error('API');
         const data = await res.json();
-        
-        if(data.timezone) {
-          state.timezone = data.timezone;
-          startClock(); 
-        }
-
+        if(data.timezone) { state.timezone = data.timezone; startClock(); }
         state.weatherData = data;
         updateUI(data);
         updateMap();
@@ -717,7 +768,6 @@
       finally { setTimeout(() => el.loader.classList.add('opacity-0', 'pointer-events-none'), 800); }
     }
 
-    // --- UI UPDATES ---
     function updateUI(data) {
       const cur = data.current_weather;
       const hourly = data.hourly;
@@ -726,7 +776,7 @@
 
       el.location.textContent = state.locationName;
       el.temp.textContent = Math.round(cur.temperature);
-      el.cond.textContent = state.lang==='ru' ? codeInfo.ru : codeInfo.en;
+      el.cond.textContent = codeInfo[state.lang] || codeInfo.en;
       el.wind.textContent = cur.windspeed + ' m/s';
 
       const isNight = cur.is_day === 0;
@@ -737,10 +787,8 @@
       }
       el.bigIcon.innerHTML = `<i class="ph-duotone ${iconClass}"></i>`;
 
-      const currentCityTime = cur.time;
-      const currentHourIso = currentCityTime.substring(0, 13);
-      
-      let idx = hourly.time.findIndex(t => t.startsWith(currentHourIso));
+      const curHourIso = cur.time.substring(0, 13);
+      let idx = hourly.time.findIndex(t => t.startsWith(curHourIso));
       if(idx===-1) idx=0;
 
       el.feels.textContent = Math.round(hourly.apparent_temperature[idx]) + '°';
@@ -751,29 +799,29 @@
 
       updateBackground(data);
 
-      // Hourly Render
       el.hStrip.innerHTML = '';
       for(let i=idx; i<idx+24 && i<hourly.time.length; i++) {
         const tStr = hourly.time[i];
         const hourNum = parseInt(tStr.substring(11, 13));
-
         const c = hourly.weathercode[i];
         const hCode = weatherCodes[c]||weatherCodes[0];
-        
         let hIcon = hCode.icon;
         const srH = parseInt(daily.sunrise[0].substring(11,13));
         const ssH = parseInt(daily.sunset[0].substring(11,13));
         const hIsNight = hourNum < srH || hourNum > ssH; 
-
         if(hIsNight) {
            if(hIcon === 'ph-sun') hIcon = 'ph-moon';
            if(hIcon === 'ph-cloud-sun') hIcon = 'ph-cloud-moon';
         }
-
-        const active = i===idx ? 'bg-white/10 border-cyan-400/50' : 'bg-white/5 border-transparent hover:bg-white/10';
+        
+        // Active item check
+        const isActive = i===idx;
+        // Tailwind classes for active vs inactive. 
+        // Note: CSS Overrides in [data-theme="light"] handle the color changes automatically now.
+        const borderClass = isActive ? 'bg-white/10 border-cyan-400/50' : 'bg-white/5 border-transparent hover:bg-white/10';
         
         const item = document.createElement('div');
-        item.className = `min-w-[90px] p-3 rounded-2xl border ${active} flex flex-col items-center justify-center transition-all cursor-pointer`;
+        item.className = `min-w-[90px] p-3 rounded-2xl border ${borderClass} flex flex-col items-center justify-center transition-all cursor-pointer`;
         item.innerHTML = `
           <span class="text-xs text-slate-400 mb-2 font-medium">${hourNum}:00</span>
           <i class="ph-duotone ${hIcon} text-2xl mb-2 text-cyan-200"></i>
@@ -787,18 +835,18 @@
         el.hStrip.appendChild(item);
       }
 
-      // Daily Render
       el.dStrip.innerHTML = '';
       for(let i=0; i<6 && i<daily.time.length; i++) {
         const dateParts = daily.time[i].split('-');
         const safeDate = new Date(dateParts[0], dateParts[1]-1, dateParts[2], 12, 0, 0);
-
+        // Locale for date
+        const loc = state.lang==='ru'?'ru':(state.lang==='es'?'es':'en');
         const c = daily.weathercode[i];
         const dCode = weatherCodes[c]||weatherCodes[0];
         const item = document.createElement('div');
         item.className = 'bg-white/5 hover:bg-white/10 p-4 rounded-2xl flex flex-col items-center justify-between transition-all cursor-pointer border border-transparent hover:border-white/10';
         item.innerHTML = `
-          <span class="text-xs text-slate-400 font-bold uppercase mb-2">${safeDate.toLocaleDateString(state.lang==='ru'?'ru':'en',{weekday:'short'})}</span>
+          <span class="text-xs text-slate-400 font-bold uppercase mb-2">${safeDate.toLocaleDateString(loc,{weekday:'short'})}</span>
           <i class="ph-duotone ${dCode.icon} text-3xl mb-2 text-cyan-100"></i>
           <div class="flex gap-2 font-bold text-sm w-full justify-center">
             <span class="text-white">${Math.round(daily.temperature_2m_max[i])}°</span>
@@ -810,68 +858,58 @@
       }
     }
 
-    function extractTime(isoString) {
-      if(!isoString) return '--:--';
-      return isoString.substring(11, 16);
-    }
+    function extractTime(isoString) { return isoString ? isoString.substring(11, 16) : '--:--'; }
 
-    // --- BACKGROUND SYSTEM ---
     function updateBackground(data) {
+      // 1. Light Mode (Static or specific gradient)
+      if(state.themeMode === 'light') {
+        // Light blue sky gradient
+        setBackground('linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 100%)'); 
+        el.effects.innerHTML = '';
+        return;
+      }
+      
+      // 2. Standard Dark Mode
       if(state.themeMode === 'standard') {
         setBackground('linear-gradient(180deg, #0f172a 0%, #020617 100%)');
         el.effects.innerHTML = '';
         return;
       }
 
+      // 3. Adaptive Mode
       const code = data.current_weather.weathercode;
       const type = (weatherCodes[code] || weatherCodes[0]).type;
-      
-      const getMins = (iso) => {
-        const h = parseInt(iso.substring(11,13));
-        const m = parseInt(iso.substring(14,16));
-        return h*60 + m;
-      };
-
+      const getMins = (iso) => { const h = parseInt(iso.substring(11,13)); const m = parseInt(iso.substring(14,16)); return h*60 + m; };
       const nowMins = getMins(data.current_weather.time);
       const srMins = getMins(data.daily.sunrise[0]);
       const ssMins = getMins(data.daily.sunset[0]);
-
       let timeOfDay = 'day';
       if(nowMins < srMins || nowMins > ssMins) timeOfDay = 'night';
-      else {
-        if(nowMins - srMins < 120) timeOfDay = 'morning';
-        else if(ssMins - nowMins < 120) timeOfDay = 'evening';
-      }
+      else { if(nowMins - srMins < 120) timeOfDay = 'morning'; else if(ssMins - nowMins < 120) timeOfDay = 'evening'; }
 
-      // Define Gradients
       let grad = '';
       if(type==='clear') {
          if(timeOfDay==='day') grad = 'linear-gradient(180deg, #0ea5e9 0%, #60a5fa 100%)'; 
          if(timeOfDay==='morning') grad = 'linear-gradient(180deg, #38bdf8 0%, #facc15 100%)'; 
          if(timeOfDay==='evening') grad = 'linear-gradient(180deg, #f97316 0%, #3b0764 100%)'; 
          if(timeOfDay==='night') grad = 'radial-gradient(circle at top, #1e293b 0%, #020617 100%)'; 
-      }
-      else if(type==='cloudy') {
+      } else if(type==='cloudy') {
          if(timeOfDay==='day') grad = 'linear-gradient(180deg, #64748b 0%, #94a3b8 100%)';
          if(timeOfDay==='night') grad = 'linear-gradient(180deg, #334155 0%, #000000 100%)';
          else grad = 'linear-gradient(180deg, #475569 0%, #cbd5e1 100%)';
-      }
-      else if(type==='rain') {
+      } else if(type==='rain') {
          if(timeOfDay==='night') grad = 'linear-gradient(180deg, #1e1b4b 0%, #000000 100%)';
          else grad = 'linear-gradient(180deg, #374151 0%, #4b5563 100%)';
-      }
-      else if(type==='snow') {
+      } else if(type==='snow') {
          if(timeOfDay==='night') grad = 'radial-gradient(circle at top, #334155 0%, #0f172a 100%)';
          else grad = 'linear-gradient(180deg, #94a3b8 0%, #e2e8f0 100%)';
       }
-
       setBackground(grad);
       renderEffects(type, timeOfDay);
     }
 
     function setBackground(gradient) {
-      const l1 = document.getElementById('bg-layer-1');
-      const l2 = document.getElementById('bg-layer-2');
+      const l1 = document.getElementById('bg-layer-1'), l2 = document.getElementById('bg-layer-2');
       const active = l1.classList.contains('active') ? l1 : l2;
       const next = l1.classList.contains('active') ? l2 : l1;
       next.style.background = gradient;
@@ -892,14 +930,12 @@
       for(let i=0; i<count; i++) {
         const p = document.createElement('div');
         p.className = `absolute ${classes}`;
-        p.style.left = Math.random()*100+'%';
-        p.style.top = -100 + 'px'; 
+        p.style.left = Math.random()*100+'%'; p.style.top = -100 + 'px'; 
         const dur = Math.random()*1 + 0.5;
         p.style.animation = `${animName} ${dur}s linear infinite`;
         p.style.animationDelay = Math.random()*2+'s';
         el.effects.appendChild(p);
       }
-      
       if(!document.getElementById('anim-styles')) {
         const style = document.createElement('style');
         style.id = 'anim-styles';
@@ -915,10 +951,8 @@
       for(let i=0; i<50; i++) {
         const s = document.createElement('div');
         s.className = 'absolute bg-white rounded-full opacity-0 animate-pulse';
-        s.style.width = Math.random()*3 + 'px';
-        s.style.height = s.style.width;
-        s.style.left = Math.random()*100+'%';
-        s.style.top = Math.random()*70+'%';
+        s.style.width = Math.random()*3 + 'px'; s.style.height = s.style.width;
+        s.style.left = Math.random()*100+'%'; s.style.top = Math.random()*70+'%';
         s.style.animationDuration = (Math.random()*3 + 2)+'s';
         el.effects.appendChild(s);
       }
@@ -934,22 +968,18 @@
       for(let i=0; i<4; i++){
          const c = document.createElement('div');
          c.className = 'absolute bg-white/10 blur-[40px] rounded-full';
-         c.style.width = (200 + Math.random()*300) + 'px';
-         c.style.height = '150px';
-         c.style.top = (Math.random()*40) + '%';
-         c.style.left = -400 + 'px';
+         c.style.width = (200 + Math.random()*300) + 'px'; c.style.height = '150px';
+         c.style.top = (Math.random()*40) + '%'; c.style.left = -400 + 'px';
          c.style.animation = `floatCloud ${40+Math.random()*40}s linear infinite`;
          el.effects.appendChild(c);
       }
       if(!document.getElementById('cloud-anim')) {
-         const style = document.createElement('style');
-         style.id = 'cloud-anim';
+         const style = document.createElement('style'); style.id = 'cloud-anim';
          style.textContent = `@keyframes floatCloud { from { transform: translateX(-500px); } to { transform: translateX(120vw); } }`;
          document.head.appendChild(style);
       }
     }
 
-    // --- SEARCH & AUTOCOMPLETE ---
     async function handleSearch(e) {
       e.preventDefault();
       const q = el.input.value.trim();
@@ -962,12 +992,10 @@
         if(!d.results?.length) { alert(t('error_city')); return; }
         const c = d.results[0];
         state.lat = c.latitude; state.lon = c.longitude;
-        state.locationName = c.name;
-        state.countryCode = c.country_code || '';
+        state.locationName = c.name; state.countryCode = c.country_code || '';
         fetchWeather();
         el.input.value='';
-      } catch(e){ console.error(e); }
-      finally { el.loader.classList.add('opacity-0','pointer-events-none'); }
+      } catch(e){ console.error(e); } finally { el.loader.classList.add('opacity-0','pointer-events-none'); }
     }
 
     let tmr;
@@ -989,8 +1017,7 @@
                div.innerHTML = `${flag} <span>${c.name}, <span class="text-slate-500">${c.country||''}</span></span>`;
                div.onclick = () => {
                  state.lat = c.latitude; state.lon = c.longitude;
-                 state.locationName = c.name;
-                 state.countryCode = c.country_code;
+                 state.locationName = c.name; state.countryCode = c.country_code;
                  fetchWeather();
                  el.autoList.classList.add('hidden'); el.input.value='';
                };
@@ -1001,164 +1028,59 @@
       }, 300);
     }
 
-    // --- SMART ADVICE MODAL ---
     function showAdviceModal() {
       if(!state.weatherData) return;
-      const d = state.weatherData;
-      const cur = d.current_weather;
-      const h = d.hourly;
-      
-      const analysis = [];
-      const temp = cur.temperature;
-      
+      const d = state.weatherData, cur = d.current_weather, h = d.hourly;
+      const analysis = [], temp = cur.temperature;
       if(temp < -10) analysis.push({icon: 'ph-snowflake', color: 'text-blue-400', text: t('advice_freezing')});
       else if(temp < 10) analysis.push({icon: 'ph-coat-hanger', color: 'text-cyan-300', text: t('advice_cold')});
       else if(temp > 30) analysis.push({icon: 'ph-thermometer-hot', color: 'text-red-400', text: t('advice_hot')});
       else analysis.push({icon: 'ph-smiley', color: 'text-green-400', text: t('advice_warm')});
-
       if(cur.windspeed > 15) analysis.push({icon: 'ph-wind', color: 'text-slate-300', text: t('advice_windy')});
 
       const curHourIso = cur.time.substring(0,13);
       const nowIdx = h.time.findIndex(t => t.startsWith(curHourIso));
       const safeIdx = nowIdx === -1 ? 0 : nowIdx;
-
       const next12 = h.weathercode.slice(safeIdx, safeIdx+12);
       const next12Prob = h.precipitation_probability.slice(safeIdx, safeIdx+12);
-      
       const isRainingNow = cur.weathercode >= 51;
       
       if(isRainingNow) {
         let stopIdx = -1;
-        for(let i=0; i<next12.length; i++) {
-          if(next12[i] < 51 && next12Prob[i] < 30) { stopIdx = i; break; }
-        }
+        for(let i=0; i<next12.length; i++) { if(next12[i] < 51 && next12Prob[i] < 30) { stopIdx = i; break; } }
         const stopTime = stopIdx !== -1 ? extractTime(h.time[safeIdx+stopIdx]) : '??';
         analysis.push({icon: 'ph-umbrella', color: 'text-blue-400', text: t('advice_rain_now') + (stopIdx !== -1 ? ` ${t('advice_rain_stops')}${stopTime}.` : '')});
       } else {
         let startIdx = -1;
-        for(let i=0; i<next12.length; i++) {
-          if(next12[i] >= 51 || next12Prob[i] > 60) { startIdx = i; break; }
-        }
+        for(let i=0; i<next12.length; i++) { if(next12[i] >= 51 || next12Prob[i] > 60) { startIdx = i; break; } }
         if(startIdx !== -1) {
            const startTime = extractTime(h.time[safeIdx+startIdx]);
            analysis.push({icon: 'ph-cloud-rain', color: 'text-blue-300', text: `${t('advice_rain_soon')}${startTime}).`});
-        } else {
-           analysis.push({icon: 'ph-sun', color: 'text-amber-300', text: t('advice_clear')});
-        }
+        } else analysis.push({icon: 'ph-sun', color: 'text-amber-300', text: t('advice_clear')});
       }
 
-      let html = `<div class="bg-white/5 rounded-2xl p-4 mb-4 border border-white/10">
-                    <div class="flex items-center gap-3 mb-3">
-                      <div class="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400"><i class="ph-fill ph-magic-wand text-xl"></i></div>
-                      <h4 class="font-bold text-lg">${t('advice_title')}</h4>
-                    </div>
-                    <ul class="space-y-3">`;
-      
-      analysis.forEach(item => {
-        html += `<li class="flex items-start gap-3 p-3 rounded-xl bg-black/20">
-                   <i class="ph-fill ${item.icon} ${item.color} text-2xl shrink-0 mt-0.5"></i>
-                   <span class="text-slate-200 text-sm leading-relaxed">${item.text}</span>
-                 </li>`;
-      });
-      html += `</ul></div>`;
-
-      html += `<div class="grid grid-cols-2 gap-3 mt-4">
-                 <div class="glass bg-white/5 p-3 rounded-xl text-center">
-                   <div class="text-[10px] uppercase text-slate-400 mb-1">UV Index</div>
-                   <div class="text-xl font-bold text-white">${d.daily.uv_index_max[0]}</div>
-                 </div>
-                 <div class="glass bg-white/5 p-3 rounded-xl text-center">
-                   <div class="text-[10px] uppercase text-slate-400 mb-1">Pressure</div>
-                   <div class="text-xl font-bold text-white">${Math.round(h.surface_pressure[safeIdx])} hPa</div>
-                 </div>
-               </div>`;
-
-      el.modalTitle.textContent = state.locationName;
-      el.modalSubtitle.textContent = t('analysis_title');
-      el.modalBody.innerHTML = html;
-      el.modal.classList.add('active');
+      let html = `<div class="bg-white/5 rounded-2xl p-4 mb-4 border border-white/10"><div class="flex items-center gap-3 mb-3"><div class="w-10 h-10 rounded-full bg-cyan-500/20 flex items-center justify-center text-cyan-400"><i class="ph-fill ph-magic-wand text-xl"></i></div><h4 class="font-bold text-lg">${t('advice_title')}</h4></div><ul class="space-y-3">`;
+      analysis.forEach(item => { html += `<li class="flex items-start gap-3 p-3 rounded-xl bg-black/20"><i class="ph-fill ${item.icon} ${item.color} text-2xl shrink-0 mt-0.5"></i><span class="text-slate-200 text-sm leading-relaxed">${item.text}</span></li>`; });
+      html += `</ul></div><div class="grid grid-cols-2 gap-3 mt-4"><div class="glass bg-white/5 p-3 rounded-xl text-center"><div class="text-[10px] uppercase text-slate-400 mb-1">UV Index</div><div class="text-xl font-bold text-white">${d.daily.uv_index_max[0]}</div></div><div class="glass bg-white/5 p-3 rounded-xl text-center"><div class="text-[10px] uppercase text-slate-400 mb-1">Pressure</div><div class="text-xl font-bold text-white">${Math.round(h.surface_pressure[safeIdx])} hPa</div></div></div>`;
+      el.modalTitle.textContent = state.locationName; el.modalSubtitle.textContent = t('analysis_title');
+      el.modalBody.innerHTML = html; el.modal.classList.add('active');
     }
 
     function showModalHourly(hourly, i) {
-      const code = hourly.weathercode[i];
-      const desc = (weatherCodes[code]||weatherCodes[0])[state.lang==='ru'?'ru':'en'];
-      
-      const tStr = hourly.time[i]; 
-      const dateStr = tStr.split('T')[0];
-      const timeStr = tStr.split('T')[1];
-      
-      const html = `
-        <div class="text-center py-6">
-           <i class="ph-duotone ${(weatherCodes[code]||weatherCodes[0]).icon} text-6xl text-cyan-300 mb-4"></i>
-           <div class="text-4xl font-bold mb-2">${Math.round(hourly.temperature_2m[i])}°</div>
-           <div class="text-lg text-slate-300">${desc}</div>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-           <div class="glass bg-white/5 p-4 rounded-xl flex items-center gap-3">
-             <i class="ph-fill ph-drop text-blue-400 text-2xl"></i>
-             <div>
-               <div class="text-xs text-slate-400 uppercase">${t('rain_chance')}</div>
-               <div class="font-bold">${hourly.precipitation_probability[i]}%</div>
-             </div>
-           </div>
-           <div class="glass bg-white/5 p-4 rounded-xl flex items-center gap-3">
-             <i class="ph-fill ph-wind text-slate-400 text-2xl"></i>
-             <div>
-               <div class="text-xs text-slate-400 uppercase">${t('wind')}</div>
-               <div class="font-bold">${hourly.windspeed_10m[i]} m/s</div>
-             </div>
-           </div>
-        </div>
-      `;
-      el.modalTitle.textContent = `${t('modal_hourly')} ${timeStr}`;
-      el.modalSubtitle.textContent = dateStr;
-      el.modalBody.innerHTML = html;
-      el.modal.classList.add('active');
+      const code = hourly.weathercode[i], desc = (weatherCodes[code]||weatherCodes[0])[state.lang] || (weatherCodes[code]||weatherCodes[0])['en'];
+      const tStr = hourly.time[i], dateStr = tStr.split('T')[0], timeStr = tStr.split('T')[1];
+      const html = `<div class="text-center py-6"><i class="ph-duotone ${(weatherCodes[code]||weatherCodes[0]).icon} text-6xl text-cyan-300 mb-4"></i><div class="text-4xl font-bold mb-2">${Math.round(hourly.temperature_2m[i])}°</div><div class="text-lg text-slate-300">${desc}</div></div><div class="grid grid-cols-2 gap-4"><div class="glass bg-white/5 p-4 rounded-xl flex items-center gap-3"><i class="ph-fill ph-drop text-blue-400 text-2xl"></i><div><div class="text-xs text-slate-400 uppercase">${t('rain_chance')}</div><div class="font-bold">${hourly.precipitation_probability[i]}%</div></div></div><div class="glass bg-white/5 p-4 rounded-xl flex items-center gap-3"><i class="ph-fill ph-wind text-slate-400 text-2xl"></i><div><div class="text-xs text-slate-400 uppercase">${t('wind')}</div><div class="font-bold">${hourly.windspeed_10m[i]} m/s</div></div></div></div>`;
+      el.modalTitle.textContent = `${t('modal_hourly')} ${timeStr}`; el.modalSubtitle.textContent = dateStr;
+      el.modalBody.innerHTML = html; el.modal.classList.add('active');
     }
 
     function showModalDaily(daily, i) {
-      const code = daily.weathercode[i];
-      const desc = (weatherCodes[code]||weatherCodes[0])[state.lang==='ru'?'ru':'en'];
-      
-      const parts = daily.time[i].split('-');
-      const safeDate = new Date(parts[0], parts[1]-1, parts[2], 12);
-
-      const html = `
-        <div class="text-center py-6">
-           <i class="ph-duotone ${(weatherCodes[code]||weatherCodes[0]).icon} text-6xl text-purple-300 mb-4"></i>
-           <div class="flex justify-center items-center gap-4 text-3xl font-bold mb-2">
-              <span class="text-white">${Math.round(daily.temperature_2m_max[i])}°</span>
-              <span class="text-slate-500">${Math.round(daily.temperature_2m_min[i])}°</span>
-           </div>
-           <div class="text-lg text-slate-300">${desc}</div>
-        </div>
-        <div class="grid grid-cols-2 gap-4">
-           <div class="glass bg-white/5 p-4 rounded-xl text-center">
-             <i class="ph-fill ph-sun text-orange-400 text-xl mb-1"></i>
-             <div class="text-xs text-slate-400 uppercase">UV Index</div>
-             <div class="font-bold">${daily.uv_index_max[i]}</div>
-           </div>
-           <div class="glass bg-white/5 p-4 rounded-xl text-center">
-             <i class="ph-fill ph-drop text-blue-400 text-xl mb-1"></i>
-             <div class="text-xs text-slate-400 uppercase">${t('rain_chance')}</div>
-             <div class="font-bold">${daily.precipitation_probability_max[i]}%</div>
-           </div>
-           <div class="glass bg-white/5 p-4 rounded-xl text-center col-span-2 flex justify-between px-8">
-              <div>
-                <div class="text-xs text-slate-400 uppercase mb-1">${t('sunrise')}</div>
-                <div class="font-bold text-amber-200">${extractTime(daily.sunrise[i])}</div>
-              </div>
-              <div>
-                <div class="text-xs text-slate-400 uppercase mb-1">${t('sunset')}</div>
-                <div class="font-bold text-orange-200">${extractTime(daily.sunset[i])}</div>
-              </div>
-           </div>
-        </div>
-      `;
-      el.modalTitle.textContent = safeDate.toLocaleDateString(state.lang==='ru'?'ru':'en', {weekday:'long', day:'numeric', month:'long'});
-      el.modalSubtitle.textContent = t('modal_daily');
-      el.modalBody.innerHTML = html;
-      el.modal.classList.add('active');
+      const code = daily.weathercode[i], desc = (weatherCodes[code]||weatherCodes[0])[state.lang] || (weatherCodes[code]||weatherCodes[0])['en'];
+      const parts = daily.time[i].split('-'), safeDate = new Date(parts[0], parts[1]-1, parts[2], 12);
+      const loc = state.lang==='ru'?'ru':(state.lang==='es'?'es':'en');
+      const html = `<div class="text-center py-6"><i class="ph-duotone ${(weatherCodes[code]||weatherCodes[0]).icon} text-6xl text-purple-300 mb-4"></i><div class="flex justify-center items-center gap-4 text-3xl font-bold mb-2"><span class="text-white">${Math.round(daily.temperature_2m_max[i])}°</span><span class="text-slate-500">${Math.round(daily.temperature_2m_min[i])}°</span></div><div class="text-lg text-slate-300">${desc}</div></div><div class="grid grid-cols-2 gap-4"><div class="glass bg-white/5 p-4 rounded-xl text-center"><i class="ph-fill ph-sun text-orange-400 text-xl mb-1"></i><div class="text-xs text-slate-400 uppercase">UV Index</div><div class="font-bold">${daily.uv_index_max[i]}</div></div><div class="glass bg-white/5 p-4 rounded-xl text-center"><i class="ph-fill ph-drop text-blue-400 text-xl mb-1"></i><div class="text-xs text-slate-400 uppercase">${t('rain_chance')}</div><div class="font-bold">${daily.precipitation_probability_max[i]}%</div></div><div class="glass bg-white/5 p-4 rounded-xl text-center col-span-2 flex justify-between px-8"><div><div class="text-xs text-slate-400 uppercase mb-1">${t('sunrise')}</div><div class="font-bold text-amber-200">${extractTime(daily.sunrise[i])}</div></div><div><div class="text-xs text-slate-400 uppercase mb-1">${t('sunset')}</div><div class="font-bold text-orange-200">${extractTime(daily.sunset[i])}</div></div></div></div>`;
+      el.modalTitle.textContent = safeDate.toLocaleDateString(loc, {weekday:'long', day:'numeric', month:'long'}); el.modalSubtitle.textContent = t('modal_daily');
+      el.modalBody.innerHTML = html; el.modal.classList.add('active');
     }
 
     function showMonthly() {
@@ -1166,38 +1088,22 @@
       const d = state.weatherData.daily;
       let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">';
       for(let i=0; i<d.time.length; i++){
-        const parts = d.time[i].split('-');
-        const safeDate = new Date(parts[0], parts[1]-1, parts[2], 12);
-        const dateStr = safeDate.toLocaleDateString(state.lang==='ru'?'ru':'en', {weekday:'short', day:'numeric'});
-        
+        const parts = d.time[i].split('-'), safeDate = new Date(parts[0], parts[1]-1, parts[2], 12);
+        const loc = state.lang==='ru'?'ru':(state.lang==='es'?'es':'en');
+        const dateStr = safeDate.toLocaleDateString(loc, {weekday:'short', day:'numeric'});
         const icon = (weatherCodes[d.weathercode[i]]||weatherCodes[0]).icon;
-        html += `
-          <div class="glass bg-white/5 p-3 rounded-xl flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors" onclick="showModalDaily(state.weatherData.daily, ${i})">
-            <div class="flex items-center gap-3">
-              <i class="ph-duotone ${icon} text-2xl text-cyan-200 w-8 text-center"></i>
-              <span class="text-sm font-bold text-slate-200">${dateStr}</span>
-            </div>
-            <div class="text-sm font-bold">
-              <span class="text-white">${Math.round(d.temperature_2m_max[i])}°</span>
-              <span class="text-slate-500 ml-2">${Math.round(d.temperature_2m_min[i])}°</span>
-            </div>
-          </div>
-        `;
+        html += `<div class="glass bg-white/5 p-3 rounded-xl flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors" onclick="showModalDaily(state.weatherData.daily, ${i})"><div class="flex items-center gap-3"><i class="ph-duotone ${icon} text-2xl text-cyan-200 w-8 text-center"></i><span class="text-sm font-bold text-slate-200">${dateStr}</span></div><div class="text-sm font-bold"><span class="text-white">${Math.round(d.temperature_2m_max[i])}°</span><span class="text-slate-500 ml-2">${Math.round(d.temperature_2m_min[i])}°</span></div></div>`;
       }
       html += '</div>';
-      el.modalTitle.textContent = t('monthly_btn');
-      el.modalSubtitle.textContent = state.locationName;
-      el.modalBody.innerHTML = html;
-      el.modal.classList.add('active');
+      el.modalTitle.textContent = t('monthly_btn'); el.modalSubtitle.textContent = state.locationName;
+      el.modalBody.innerHTML = html; el.modal.classList.add('active');
     }
 
     function updateMap() {
       if(!mapInst) return;
       mapInst.setView([state.lat, state.lon], 11);
       if(mapMark) mapInst.removeLayer(mapMark);
-      mapMark = L.circleMarker([state.lat, state.lon], {
-        radius: 12, color: '#22d3ee', fillColor: '#22d3ee', fillOpacity: 0.6
-      }).addTo(mapInst);
+      mapMark = L.circleMarker([state.lat, state.lon], { radius: 12, color: '#22d3ee', fillColor: '#22d3ee', fillOpacity: 0.6 }).addTo(mapInst);
     }
 
     init();
