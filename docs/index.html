@@ -59,13 +59,22 @@
     [data-theme="light"] .text-cyan-400 { color: #6d28d9 !important; }
     [data-theme="light"] .text-blue-300 { color: #2563eb !important; } 
     [data-theme="light"] .text-blue-400 { color: #3b82f6 !important; } 
+    [data-theme="light"] .text-yellow-100 { color: #eab308 !important; }
 
-    [data-theme="light"] #logo-box {
+    /* Logo Styles */
+    [data-theme="light"] #logo-box.default-logo {
       background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%) !important;
       box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.3) !important;
     }
     [data-theme="light"] #logo-box i { color: #ffffff !important; }
     [data-theme="light"] #logo-title { color: #4c1d95 !important; text-shadow: none !important; }
+
+    /* Dark/Standard Theme Logo */
+    #logo-box.dark-logo {
+        background: linear-gradient(135deg, #1e293b 0%, #000000 100%) !important;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5) !important;
+        border: 1px solid rgba(255,255,255,0.1);
+    }
 
     [data-theme="light"] .bg-white\/5 { background-color: rgba(0,0,0,0.04) !important; }
     [data-theme="light"] .bg-white\/10 { background-color: rgba(0,0,0,0.06) !important; }
@@ -126,16 +135,14 @@
     /* --- OPTIMIZED GLASS UI --- */
     .glass {
       background: var(--glass-bg);
-      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); /* Reduced blur for performance */
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
       border: 1px solid var(--glass-border);
-      /* HARDWARE ACCELERATION */
       transform: translateZ(0);
       will-change: transform, opacity;
       transition: background-color 0.2s, border-color 0.2s;
     }
     .glass-panel { border-radius: 24px; }
     
-    /* Performance: Removed complex box-shadow transitions on hover */
     .glass:hover { 
       border-color: rgba(255, 255, 255, 0.2); 
       background: rgba(30, 41, 59, 0.75);
@@ -184,7 +191,7 @@
 
     #autocomplete-list {
       position: absolute; top: 110%; left: 0; right: 0;
-      background: rgba(15, 23, 42, 0.98); /* Less blur, more solid for performance */
+      background: rgba(15, 23, 42, 0.98);
       border: 1px solid var(--glass-border); border-radius: 16px; 
       max-height: 250px; overflow-y: auto; z-index: 100;
       box-shadow: 0 10px 30px rgba(0,0,0,0.3);
@@ -237,7 +244,7 @@
     .modal-content {
       background: #1e293b; border: 1px solid rgba(255,255,255,0.1); 
       box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5); border-radius: 24px;
-      width: 100%; max-width: 500px; max-height: 85vh; 
+      width: 100%; max-width: 600px; max-height: 85vh; 
       display: flex; flex-direction: column; overflow: hidden;
       transform: scale(0.96) translateY(10px); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
       will-change: transform;
@@ -252,18 +259,27 @@
     .modal-scroll-area { overflow-y: auto; padding: 1.5rem 2rem; flex-grow: 1; -webkit-overflow-scrolling: touch; }
 
     /* Settings Menu */
-    .settings-menu {
+    .dropdown-menu {
       position: absolute; top: 110%; right: 0;
       background: var(--glass-bg); backdrop-filter: blur(16px);
       border: 1px solid var(--glass-border); border-radius: 16px;
-      padding: 0.5rem; width: 220px;
+      padding: 0.5rem; min-width: 160px; width: max-content;
       opacity: 0; pointer-events: none; transform: translateY(-5px);
       transition: opacity 0.2s, transform 0.2s;
       box-shadow: 0 10px 30px rgba(0,0,0,0.3);
       z-index: 100;
     }
-    .settings-menu.active { opacity: 1; pointer-events: auto; transform: translateY(0); }
-    [data-theme="light"] .settings-menu { background: rgba(255,255,255,0.95); }
+    .dropdown-menu.active { opacity: 1; pointer-events: auto; transform: translateY(0); }
+    [data-theme="light"] .dropdown-menu { background: rgba(255,255,255,0.95); }
+
+    .menu-item {
+       display: flex; align-items: center; gap: 10px;
+       padding: 10px 15px; border-radius: 8px;
+       cursor: pointer; transition: background 0.2s;
+       color: var(--text-primary);
+    }
+    .menu-item:hover { background: rgba(255,255,255,0.1); }
+    [data-theme="light"] .menu-item:hover { background: rgba(0,0,0,0.05); }
 
     .custom-select {
         appearance: none; -webkit-appearance: none;
@@ -300,6 +316,28 @@
     @keyframes spin-rev { 100% { transform: rotate(-360deg); } }
     @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 
+    /* --- NEW ANIMATIONS --- */
+    @keyframes sway { 
+       0%, 100% { margin-left: -5px; } 
+       50% { margin-left: 5px; } 
+    }
+    @keyframes fog-flow { 0% { transform: translateX(-10%); opacity: 0.4; } 50% { transform: translateX(10%); opacity: 0.7; } 100% { transform: translateX(-10%); opacity: 0.4; } }
+
+    /* --- ALERT BOX --- */
+    #alert-box {
+      display: none;
+      animation: slideDown 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* Dynamic Logo Colors */
+    .logo-clear-d { background: linear-gradient(135deg, #facc15 0%, #fb923c 100%) !important; box-shadow: 0 10px 20px -5px rgba(251, 146, 60, 0.4) !important; }
+    .logo-clear-n { background: linear-gradient(135deg, #4338ca 0%, #312e81 100%) !important; box-shadow: 0 10px 20px -5px rgba(67, 56, 202, 0.4) !important; }
+    .logo-rain { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important; box-shadow: 0 10px 20px -5px rgba(59, 130, 246, 0.4) !important; }
+    .logo-cloud { background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%) !important; box-shadow: 0 10px 20px -5px rgba(100, 116, 139, 0.4) !important; }
+    .logo-snow { background: linear-gradient(135deg, #bae6fd 0%, #60a5fa 100%) !important; box-shadow: 0 10px 20px -5px rgba(186, 230, 253, 0.4) !important; }
+    .logo-fog { background: linear-gradient(135deg, #cbd5e1 0%, #94a3b8 100%) !important; box-shadow: 0 10px 20px -5px rgba(148, 163, 184, 0.4) !important; }
+
   </style>
 </head>
 
@@ -327,19 +365,25 @@
   <div id="map-modal" class="map-modal-overlay">
     <div class="map-close-btn" onclick="closeFullMap()"><i class="ph-bold ph-x"></i></div>
     <div id="full-map"></div>
-    <div class="absolute bottom-10 left-1/2 transform -translate-x-1/2 bg-black/60 backdrop-blur-md px-6 py-3 rounded-full text-white z-[1000] border border-white/20 text-center pointer-events-none">
-       <p class="font-bold text-sm">Нажмите на любую точку</p>
-       <p class="text-xs text-slate-300">для просмотра погоды</p>
+    <div id="map-controls" class="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-[1000] flex flex-col items-center gap-2 w-full px-4 pointer-events-none">
+       <div id="map-instruction" class="bg-black/60 backdrop-blur-md px-6 py-3 rounded-full text-white border border-white/20 text-center shadow-xl">
+          <p class="font-bold text-sm">Нажмите на карту</p>
+          <p class="text-xs text-slate-300">для выбора точки</p>
+       </div>
+       <button id="map-apply-btn" onclick="applyMapLocation()" class="pointer-events-auto hidden bg-cyan-500 hover:bg-cyan-400 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-cyan-500/30 transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2">
+          <i class="ph-bold ph-check"></i> Применить местоположение
+       </button>
     </div>
   </div>
 
-  <div class="max-w-6xl mx-auto px-4 py-6 md:py-10 space-y-8 relative z-10">
+  <div class="max-w-6xl mx-auto px-4 py-6 md:py-10 space-y-6 relative z-10 flex flex-col min-h-screen">
     
+    <div class="flex-grow space-y-6">
     <!-- HEADER -->
     <header class="flex flex-col md:flex-row md:items-center justify-between gap-6">
-      <div class="flex items-center gap-4 group cursor-default">
+      <div class="flex items-center gap-4 group cursor-pointer" onclick="location.reload()" title="Перезагрузить">
         <!-- Logo Icon Box -->
-        <div id="logo-box" class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 group-hover:scale-105 transition-transform duration-300">
+        <div id="logo-box" class="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 flex items-center justify-center shadow-lg transition-all duration-500 group-hover:scale-105">
           <i class="ph-fill ph-wind text-2xl text-white"></i>
         </div>
         <div>
@@ -353,7 +397,8 @@
           <i class="ph ph-gear text-xl text-cyan-300 transition-transform group-hover:rotate-90"></i>
         </button>
 
-        <div id="settings-menu" class="settings-menu">
+        <!-- Settings Menu -->
+        <div id="settings-menu" class="dropdown-menu">
            <div class="p-2 space-y-3">
               <div>
                 <label class="text-[10px] text-slate-400 font-bold uppercase block mb-1.5" data-translate="source">Источник (Модель)</label>
@@ -377,27 +422,56 @@
           <span id="themeText" class="font-medium text-sm text-slate-200 hidden sm:inline">Адаптивная</span>
         </button>
         
-        <button id="langToggle" class="glass px-5 py-2.5 rounded-full flex items-center gap-2.5 hover:bg-white/10 transition-all group">
-          <i class="ph ph-globe text-xl text-cyan-300 group-hover:rotate-12 transition-transform"></i>
-          <span id="langText" class="font-bold text-sm text-white">RU</span>
-        </button>
+        <!-- Language Toggle -->
+        <div class="relative">
+          <button id="langToggle" class="glass px-5 py-2.5 rounded-full flex items-center gap-2.5 hover:bg-white/10 transition-all group">
+            <i class="ph ph-globe text-xl text-cyan-300 group-hover:rotate-12 transition-transform"></i>
+            <span id="langText" class="font-bold text-sm text-white">RU</span>
+          </button>
+          
+          <div id="lang-menu" class="dropdown-menu">
+             <div class="p-1">
+                <div class="menu-item" onclick="setLang('ru')">
+                   <img src="https://flagcdn.com/20x15/ru.png" class="rounded-sm"> <span class="text-sm font-bold">Русский</span>
+                </div>
+                <div class="menu-item" onclick="setLang('en')">
+                   <img src="https://flagcdn.com/20x15/gb.png" class="rounded-sm"> <span class="text-sm font-bold">English</span>
+                </div>
+                <div class="menu-item" onclick="setLang('es')">
+                   <img src="https://flagcdn.com/20x15/es.png" class="rounded-sm"> <span class="text-sm font-bold">Español</span>
+                </div>
+             </div>
+          </div>
+        </div>
+
       </div>
     </header>
+    
+    <!-- ALERT BANNER -->
+    <div id="alert-box" class="glass bg-red-500/20 border-l-4 border-l-red-500 p-4 rounded-r-xl flex items-start gap-4">
+       <div class="p-2 bg-red-500/20 rounded-full text-red-400 shrink-0">
+         <i class="ph-fill ph-warning-octagon text-2xl"></i>
+       </div>
+       <div>
+         <h3 class="font-bold text-white text-sm uppercase tracking-wider mb-1">Внимание: Опасная погода</h3>
+         <p id="alert-msg" class="text-sm text-slate-200 leading-relaxed"></p>
+       </div>
+    </div>
 
     <!-- Main Section -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
       
       <!-- Big Weather Card -->
-      <div class="lg:col-span-8 glass glass-panel p-6 md:p-10 relative overflow-hidden flex flex-col justify-between min-h-[400px] cursor-pointer group" onclick="showAdviceModal()">
+      <div class="lg:col-span-8 glass glass-panel p-6 md:p-10 relative overflow-hidden flex flex-col justify-between min-h-[420px] cursor-pointer group" onclick="showAdviceModal()">
         <div class="absolute top-0 right-0 w-64 h-64 bg-cyan-500/10 blur-[80px] rounded-full pointer-events-none"></div>
 
         <div class="flex justify-between items-start relative z-10">
           <div>
-            <div class="flex items-center gap-2 text-cyan-300 mb-1">
-              <i class="ph-fill ph-map-pin"></i>
-              <span id="location" class="text-lg font-semibold tracking-wide drop-shadow-sm">Загрузка...</span>
+            <div class="flex items-center gap-3 text-cyan-300 mb-1">
+              <i class="ph-fill ph-map-pin text-xl"></i>
+              <span id="location" class="text-2xl font-bold tracking-wide drop-shadow-sm">Загрузка...</span>
             </div>
-            <p id="current-date" class="text-slate-300 font-medium text-sm pl-6 drop-shadow-sm">--</p>
+            <p id="current-date" class="text-slate-300 font-medium text-sm pl-8 drop-shadow-sm">--</p>
           </div>
           <div class="text-right">
              <div class="flex items-center gap-2 bg-black/20 px-3 py-1 rounded-full backdrop-blur-md border border-white/5 shadow-lg">
@@ -427,21 +501,38 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-3 md:gap-4 mt-8 relative z-10">
-          <div class="bg-white/5 border border-white/5 p-3 md:p-4 rounded-2xl text-center hover:bg-white/10 transition-colors">
-            <i class="ph ph-thermometer text-2xl text-slate-400 mb-2"></i>
-            <p class="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold mb-1 tracking-normal md:tracking-widest truncate" data-translate="feels_like">Ощущается</p>
-            <p id="feels-like" class="text-lg font-bold text-white">--°</p>
+        <!-- NEW: EXPANDED GRID FOR VISIBILITY & PRESSURE -->
+        <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mt-8 relative z-10">
+          <div class="bg-white/5 border border-white/5 p-3 rounded-2xl text-center hover:bg-white/10 transition-colors">
+            <i class="ph ph-thermometer text-xl text-slate-400 mb-1"></i>
+            <p class="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate" data-translate="feels_like">Ощущ.</p>
+            <p id="feels-like" class="text-base font-bold text-white">--°</p>
           </div>
-          <div class="bg-white/5 border border-white/5 p-3 md:p-4 rounded-2xl text-center hover:bg-white/10 transition-colors">
-            <i class="ph ph-wind text-2xl text-slate-400 mb-2"></i>
-            <p class="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold mb-1 tracking-normal md:tracking-widest truncate" data-translate="wind">Ветер</p>
-            <p id="wind-speed" class="text-lg font-bold text-white">-- м/с</p>
+          <div class="bg-white/5 border border-white/5 p-3 rounded-2xl text-center hover:bg-white/10 transition-colors">
+            <i class="ph ph-wind text-xl text-slate-400 mb-1"></i>
+            <p class="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate" data-translate="wind">Ветер</p>
+            <p id="wind-speed" class="text-base font-bold text-white">--</p>
           </div>
-          <div class="bg-white/5 border border-white/5 p-3 md:p-4 rounded-2xl text-center hover:bg-white/10 transition-colors">
-            <i class="ph ph-drop text-2xl text-slate-400 mb-2"></i>
-            <p class="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold mb-1 tracking-normal md:tracking-widest truncate" data-translate="humidity">Влажность</p>
-            <p id="humidity" class="text-lg font-bold text-white">--%</p>
+          <div class="bg-white/5 border border-white/5 p-3 rounded-2xl text-center hover:bg-white/10 transition-colors">
+            <i class="ph ph-drop text-xl text-slate-400 mb-1"></i>
+            <p class="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate" data-translate="humidity">Влажность</p>
+            <p id="humidity" class="text-base font-bold text-white">--%</p>
+          </div>
+          <div class="bg-white/5 border border-white/5 p-3 rounded-2xl text-center hover:bg-white/10 transition-colors">
+             <i class="ph ph-eye text-xl text-slate-400 mb-1"></i>
+             <p class="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate" data-translate="visibility">Видимость</p>
+             <p id="visibility" class="text-base font-bold text-white">--</p>
+          </div>
+          <div class="bg-white/5 border border-white/5 p-3 rounded-2xl text-center hover:bg-white/10 transition-colors hidden md:block">
+             <i class="ph ph-gauge text-xl text-slate-400 mb-1"></i>
+             <p class="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate" data-translate="press">Давление</p>
+             <p id="pressure" class="text-base font-bold text-white">--</p>
+          </div>
+          <!-- Water/Soil Temp - Removed 'hidden md:block' -->
+          <div class="bg-white/5 border border-white/5 p-3 rounded-2xl text-center hover:bg-white/10 transition-colors col-span-2 md:col-span-1">
+             <i class="ph ph-waves text-xl text-cyan-300 mb-1"></i>
+             <p class="text-[9px] text-slate-400 uppercase font-bold mb-1 truncate" data-translate="water_temp">Темп. пов-ти</p>
+             <p id="water-temp" class="text-base font-bold text-white">--</p>
           </div>
         </div>
       </div>
@@ -452,6 +543,10 @@
           <form id="search-form" class="glass-input rounded-xl flex items-center pr-2">
             <div class="pl-3 text-slate-400"><i class="ph ph-magnifying-glass text-xl"></i></div>
             <input type="text" id="city-input" placeholder="Найти город..." class="w-full bg-transparent border-none text-white placeholder-slate-400 px-3 py-3 focus:outline-none font-medium" autocomplete="off">
+            <!-- Favorite Button Moved Here -->
+            <button type="button" id="fav-btn" class="p-2 mr-1 text-slate-500 hover:text-yellow-400 transition-colors rounded-lg hover:bg-white/5" title="В избранное">
+               <i id="fav-icon" class="ph-bold ph-star text-xl"></i>
+            </button>
             <button type="button" id="locate-btn" class="p-2 text-slate-400 hover:text-cyan-400 transition-colors rounded-lg hover:bg-white/5">
               <i class="ph-fill ph-navigation-arrow text-xl"></i>
             </button>
@@ -466,7 +561,7 @@
           </div>
         </div>
 
-        <!-- SUNRISE / SUNSET PANEL - UPDATED WITH ONCLICK -->
+        <!-- SUNRISE / SUNSET PANEL -->
         <div class="glass glass-panel p-5 grid grid-cols-2 gap-6 relative overflow-hidden cursor-pointer hover:bg-white/5 transition-colors" onclick="showSunDetails()">
            <div class="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-indigo-500/10 pointer-events-none"></div>
           <div class="text-center relative z-10">
@@ -507,15 +602,21 @@
           <i class="ph-fill ph-calendar-check text-purple-400"></i>
           <span data-translate="daily">Ближайшие дни</span>
         </h3>
-        <button id="monthly-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2">
-          <i class="ph-bold ph-calendar-plus"></i>
-          <span data-translate="monthly_btn">16 Дней</span>
-        </button>
+        <div class="flex gap-2">
+           <button id="history-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2">
+             <i class="ph-bold ph-clock-counter-clockwise"></i>
+             <span data-translate="history">История</span>
+           </button>
+           <button id="monthly-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2">
+             <i class="ph-bold ph-calendar-plus"></i>
+             <span data-translate="monthly_btn">16 Дней</span>
+           </button>
+        </div>
       </div>
       <div id="daily-strip" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3"></div>
     </div>
 
-    <!-- NEW: Lifestyle Section -->
+    <!-- Lifestyle Section -->
     <div class="glass glass-panel p-6 md:p-8">
       <h3 class="text-xl font-bold flex items-center gap-2 mb-6">
          <i class="ph-fill ph-heartbeat text-red-400"></i>
@@ -528,8 +629,8 @@
                <i class="ph-fill ph-sneaker-move text-2xl"></i>
             </div>
             <div>
-               <h4 class="font-bold text-white text-lg">Бег</h4>
-               <p class="text-xs text-slate-400">Лучшее время и советы</p>
+               <h4 class="font-bold text-white text-lg" data-translate="life_run_title">Бег</h4>
+               <p class="text-xs text-slate-400" data-translate="life_run_desc">Лучшее время и советы</p>
             </div>
             <i class="ph-bold ph-caret-right ml-auto text-slate-500"></i>
          </div>
@@ -540,8 +641,8 @@
                <i class="ph-fill ph-car text-2xl"></i>
             </div>
             <div>
-               <h4 class="font-bold text-white text-lg">Мойка машины</h4>
-               <p class="text-xs text-slate-400">Прогноз осадков</p>
+               <h4 class="font-bold text-white text-lg" data-translate="life_car_title">Мойка машины</h4>
+               <p class="text-xs text-slate-400" data-translate="life_car_desc">Прогноз осадков</p>
             </div>
             <i class="ph-bold ph-caret-right ml-auto text-slate-500"></i>
          </div>
@@ -552,15 +653,25 @@
                <i class="ph-fill ph-footprints text-2xl"></i>
             </div>
             <div>
-               <h4 class="font-bold text-white text-lg">Прогулка</h4>
-               <p class="text-xs text-slate-400">Комфорт и UV индекс</p>
+               <h4 class="font-bold text-white text-lg" data-translate="life_walk_title">Прогулка</h4>
+               <p class="text-xs text-slate-400" data-translate="life_walk_desc">Комфорт и UV индекс</p>
             </div>
             <i class="ph-bold ph-caret-right ml-auto text-slate-500"></i>
          </div>
       </div>
     </div>
+    </div>
 
+    <!-- Footer -->
     <footer class="text-center text-slate-500 text-xs py-8">
+      <div class="flex justify-center gap-4 mb-4">
+         <a href="https://t.me/liveskydev" target="_blank" class="bg-[#229ED9]/20 hover:bg-[#229ED9]/40 border border-[#229ED9]/30 text-[#229ED9] px-4 py-2 rounded-xl flex items-center gap-2 transition-all font-bold">
+            <i class="ph-fill ph-telegram-logo text-lg"></i> LiveSky/Dev
+         </a>
+         <a href="https://docs.google.com/forms/d/e/1FAIpQLSeM6QLhVhqC-MmFMRKkzH860GsNJA8Rbx61bgU7y1dY5l8q2w/viewform?usp=dialog" target="_blank" class="bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-all font-bold">
+            <i class="ph-bold ph-chat-teardrop-text text-lg"></i> Feedback
+         </a>
+      </div>
       <p>LiveSky Weather Pro · High Precision Edition</p>
     </footer>
   </div>
@@ -614,8 +725,13 @@
       lang: 'ru', themeMode: 'adaptive', lat: 55.7558, lon: 37.6173,
       locationName: 'Москва', countryCode: 'RU', weatherData: null, clockInterval: null,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      model: 'auto'
+      model: 'auto',
+      favorites: []
     };
+
+    // Temporary Map State
+    let tempMapLat = null;
+    let tempMapLon = null;
 
     const loadingPhrases = {
       ru: ["Сканируем облака...", "Измеряем скорость ветра...", "Договариваемся с дождем...", "Калибруем барометр...", "Ловим солнечные лучи...", "Проверяем атмосферу..."],
@@ -650,7 +766,33 @@
         wear_light: 'Одежда: Шорты и майка.',
         wear_norm: 'Одежда: Спортивный костюм.',
         wear_warm: 'Одежда: Термобелье и ветровка.',
-        day_len: 'Долгота дня', weather_at: 'Погода в', golden_title: 'Золотой час', golden_desc: 'Мягкий свет сразу после восхода и перед закатом идеален для фото.'
+        day_len: 'Долгота дня', weather_at: 'Погода в', golden_title: 'Золотой час', golden_desc: 'Мягкий свет сразу после восхода и перед закатом идеален для фото.',
+        visibility: 'Видимость', alert_wind: 'Опасный ветер!', alert_storm: 'Грозовое предупреждение', alert_cold: 'Экстремальный холод!', alert_fog: 'Туман: плохая видимость',
+        water_temp: 'Темп. пов-ти', history: 'История',
+        life_run_title: 'Бег', life_run_desc: 'Лучшее время и советы',
+        life_car_title: 'Мойка машины', life_car_desc: 'Прогноз осадков',
+        life_walk_title: 'Прогулка', life_walk_desc: 'Комфорт и UV индекс',
+        life_analysis_7days: ': Анализ 7 дней',
+        life_best_time: 'Лучшее время (нажмите для деталей)',
+        life_no_slots: 'В ближайшие 7 дней идеальных условий не найдено.',
+        wear_title: 'Что надеть',
+        wear_cold: 'Термобелье, ветровка, перчатки, шапка.',
+        wear_cool: 'Лонгслив, леггинсы/штаны, легкая ветровка.',
+        wear_mild: 'Футболка, шорты/бриджи.',
+        wear_warm: 'Майка, шорты. Обязательно вода!',
+        wind_calm: 'Спокойно',
+        wind_windy: 'Ветрено!',
+        rain_risk_title: 'Риск дождя (24ч)',
+        rain_risk_label: 'Вероятность осадков после мойки:',
+        car_dirty: 'Возможно, машина быстро запачкается.',
+        car_clean: 'Машина долго останется чистой!',
+        comfort_title: 'Комфорт',
+        comfort_good: 'Комфортно',
+        comfort_cold: 'Одевайтесь теплее',
+        comfort_hot: 'Жарко, ищите тень',
+        wind_light: 'Легкий ветерок.',
+        wind_none: 'Безветренно.',
+        slot_details: 'Детальный анализ слота'
       },
       en: {
         feels_like: 'Feels Like', wind: 'Wind', humidity: 'Humidity', search_ph: 'Find city...',
@@ -678,7 +820,33 @@
         wear_light: 'Wear: Shorts and t-shirt.',
         wear_norm: 'Wear: Tracksuit.',
         wear_warm: 'Wear: Thermal wear and windbreaker.',
-        day_len: 'Day Length', weather_at: 'Weather at', golden_title: 'Golden Hour', golden_desc: 'Soft light just after sunrise and before sunset is perfect for photos.'
+        day_len: 'Day Length', weather_at: 'Weather at', golden_title: 'Golden Hour', golden_desc: 'Soft light just after sunrise and before sunset is perfect for photos.',
+        visibility: 'Visibility', alert_wind: 'Dangerous Wind!', alert_storm: 'Storm Warning', alert_cold: 'Extreme Cold!', alert_fog: 'Fog: Low Visibility',
+        water_temp: 'Surface Temp', history: 'History',
+        life_run_title: 'Running', life_run_desc: 'Best time & tips',
+        life_car_title: 'Car Wash', life_car_desc: 'Precipitation forecast',
+        life_walk_title: 'Walking', life_walk_desc: 'Comfort & UV Index',
+        life_analysis_7days: ': 7 Day Analysis',
+        life_best_time: 'Best time (tap for details)',
+        life_no_slots: 'No ideal conditions found in the next 7 days.',
+        wear_title: 'What to wear',
+        wear_cold: 'Thermal wear, windbreaker, gloves, hat.',
+        wear_cool: 'Long sleeve, leggings/pants, light windbreaker.',
+        wear_mild: 'T-shirt, shorts/breeches.',
+        wear_warm: 'Singlet, shorts. Water is a must!',
+        wind_calm: 'Calm',
+        wind_windy: 'Windy!',
+        rain_risk_title: 'Rain Risk (24h)',
+        rain_risk_label: 'Rain probability after wash:',
+        car_dirty: 'Car might get dirty quickly.',
+        car_clean: 'Car will stay clean for long!',
+        comfort_title: 'Comfort',
+        comfort_good: 'Comfortable',
+        comfort_cold: 'Dress warmly',
+        comfort_hot: 'Hot, seek shade',
+        wind_light: 'Light breeze.',
+        wind_none: 'No wind.',
+        slot_details: 'Detailed slot analysis'
       },
       es: {
         feels_like: 'Sensación', wind: 'Viento', humidity: 'Humedad', search_ph: 'Buscar ciudad...',
@@ -706,7 +874,33 @@
         wear_light: 'Ropa: Cortos y camiseta.',
         wear_norm: 'Ropa: Chándal.',
         wear_warm: 'Ropa: Ropa térmica.',
-        day_len: 'Duración del día', weather_at: 'Tiempo en', golden_title: 'Hora dorada', golden_desc: 'La luz suave justo después del amanecer y antes del atardecer es perfecta para fotos.'
+        day_len: 'Duración del día', weather_at: 'Tiempo en', golden_title: 'Hora dorada', golden_desc: 'La luz suave justo después del amanecer y antes del atardecer es perfecta para fotos.',
+        visibility: 'Visibilidad', alert_wind: '¡Viento Peligroso!', alert_storm: 'Alerta de Tormenta', alert_cold: '¡Frío Extremo!', alert_fog: 'Niebla: Poca Visibilidad',
+        water_temp: 'Temp. Superficie', history: 'Historia',
+        life_run_title: 'Correr', life_run_desc: 'Mejor momento y consejos',
+        life_car_title: 'Lavar Coche', life_car_desc: 'Pronóstico de precipitaciones',
+        life_walk_title: 'Caminar', life_walk_desc: 'Confort e Índice UV',
+        life_analysis_7days: ': Análisis de 7 días',
+        life_best_time: 'Mejor momento (toque para detalles)',
+        life_no_slots: 'No se encontraron condiciones ideales en los próximos 7 días.',
+        wear_title: 'Qué ponerse',
+        wear_cold: 'Ropa térmica, cortavientos, guantes, gorro.',
+        wear_cool: 'Manga larga, mallas/pantalones, cortavientos ligero.',
+        wear_mild: 'Camiseta, pantalones cortos.',
+        wear_warm: 'Camiseta sin mangas, cortos. ¡Agua obligatoria!',
+        wind_calm: 'Tranquilo',
+        wind_windy: '¡Ventoso!',
+        rain_risk_title: 'Riesgo de Lluvia (24h)',
+        rain_risk_label: 'Probabilidad de lluvia tras lavado:',
+        car_dirty: 'El coche podría ensuciarse rápido.',
+        car_clean: '¡El coche se mantendrá limpio!',
+        comfort_title: 'Confort',
+        comfort_good: 'Cómodo',
+        comfort_cold: 'Abríguese',
+        comfort_hot: 'Calor, busque sombra',
+        wind_light: 'Brisa ligera.',
+        wind_none: 'Sin viento.',
+        slot_details: 'Análisis detallado'
       }
     };
 
@@ -744,6 +938,7 @@
       temp: document.getElementById('temperature'), cond: document.getElementById('condition'),
       bigIcon: document.getElementById('weather-icon-big'), feels: document.getElementById('feels-like'),
       wind: document.getElementById('wind-speed'), hum: document.getElementById('humidity'),
+      vis: document.getElementById('visibility'), press: document.getElementById('pressure'),
       sunrise: document.getElementById('sunrise'), sunset: document.getElementById('sunset'),
       hStrip: document.getElementById('hourly-strip'), dStrip: document.getElementById('daily-strip'),
       effects: document.getElementById('weather-effects'), langBtn: document.getElementById('langToggle'),
@@ -753,10 +948,15 @@
       locateBtn: document.getElementById('locate-btn'), modal: document.getElementById('modal'),
       modalTitle: document.getElementById('modal-title'), modalSubtitle: document.getElementById('modal-subtitle'),
       modalBody: document.getElementById('modal-body'), modalClose: document.getElementById('modal-close-btn'),
-      monthlyBtn: document.getElementById('monthly-btn'), settingsBtn: document.getElementById('settingsToggle'),
-      settingsMenu: document.getElementById('settings-menu'), modelSelect: document.getElementById('model-select'),
-      mapSmall: document.getElementById('map'), mapModal: document.getElementById('map-modal'),
-      fullMap: document.getElementById('full-map')
+      monthlyBtn: document.getElementById('monthly-btn'), historyBtn: document.getElementById('history-btn'),
+      settingsBtn: document.getElementById('settingsToggle'), settingsMenu: document.getElementById('settings-menu'), 
+      modelSelect: document.getElementById('model-select'), mapSmall: document.getElementById('map'), 
+      mapModal: document.getElementById('map-modal'), fullMap: document.getElementById('full-map'), 
+      favBtn: document.getElementById('fav-btn'), favIcon: document.getElementById('fav-icon'), 
+      alertBox: document.getElementById('alert-box'), alertMsg: document.getElementById('alert-msg'), 
+      water: document.getElementById('water-temp'), logoBox: document.getElementById('logo-box'), 
+      langMenu: document.getElementById('lang-menu'), mapInstr: document.getElementById('map-instruction'),
+      mapApplyBtn: document.getElementById('map-apply-btn')
     };
 
     let mapInst = null, mapMark = null, mapTileLayer = null;
@@ -764,6 +964,12 @@
     let loadTimeout = null;
 
     function init() {
+      // Load Favorites
+      try {
+         const savedFavs = localStorage.getItem('livesky_favorites');
+         if(savedFavs) state.favorites = JSON.parse(savedFavs);
+      } catch(e) { console.error('Error loading favs', e); }
+
       const ph = loadingPhrases[state.lang];
       el.loaderText.textContent = ph[Math.floor(Math.random() * ph.length)];
       
@@ -774,40 +980,55 @@
       // Map Interaction
       el.mapSmall.onclick = openFullMap;
 
-      el.langBtn.onclick = toggleLang;
+      el.langBtn.onclick = () => { el.langMenu.classList.toggle('active'); };
       el.themeBtn.onclick = toggleTheme;
       el.searchForm.onsubmit = handleSearch;
       el.locateBtn.onclick = getUserLocation;
       el.input.oninput = handleInput;
+      el.input.onfocus = handleInput; 
+      el.favBtn.onclick = (e) => { e.stopPropagation(); toggleFavorite(); };
       el.modalClose.onclick = () => el.modal.classList.remove('active');
       el.modal.onclick = (e) => { if(e.target===el.modal) el.modal.classList.remove('active'); };
-      el.monthlyBtn.onclick = showMonthly;
+      el.monthlyBtn.onclick = () => showMonthly('forecast');
+      el.historyBtn.onclick = () => showMonthly('history');
       el.settingsBtn.onclick = () => { el.settingsMenu.classList.toggle('active'); };
       el.modelSelect.onchange = (e) => { state.model = e.target.value; fetchWeather(); el.settingsMenu.classList.remove('active'); };
       document.onclick = (e) => { 
         if(!el.searchForm.contains(e.target)) el.autoList.classList.add('hidden'); 
         if(!el.settingsBtn.contains(e.target) && !el.settingsMenu.contains(e.target)) el.settingsMenu.classList.remove('active');
+        if(!el.langBtn.contains(e.target) && !el.langMenu.contains(e.target)) el.langMenu.classList.remove('active');
       };
 
       startClock();
-      getUserLocation();
+      
+      // Check Last City
+      const lastCity = localStorage.getItem('livesky_last_city');
+      if (lastCity) {
+          try {
+              const c = JSON.parse(lastCity);
+              state.lat = c.lat;
+              state.lon = c.lon;
+              state.locationName = c.name;
+              state.countryCode = c.countryCode;
+              fetchWeather();
+          } catch(e) { getUserLocation(); }
+      } else {
+          getUserLocation();
+      }
     }
 
     function t(k) { return dictionary[state.lang][k] || k; }
 
-    function toggleLang() {
-      if (state.lang === 'ru') state.lang = 'en';
-      else if (state.lang === 'en') state.lang = 'es';
-      else state.lang = 'ru';
-      
+    function setLang(lang) {
+      state.lang = lang;
       el.langText.textContent = state.lang.toUpperCase();
+      el.langMenu.classList.remove('active');
       el.input.placeholder = t('search_ph');
       updateThemeLabel();
       document.querySelectorAll('[data-translate]').forEach(e => e.textContent = t(e.dataset.translate));
       if(state.weatherData) updateUI(state.weatherData);
     }
 
-    // --- FIX: UPDATED THEME TOGGLE WITH CORRECT LOGIC ---
     function toggleTheme() {
       if (state.themeMode === 'adaptive') state.themeMode = 'light';
       else if (state.themeMode === 'light') state.themeMode = 'standard';
@@ -817,9 +1038,23 @@
       updateThemeLabel();
       updateMapTheme();
       
-      // Recalculate background based on current state data
+      // Force logo update immediately on theme switch
       if(state.weatherData) {
-         refreshBackgroundFromState();
+         const h = state.weatherData.hourly;
+         const nowIso = new Date().toISOString().slice(0, 13);
+         let nowIdx = h.time.findIndex(t => t.startsWith(nowIso));
+         if(nowIdx === -1) nowIdx = 0;
+         const code = getVal(h, 'weathercode', nowIdx);
+         const d = state.weatherData.daily;
+         const srTime = getVal(d, 'sunrise', 0);
+         const ssTime = getVal(d, 'sunset', 0);
+         const currentH = parseInt(h.time[nowIdx].substring(11,13));
+         const srH = srTime ? parseInt(srTime.substring(11,13)) : 6;
+         const ssH = ssTime ? parseInt(ssTime.substring(11,13)) : 20;
+         const isNight = currentH < srH || currentH > ssH;
+         
+         updateLogoColor(code, isNight);
+         updateBackground(code, isNight);
       }
       
       if (window.pywebview && window.pywebview.api) {
@@ -908,13 +1143,43 @@
         setTimeout(() => el.loader.classList.add('opacity-0', 'pointer-events-none'), 800);
     }
 
+    // --- REVERSE GEOCODING LOGIC (Updated) ---
     async function reverseGeo(lat, lon) {
+      // 1. Try OpenStreetMap (Nominatim) for detailed address (Street + City)
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1&accept-language=${state.lang}`);
+        if (!r.ok) throw new Error('Nominatim error');
+        const d = await r.json();
+        
+        if (d && d.address) {
+           const road = d.address.road || d.address.pedestrian || d.address.street || '';
+           const city = d.address.city || d.address.town || d.address.village || d.address.hamlet || d.address.suburb || d.address.county || d.address.city_district;
+           
+           if (road && city) {
+              state.locationName = `${city}, ${road}`;
+           } else if (city || road) {
+              state.locationName = city || road;
+           } else {
+              // Fallback to display name if specific fields fail
+              state.locationName = d.display_name ? d.display_name.split(',')[0] : 'Unknown Location';
+           }
+           
+           state.countryCode = d.address.country_code ? d.address.country_code.toUpperCase() : '';
+           return; // Success, exit
+        }
+      } catch (e) {
+        console.warn('Nominatim failed, trying fallback', e);
+      }
+
+      // 2. Fallback to BigDataCloud
       try {
         const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=${state.lang}`);
         const d = await r.json();
-        state.locationName = d.city || d.locality || d.principalSubdivision || 'Unknown';
+        state.locationName = d.city || d.locality || d.principalSubdivision || 'Unknown Location';
         state.countryCode = d.countryCode || '';
-      } catch { state.locationName = `${lat.toFixed(2)}, ${lon.toFixed(2)}`; }
+      } catch (e) { 
+        state.locationName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`; 
+      }
     }
 
     // --- DATA FETCHING & NORMALIZATION ---
@@ -922,11 +1187,12 @@
     async function fetchWeather() {
       showLoader();
       try {
+        // Added past_days=16 for history archive
         let params = new URLSearchParams({
           latitude: state.lat, longitude: state.lon,
-          hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,relativehumidity_2m,surface_pressure,dewpoint_2m',
+          hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,relativehumidity_2m,surface_pressure,dewpoint_2m,visibility,soil_temperature_0cm',
           daily: 'temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,weathercode,uv_index_max,precipitation_sum,windspeed_10m_max,winddirection_10m_dominant',
-          timezone: 'auto', forecast_days: 16
+          timezone: 'auto', forecast_days: 16, past_days: 16
         });
         
         if (state.model && state.model !== 'auto') {
@@ -938,9 +1204,14 @@
         const data = await res.json();
         if(data.timezone) { state.timezone = data.timezone; startClock(); }
         state.weatherData = data;
+        
+        // Save Last City
+        localStorage.setItem('livesky_last_city', JSON.stringify({
+           lat: state.lat, lon: state.lon, name: state.locationName, countryCode: state.countryCode
+        }));
+
         updateUI(data);
         updateMap();
-        // If full map is open, update marker there too
         if(fullMapInst) {
            fullMapInst.setView([state.lat, state.lon]);
            if(fullMapMark) fullMapInst.removeLayer(fullMapMark);
@@ -968,15 +1239,25 @@
       const h = data.hourly;
       const d = data.daily;
       
-      const nowIso = new Date().toISOString().slice(0, 13);
+      const nowIso = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
       let nowIdx = h.time.findIndex(t => t.startsWith(nowIso));
       if(nowIdx === -1) nowIdx = 0; 
+
+      // Find Today Index in Daily Array
+      const todayDateStr = new Date().toISOString().split('T')[0];
+      let todayDailyIdx = d.time.findIndex(t => t === todayDateStr);
+      if(todayDailyIdx === -1) todayDailyIdx = 16; // Default fallback if using past_days
+
+      state.todayDailyIdx = todayDailyIdx;
 
       const temp = getVal(h, 'temperature_2m', nowIdx);
       const code = getVal(h, 'weathercode', nowIdx);
       const wind = getVal(h, 'windspeed_10m', nowIdx);
       const feels = getVal(h, 'apparent_temperature', nowIdx);
       const humid = getVal(h, 'relativehumidity_2m', nowIdx);
+      const visMeters = getVal(h, 'visibility', nowIdx);
+      const pressure = getVal(h, 'surface_pressure', nowIdx);
+      const soilTemp = getVal(h, 'soil_temperature_0cm', nowIdx);
       
       const codeInfo = weatherCodes[code] || weatherCodes[0];
 
@@ -986,12 +1267,19 @@
       el.wind.textContent = wind + ' m/s';
       el.feels.textContent = Math.round(feels) + '°';
       el.hum.textContent = humid + '%';
+      
+      el.vis.textContent = visMeters ? (visMeters / 1000).toFixed(1) + ' km' : '--';
+      el.press.textContent = pressure ? Math.round(pressure) + ' hPa' : '--';
+      el.water.textContent = soilTemp ? Math.round(soilTemp) + '°' : '--';
 
-      el.sunrise.textContent = extractTime(getVal(d, 'sunrise', 0));
-      el.sunset.textContent = extractTime(getVal(d, 'sunset', 0));
+      el.sunrise.textContent = extractTime(getVal(d, 'sunrise', todayDailyIdx));
+      el.sunset.textContent = extractTime(getVal(d, 'sunset', todayDailyIdx));
 
-      const srTime = getVal(d, 'sunrise', 0);
-      const ssTime = getVal(d, 'sunset', 0);
+      updateFavIcon();
+      checkAlerts(wind, feels, code, visMeters);
+
+      const srTime = getVal(d, 'sunrise', todayDailyIdx);
+      const ssTime = getVal(d, 'sunset', todayDailyIdx);
       const currentH = parseInt(h.time[nowIdx].substring(11,13));
       const srH = srTime ? parseInt(srTime.substring(11,13)) : 6;
       const ssH = ssTime ? parseInt(ssTime.substring(11,13)) : 20;
@@ -1004,7 +1292,7 @@
       }
       el.bigIcon.innerHTML = `<i class="ph-duotone ${iconClass}"></i>`;
 
-      // Correctly call updateBackground with calculated values
+      updateLogoColor(code, isNight);
       updateBackground(code, isNight);
 
       el.hStrip.innerHTML = '';
@@ -1042,7 +1330,9 @@
       }
 
       el.dStrip.innerHTML = '';
-      for(let i=0; i<6 && i<d.time.length; i++) {
+      // Show next 6 days starting from today
+      const startDay = todayDailyIdx;
+      for(let i=startDay; i<startDay+6 && i<d.time.length; i++) {
         const dateParts = d.time[i].split('-');
         const safeDate = new Date(dateParts[0], dateParts[1]-1, dateParts[2], 12, 0, 0);
         const loc = state.lang==='ru'?'ru':(state.lang==='es'?'es':'en');
@@ -1066,26 +1356,97 @@
       }
     }
 
+    function updateLogoColor(code, isNight) {
+       el.logoBox.className = "w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-all duration-500 group-hover:scale-105"; // Reset
+       
+       if (state.themeMode === 'light') { 
+           el.logoBox.classList.add('default-logo'); return; 
+       }
+       if (state.themeMode === 'standard') { 
+           el.logoBox.classList.add('dark-logo'); return; 
+       }
+
+       // Adaptive
+       const type = (weatherCodes[code] || weatherCodes[0]).type;
+       
+       if (type === 'clear') {
+          if (isNight) el.logoBox.classList.add('logo-clear-n');
+          else el.logoBox.classList.add('logo-clear-d');
+       } else if (type === 'rain') {
+          el.logoBox.classList.add('logo-rain');
+       } else if (type === 'snow') {
+          el.logoBox.classList.add('logo-snow');
+       } else if (code === 45 || code === 48) {
+          el.logoBox.classList.add('logo-fog');
+       } else {
+          el.logoBox.classList.add('logo-cloud');
+       }
+    }
+
+    // --- FAVORITES LOGIC ---
+    function toggleFavorite() {
+        if(!state.locationName) return;
+        const index = state.favorites.findIndex(f => f.name === state.locationName && f.lat === state.lat);
+        if(index > -1) {
+            state.favorites.splice(index, 1);
+        } else {
+            state.favorites.push({
+                name: state.locationName,
+                country: state.countryCode,
+                lat: state.lat,
+                lon: state.lon
+            });
+        }
+        localStorage.setItem('livesky_favorites', JSON.stringify(state.favorites));
+        updateFavIcon();
+    }
+
+    function updateFavIcon() {
+        const isFav = state.favorites.some(f => f.name === state.locationName && f.lat === state.lat);
+        if(isFav) {
+            el.favIcon.classList.remove('ph-star', 'text-slate-500');
+            el.favIcon.classList.add('ph-star-fill', 'text-yellow-400');
+        } else {
+            el.favIcon.classList.remove('ph-star-fill', 'text-yellow-400');
+            el.favIcon.classList.add('ph-star', 'text-slate-500');
+        }
+    }
+
+    // --- ALERT SYSTEM ---
+    function checkAlerts(wind, feels, code, vis) {
+        let msg = '';
+        if(wind > 17) msg = t('alert_wind');
+        if([95, 96, 99].includes(code)) msg = t('alert_storm');
+        if(feels < -20) msg = t('alert_cold');
+        if(vis && vis < 500) msg = t('alert_fog');
+
+        if(msg) {
+            el.alertMsg.textContent = msg;
+            el.alertBox.style.display = 'flex';
+        } else {
+            el.alertBox.style.display = 'none';
+        }
+    }
+
     function extractTime(isoString) { return isoString ? isoString.substring(11, 16) : '--:--'; }
 
     function updateBackground(code, isNight) {
-      // Fix: If light mode is active, FORCE light background
       if(state.themeMode === 'light') {
         setBackground('linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 100%)'); el.effects.innerHTML = ''; return;
       }
-      // Fix: If standard (dark) mode is active, FORCE dark background
       if(state.themeMode === 'standard') {
         setBackground('linear-gradient(180deg, #0f172a 0%, #020617 100%)'); el.effects.innerHTML = ''; return;
       }
 
-      // Logic for Adaptive Mode
       const type = (weatherCodes[code] || weatherCodes[0]).type;
       let grad = '';
       if(type==='clear') {
          if(!isNight) grad = 'linear-gradient(180deg, #0ea5e9 0%, #60a5fa 100%)'; 
          else grad = 'radial-gradient(circle at top, #1e293b 0%, #020617 100%)'; 
       } else if(type==='cloudy') {
-         if(!isNight) grad = 'linear-gradient(180deg, #64748b 0%, #94a3b8 100%)';
+         if(code === 45 || code === 48) { // Fog
+             grad = 'linear-gradient(180deg, #475569 0%, #334155 100%)';
+         } else if(!isNight) grad = 'linear-gradient(180deg, #64748b 0%, #94a3b8 100%)';
          else grad = 'linear-gradient(180deg, #334155 0%, #000000 100%)';
       } else if(type==='rain') {
          grad = isNight ? 'linear-gradient(180deg, #1e1b4b 0%, #000000 100%)' : 'linear-gradient(180deg, #374151 0%, #4b5563 100%)';
@@ -1093,7 +1454,12 @@
          grad = isNight ? 'radial-gradient(circle at top, #334155 0%, #0f172a 100%)' : 'linear-gradient(180deg, #94a3b8 0%, #e2e8f0 100%)';
       }
       setBackground(grad);
-      renderEffects(type, isNight ? 'night' : 'day');
+      
+      // Determine effect
+      let effectType = type;
+      if (code === 45 || code === 48) effectType = 'fog';
+      
+      renderEffects(effectType, isNight ? 'night' : 'day');
     }
 
     function setBackground(gradient) {
@@ -1107,22 +1473,48 @@
 
     function renderEffects(type, time) {
       el.effects.innerHTML = '';
-      if(type === 'rain') createParticles('w-0.5 h-16 bg-blue-200/40', 60, 'rain-fall'); // Reduced count for perf
-      else if(type === 'snow') createParticles('w-1 h-1 bg-white rounded-full blur-[1px]', 40, 'snow-fall');
+      if(type === 'rain') createParticles('w-0.5 h-16 bg-blue-200/40', 60, 'rain-fall');
+      else if(type === 'snow') createParticles('w-1.5 h-1.5 bg-white rounded-full blur-[1px]', 50, 'snow-fall, sway');
       else if(type === 'clear' && time === 'night') createStars();
       else if(type === 'clear' && time !== 'night') createSunGlow();
       else if(type === 'cloudy') createClouds();
+      else if(type === 'fog') createFog();
     }
 
-    function createParticles(classes, count, animName) {
+    function createFog() {
+        const fragment = document.createDocumentFragment();
+        for(let i=0; i<4; i++){
+            const f = document.createElement('div');
+            f.className = 'absolute bg-white/10 blur-[60px] rounded-full transform-gpu';
+            f.style.width = '120%'; f.style.height = '400px';
+            f.style.top = (20 + Math.random() * 60) + '%'; f.style.left = '-10%';
+            f.style.animation = `fog-flow ${15 + Math.random()*15}s linear infinite`;
+            f.style.animationDelay = `-${Math.random()*10}s`;
+            fragment.appendChild(f);
+        }
+        el.effects.appendChild(fragment);
+    }
+
+    function createParticles(classes, count, animNames) {
       const fragment = document.createDocumentFragment();
       for(let i=0; i<count; i++) {
         const p = document.createElement('div');
         p.className = `absolute ${classes}`;
         p.style.left = Math.random()*100+'%'; p.style.top = -100 + 'px'; 
-        const dur = Math.random()*1 + 0.5;
-        p.style.animation = `${animName} ${dur}s linear infinite`;
-        p.style.animationDelay = Math.random()*2+'s';
+        const dur = Math.random()*2 + 1.5; // Slower for snow
+        p.style.animation = `${animNames}`;
+        // If multiple animations, need to split durations
+        if(animNames.includes('sway')) {
+             p.style.animationName = 'snow-fall, sway';
+             p.style.animationDuration = `${dur}s, ${dur*1.5}s`;
+             p.style.animationTimingFunction = 'linear, ease-in-out';
+             p.style.animationIterationCount = 'infinite, infinite';
+        } else {
+             p.style.animationDuration = `${dur}s`;
+             p.style.animationTimingFunction = 'linear';
+             p.style.animationIterationCount = 'infinite';
+        }
+        p.style.animationDelay = Math.random()*5+'s';
         fragment.appendChild(p);
       }
       el.effects.appendChild(fragment);
@@ -1132,7 +1524,7 @@
         style.id = 'anim-styles';
         style.textContent = `
           @keyframes rain-fall { 0% { transform: translateY(-10vh); opacity:0; } 20% { opacity:1; } 100% { transform: translateY(110vh); opacity:0.3; } }
-          @keyframes snow-fall { 0% { transform: translateY(-10vh) translateX(0); opacity:0; } 100% { transform: translateY(110vh) translateX(20px); opacity:0.6; } }
+          @keyframes snow-fall { 0% { transform: translateY(-10vh); opacity:0; } 100% { transform: translateY(110vh); opacity:0.6; } }
         `;
         document.head.appendChild(style);
       }
@@ -1197,7 +1589,36 @@
     function handleInput(e) {
       clearTimeout(tmr);
       const q = e.target.value.trim();
-      if(q.length<3) { el.autoList.classList.add('hidden'); return; }
+
+      if(q.length === 0 && state.favorites.length > 0) {
+          el.autoList.innerHTML = '';
+          el.autoList.classList.remove('hidden');
+          const title = document.createElement('div');
+          title.className = 'px-4 py-2 text-[10px] uppercase text-slate-500 font-bold';
+          title.textContent = 'Избранное';
+          el.autoList.appendChild(title);
+          
+          state.favorites.forEach(c => {
+               const div = document.createElement('div');
+               div.className = 'suggestion-item text-sm text-yellow-100';
+               const flag = c.country ? `<img src="https://flagcdn.com/20x15/${c.country.toLowerCase()}.png" class="rounded-sm">` : '<i class="ph-bold ph-star-fill text-yellow-400"></i>';
+               div.innerHTML = `${flag} <span>${c.name}</span>`;
+               div.onclick = () => {
+                 state.lat = c.lat; state.lon = c.lon;
+                 state.locationName = c.name; state.countryCode = c.country;
+                 fetchWeather();
+                 el.autoList.classList.add('hidden'); el.input.value='';
+               };
+               el.autoList.appendChild(div);
+          });
+          return;
+      }
+
+      if(q.length<3) { 
+          if(state.favorites.length===0) el.autoList.classList.add('hidden'); 
+          return; 
+      }
+
       tmr = setTimeout(async () => {
         try {
           const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=${state.lang}`);
@@ -1229,6 +1650,11 @@
        const h = state.weatherData.hourly;
        
        let title = '';
+       // Use translations
+       if(type === 'run') title = t('life_run_title') + t('life_analysis_7days');
+       else if(type === 'car') title = t('life_car_title') + t('life_analysis_7days');
+       else title = t('life_walk_title') + t('life_analysis_7days');
+
        let html = '<div class="space-y-3">';
        const nowIso = new Date().toISOString().slice(0, 13);
        let nowIdx = h.time.findIndex(t => t.startsWith(nowIso));
@@ -1248,35 +1674,26 @@
           let isGood = false;
           
           if(type === 'run') {
-             // Good Run: Not raining, temp 5-22, wind < 20, hours 6-22
              isGood = !isRaining && temp >= 5 && temp <= 22 && wind < 20 && hNum >= 6 && hNum <= 22;
           } else if(type === 'car') {
-             // Good Car: No rain, rain chance < 10, hours 8-20
              isGood = !isRaining && rain < 10 && hNum >= 8 && hNum <= 20;
           } else if(type === 'walk') {
-             // Good Walk: Not raining, temp -5 to 30, wind < 25, hours 8-23
              isGood = !isRaining && temp >= -5 && temp <= 30 && wind < 25 && hNum >= 8 && hNum <= 23;
           }
 
           if(isGood) {
              goodSlots.push({ index: i, time: h.time[i], temp, rain, wind });
           }
-          // Limit total slots to prevent lag, but scan deeply
-          if(goodSlots.length >= 8) break; // Find top 8
+          if(goodSlots.length >= 8) break; 
        }
 
-       if(type === 'run') title = 'Бег: Анализ 7 дней';
-       else if(type === 'car') title = 'Мойка: Анализ 7 дней';
-       else title = 'Прогулка: Анализ 7 дней';
-
        if(goodSlots.length > 0) {
-          html += `<h4 class="font-bold text-slate-400 text-xs uppercase tracking-wider mb-2">Лучшее время (нажмите для деталей)</h4>`;
+          html += `<h4 class="font-bold text-slate-400 text-xs uppercase tracking-wider mb-2">${t('life_best_time')}</h4>`;
           goodSlots.forEach(slot => {
              const dateObj = new Date(slot.time);
              const dayStr = dateObj.toLocaleDateString(state.lang, {weekday:'short'});
              const timeStr = dateObj.toLocaleTimeString(state.lang, {hour:'2-digit', minute:'2-digit'});
              
-             // Added onclick event to show details
              html += `
              <div onclick="showLifeSkySlot(${slot.index}, '${type}')" class="cursor-pointer hover:bg-white/10 transition-colors flex items-center justify-between bg-white/5 p-3 rounded-xl border border-white/5 mb-2 active:scale-95 duration-200">
                 <div class="flex items-center gap-3">
@@ -1290,7 +1707,7 @@
              </div>`;
           });
        } else {
-          html += `<div class="p-4 bg-red-500/10 text-red-200 rounded-xl text-center">В ближайшие 7 дней идеальных условий не найдено.</div>`;
+          html += `<div class="p-4 bg-red-500/10 text-red-200 rounded-xl text-center">${t('life_no_slots')}</div>`;
        }
        
        html += '</div>';
@@ -1316,33 +1733,31 @@
 
        if(type === 'run') {
           let wear = '';
-          if(temp < 5) wear = 'Термобелье, ветровка, перчатки, шапка.';
-          else if(temp < 12) wear = 'Лонгслив, леггинсы/штаны, легкая ветровка.';
-          else if(temp < 20) wear = 'Футболка, шорты/бриджи.';
-          else wear = 'Майка, шорты. Обязательно вода!';
+          if(temp < 5) wear = t('wear_cold');
+          else if(temp < 12) wear = t('wear_cool');
+          else if(temp < 20) wear = t('wear_mild');
+          else wear = t('wear_warm');
           
+          const windMsg = wind > 10 ? t('wind_windy') : t('wind_calm');
+
           adviceHtml = `
             <div class="bg-white/5 p-4 rounded-xl mb-4 border border-white/10">
-               <h4 class="text-cyan-400 font-bold mb-2 flex items-center gap-2"><i class="ph-fill ph-t-shirt"></i> Что надеть</h4>
+               <h4 class="text-cyan-400 font-bold mb-2 flex items-center gap-2"><i class="ph-fill ph-t-shirt"></i> ${t('wear_title')}</h4>
                <p class="text-slate-200 text-sm leading-relaxed">${wear}</p>
             </div>
             <div class="grid grid-cols-2 gap-3 mb-4">
                <div class="bg-white/5 p-3 rounded-xl text-center">
-                  <div class="text-slate-400 text-xs uppercase mb-1">Ветер</div>
-                  <div class="text-white font-bold">${wind} м/с</div>
-                  <div class="text-slate-500 text-[10px] mt-1">${wind > 10 ? 'Ветрено!' : 'Спокойно'}</div>
+                  <div class="text-slate-400 text-xs uppercase mb-1">${t('wind')}</div>
+                  <div class="text-white font-bold">${wind} m/s</div>
+                  <div class="text-slate-500 text-[10px] mt-1">${windMsg}</div>
                </div>
                <div class="bg-white/5 p-3 rounded-xl text-center">
-                  <div class="text-slate-400 text-xs uppercase mb-1">Влажность</div>
+                  <div class="text-slate-400 text-xs uppercase mb-1">${t('humidity')}</div>
                   <div class="text-white font-bold">${humid}%</div>
                </div>
             </div>
-            <div class="bg-blue-500/10 p-3 rounded-xl border border-blue-500/20 text-sm text-blue-200">
-               <i class="ph-fill ph-drop mr-1"></i> Не забудьте разминку перед стартом!
-            </div>
           `;
        } else if(type === 'car') {
-          // Check rain next 24h
           let rainRisk = 0;
           for(let k=1; k<=24; k++) {
              if(index+k < h.precipitation_probability.length) {
@@ -1350,44 +1765,37 @@
              }
           }
           
+          const carMsg = rainRisk > 30 ? t('car_dirty') : t('car_clean');
+
           adviceHtml = `
              <div class="bg-white/5 p-4 rounded-xl mb-4 border border-white/10">
-               <h4 class="text-blue-400 font-bold mb-2 flex items-center gap-2"><i class="ph-fill ph-cloud-rain"></i> Риск дождя (24ч)</h4>
+               <h4 class="text-blue-400 font-bold mb-2 flex items-center gap-2"><i class="ph-fill ph-cloud-rain"></i> ${t('rain_risk_title')}</h4>
                <div class="flex items-center justify-between">
-                  <span class="text-slate-300 text-sm">Вероятность осадков после мойки:</span>
+                  <span class="text-slate-300 text-sm">${t('rain_risk_label')}</span>
                   <span class="font-bold ${rainRisk > 30 ? 'text-red-400' : 'text-green-400'} text-lg">${rainRisk}%</span>
                </div>
-               <p class="text-xs text-slate-500 mt-2">${rainRisk > 30 ? 'Возможно, машина быстро запачкается.' : 'Машина долго останется чистой!'}</p>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mb-4">
-               <div class="bg-white/5 p-3 rounded-xl text-center">
-                  <div class="text-slate-400 text-xs uppercase mb-1">Сушка (Ветер)</div>
-                  <div class="text-white font-bold">${wind} м/с</div>
-               </div>
-               <div class="bg-white/5 p-3 rounded-xl text-center">
-                  <div class="text-slate-400 text-xs uppercase mb-1">Температура</div>
-                  <div class="text-white font-bold">${Math.round(temp)}°</div>
-               </div>
+               <p class="text-xs text-slate-500 mt-2">${carMsg}</p>
             </div>
           `;
        } else if(type === 'walk') {
-          let comfort = 'Комфортно';
-          if(temp < 0) comfort = 'Одевайтесь теплее';
-          if(temp > 25) comfort = 'Жарко, ищите тень';
+          let comfort = t('comfort_good');
+          if(temp < 0) comfort = t('comfort_cold');
+          if(temp > 25) comfort = t('comfort_hot');
           
+          const windDesc = wind > 8 ? t('wind_light') : t('wind_none');
+
           adviceHtml = `
              <div class="bg-white/5 p-4 rounded-xl mb-4 border border-white/10">
-               <h4 class="text-orange-400 font-bold mb-2 flex items-center gap-2"><i class="ph-fill ph-smiley"></i> Комфорт</h4>
-               <p class="text-slate-200 text-sm">${comfort}. ${wind > 8 ? 'Легкий ветерок.' : 'Безветренно.'}</p>
+               <h4 class="text-orange-400 font-bold mb-2 flex items-center gap-2"><i class="ph-fill ph-smiley"></i> ${t('comfort_title')}</h4>
+               <p class="text-slate-200 text-sm">${comfort}. ${windDesc}</p>
             </div>
             <div class="grid grid-cols-2 gap-3 mb-4">
                <div class="bg-white/5 p-3 rounded-xl text-center">
-                  <div class="text-slate-400 text-xs uppercase mb-1">UV Индекс</div>
-                  <div class="text-white font-bold">${uv > 0 ? uv : 'Низкий'}</div>
-                  <div class="text-[10px] text-slate-500 mt-1">${uv > 3 ? 'Нужен крем' : 'Безопасно'}</div>
+                  <div class="text-slate-400 text-xs uppercase mb-1">UV Index</div>
+                  <div class="text-white font-bold">${uv > 0 ? uv : 'Low'}</div>
                </div>
                <div class="bg-white/5 p-3 rounded-xl text-center">
-                  <div class="text-slate-400 text-xs uppercase mb-1">Влажность</div>
+                  <div class="text-slate-400 text-xs uppercase mb-1">${t('humidity')}</div>
                   <div class="text-white font-bold">${humid}%</div>
                </div>
             </div>
@@ -1401,19 +1809,13 @@
              </button>
              <div>
                 <h3 class="text-xl font-bold text-white leading-none">${timeStr}</h3>
-                <p class="text-xs text-slate-400 mt-1">Детальный анализ слота</p>
+                <p class="text-xs text-slate-400 mt-1">${t('slot_details')}</p>
              </div>
           </div>
           ${adviceHtml}
        `;
        
        el.modalBody.innerHTML = html;
-    }
-
-    function getRunWearAdvice(temp) {
-       if(temp < 5) return t('wear_warm');
-       if(temp < 15) return t('wear_norm');
-       return t('wear_light');
     }
 
     function showAdviceModal() {
@@ -1425,7 +1827,6 @@
       if(safeIdx === -1) safeIdx = 0;
 
       const feelsLike = getVal(h, 'apparent_temperature', safeIdx);
-      const temp = getVal(h, 'temperature_2m', safeIdx);
       const code = getVal(h, 'weathercode', safeIdx);
       const windSpd = getVal(h, 'windspeed_10m', safeIdx);
       
@@ -1463,6 +1864,7 @@
       const wind = getVal(h, 'windspeed_10m', i);
       const press = getVal(h, 'surface_pressure', i);
       const dew = getVal(h, 'dewpoint_2m', i);
+      const vis = getVal(h, 'visibility', i);
 
       const desc = (weatherCodes[code]||weatherCodes[0])[state.lang] || (weatherCodes[code]||weatherCodes[0])['en'];
       const tStr = h.time[i], dateStr = tStr.split('T')[0], timeStr = tStr.split('T')[1];
@@ -1490,9 +1892,13 @@
              <div class="flex items-center gap-2 mb-1"><i class="ph-fill ph-gauge text-purple-400"></i><span class="text-xs text-slate-400 uppercase">${t('press')}</span></div>
              <div class="font-bold text-lg">${Math.round(press)} hPa</div>
           </div>
-           <div class="glass bg-white/5 p-4 rounded-xl col-span-2 flex items-center justify-between px-6">
-             <div class="flex items-center gap-2"><i class="ph-fill ph-drop-half text-cyan-200"></i><span class="text-xs text-slate-400 uppercase">${t('dew')}</span></div>
+           <div class="glass bg-white/5 p-4 rounded-xl">
+             <div class="flex items-center gap-2 mb-1"><i class="ph-fill ph-drop-half text-cyan-200"></i><span class="text-xs text-slate-400 uppercase">${t('dew')}</span></div>
              <div class="font-bold text-lg">${Math.round(dew)}°</div>
+          </div>
+          <div class="glass bg-white/5 p-4 rounded-xl">
+             <div class="flex items-center gap-2 mb-1"><i class="ph-fill ph-eye text-cyan-100"></i><span class="text-xs text-slate-400 uppercase">${t('visibility')}</span></div>
+             <div class="font-bold text-lg">${(vis/1000).toFixed(1)} km</div>
           </div>
         </div>
       `;
@@ -1515,6 +1921,32 @@
       const parts = d.time[i].split('-'), safeDate = new Date(parts[0], parts[1]-1, parts[2], 12);
       const loc = state.lang==='ru'?'ru':(state.lang==='es'?'es':'en');
       
+      const targetDate = d.time[i]; 
+      const h = state.weatherData.hourly;
+      let visSum = 0, visCount = 0;
+      let hourlyHtml = '<div id="hourly-strip-modal" class="flex gap-3 overflow-x-auto hide-scrollbar pb-2 mb-4 pt-2 scroll-smooth">';
+      
+      for(let j=0; j<h.time.length; j++) {
+          if (h.time[j].startsWith(targetDate)) {
+              const tStr = h.time[j].split('T')[1];
+              const hCode = getVal(h, 'weathercode', j);
+              const hTemp = getVal(h, 'temperature_2m', j);
+              const hIcon = (weatherCodes[hCode]||weatherCodes[0]).icon;
+              hourlyHtml += `
+                 <div class="flex-shrink-0 text-center bg-white/5 p-2 rounded-lg min-w-[60px]">
+                    <div class="text-[10px] text-slate-400 mb-1">${tStr}</div>
+                    <i class="ph-duotone ${hIcon} text-lg text-cyan-200 mb-1"></i>
+                    <div class="text-xs font-bold">${Math.round(hTemp)}°</div>
+                 </div>
+              `;
+              const vis = getVal(h, 'visibility', j);
+              if (vis !== null) { visSum += vis; visCount++; }
+          }
+      }
+      hourlyHtml += '</div>';
+      
+      const avgVis = visCount > 0 ? (visSum / visCount / 1000).toFixed(1) + ' km' : '--';
+
       const html = `
         <div class="text-center py-6">
           <i class="ph-duotone ${(weatherCodes[code]||weatherCodes[0]).icon} text-6xl text-purple-300 mb-4"></i>
@@ -1524,6 +1956,14 @@
           </div>
           <div class="text-lg text-slate-300">${desc}</div>
         </div>
+        
+        <div class="relative group scroll-container">
+           <h4 class="font-bold text-xs uppercase text-slate-400 mb-2 pl-1">${t('hourly')}</h4>
+           <button class="scroll-btn left" onclick="document.getElementById('hourly-strip-modal').scrollBy({left: -150, behavior: 'smooth'})"><i class="ph-bold ph-caret-left"></i></button>
+           <button class="scroll-btn right" onclick="document.getElementById('hourly-strip-modal').scrollBy({left: 150, behavior: 'smooth'})"><i class="ph-bold ph-caret-right"></i></button>
+           ${hourlyHtml}
+        </div>
+
         <div class="grid grid-cols-2 gap-4">
           <div class="glass bg-white/5 p-4 rounded-xl text-center">
             <i class="ph-fill ph-sun text-orange-400 text-xl mb-1"></i><div class="text-xs text-slate-400 uppercase">UV Index</div><div class="font-bold">${uv}</div>
@@ -1535,7 +1975,7 @@
             <i class="ph-fill ph-wind text-slate-400 text-xl mb-1"></i><div class="text-xs text-slate-400 uppercase">Wind Max</div><div class="font-bold">${windMax} m/s</div>
           </div>
            <div class="glass bg-white/5 p-4 rounded-xl text-center">
-            <i class="ph-fill ph-cloud-rain text-cyan-400 text-xl mb-1"></i><div class="text-xs text-slate-400 uppercase">Precip.</div><div class="font-bold">${precipSum} mm</div>
+            <i class="ph-fill ph-eye text-cyan-400 text-xl mb-1"></i><div class="text-xs text-slate-400 uppercase">${t('visibility')}</div><div class="font-bold">${avgVis}</div>
           </div>
           <div class="glass bg-white/5 p-4 rounded-xl text-center col-span-2 flex justify-between px-8">
             <div><div class="text-xs text-slate-400 uppercase mb-1">${t('sunrise')}</div><div class="font-bold text-amber-200">${extractTime(sr)}</div></div>
@@ -1546,14 +1986,28 @@
       el.modalBody.innerHTML = html; el.modal.classList.add('active');
     }
 
-    function showMonthly() {
+    function showMonthly(mode) {
       if(!state.weatherData) return;
       const d = state.weatherData.daily;
+      const todayIdx = state.todayDailyIdx;
+      
+      let startI, endI, title;
+      
+      if (mode === 'history') {
+          startI = 0;
+          endI = todayIdx; 
+          title = t('history');
+      } else {
+          startI = todayIdx;
+          endI = d.time.length;
+          title = t('monthly_btn');
+      }
+
       let html = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">';
-      for(let i=0; i<d.time.length; i++){
+      for(let i=startI; i<endI; i++){
         const parts = d.time[i].split('-'), safeDate = new Date(parts[0], parts[1]-1, parts[2], 12);
         const loc = state.lang==='ru'?'ru':(state.lang==='es'?'es':'en');
-        const dateStr = safeDate.toLocaleDateString(loc, {weekday:'short', day:'numeric'});
+        const dateStr = safeDate.toLocaleDateString(loc, {weekday:'short', day:'numeric', month:'short'});
         
         const code = getVal(d, 'weathercode', i);
         const max = getVal(d, 'temperature_2m_max', i);
@@ -1563,7 +2017,7 @@
         html += `<div class="glass bg-white/5 p-3 rounded-xl flex items-center justify-between cursor-pointer hover:bg-white/10 transition-colors" onclick="showModalDaily(state.weatherData.daily, ${i})"><div class="flex items-center gap-3"><i class="ph-duotone ${icon} text-2xl text-cyan-200 w-8 text-center"></i><span class="text-sm font-bold text-slate-200">${dateStr}</span></div><div class="text-sm font-bold"><span class="text-white">${Math.round(max)}°</span><span class="text-slate-500 ml-2">${Math.round(min)}°</span></div></div>`;
       }
       html += '</div>';
-      el.modalTitle.textContent = t('monthly_btn'); el.modalSubtitle.textContent = state.locationName;
+      el.modalTitle.textContent = title; el.modalSubtitle.textContent = state.locationName;
       el.modalBody.innerHTML = html; el.modal.classList.add('active');
     }
 
@@ -1577,20 +2031,31 @@
     // --- FULL MAP LOGIC ---
     function openFullMap() {
        el.mapModal.classList.add('active');
+       // Reset Controls
+       tempMapLat = null; tempMapLon = null;
+       el.mapInstr.style.display = 'block';
+       el.mapApplyBtn.classList.add('hidden');
+
        if(!fullMapInst) {
           setTimeout(() => {
             fullMapInst = L.map('full-map', { zoomControl: true }).setView([state.lat, state.lon], 10);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(fullMapInst);
+            
             fullMapInst.on('click', (e) => {
-               state.lat = e.latlng.lat;
-               state.lon = e.latlng.lng;
-               reverseGeo(state.lat, state.lon).then(() => fetchWeather());
+               tempMapLat = e.latlng.lat;
+               tempMapLon = e.latlng.lng;
+               
+               if(fullMapMark) fullMapInst.removeLayer(fullMapMark);
+               fullMapMark = L.marker([tempMapLat, tempMapLon]).addTo(fullMapInst);
+               
+               // Show Apply Button
+               el.mapInstr.style.display = 'none';
+               el.mapApplyBtn.classList.remove('hidden');
             });
-            if(mapMark) {
-              fullMapMark = L.marker([state.lat, state.lon]).addTo(fullMapInst)
-                .bindPopup('Вы здесь').openPopup();
-            }
-          }, 300); // delay for transition
+
+            // Initial marker
+            fullMapMark = L.marker([state.lat, state.lon]).addTo(fullMapInst);
+          }, 300);
        } else {
           fullMapInst.setView([state.lat, state.lon], 10);
           if(fullMapMark) fullMapInst.removeLayer(fullMapMark);
@@ -1599,6 +2064,20 @@
        }
     }
     
+    async function applyMapLocation() {
+       if(tempMapLat === null || tempMapLon === null) return;
+       
+       closeFullMap();
+       showLoader();
+       
+       state.lat = tempMapLat;
+       state.lon = tempMapLon;
+       
+       await reverseGeo(state.lat, state.lon);
+       
+       fetchWeather();
+    }
+
     function closeFullMap() {
        el.mapModal.classList.remove('active');
     }
@@ -1617,13 +2096,11 @@
       const srDate = new Date(srIso);
       const ssDate = new Date(ssIso);
       
-      // Calculate day length
       const diffMs = ssDate - srDate;
       const diffHrs = Math.floor(diffMs / 3600000);
       const diffMins = Math.round((diffMs % 3600000) / 60000);
       const durationStr = `${diffHrs}ч ${diffMins}м`;
 
-      // Helper to find closest hourly index
       const findClosestIdx = (targetIso) => {
          const targetTime = new Date(targetIso).getTime();
          let closestIdx = 0;
@@ -1676,7 +2153,6 @@
       const ssTimeStr = extractTime(ssIso);
 
       const html = `
-        <!-- Top 'Badge' mimicking the main panel -->
         <div class="bg-gradient-to-r from-orange-500/10 to-indigo-500/10 border border-white/10 rounded-2xl p-6 flex items-center justify-between mb-6 relative overflow-hidden">
            <div class="text-center relative z-10">
               <div class="flex items-center justify-center gap-2 mb-1">
@@ -1686,7 +2162,6 @@
               <div class="text-2xl font-bold text-white">${srTimeStr}</div>
            </div>
            
-           <!-- Day length center pill -->
            <div class="flex flex-col items-center justify-center relative z-10">
               <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">${t('day_len')}</div>
               <div class="bg-white/10 px-3 py-1 rounded-full text-xs font-bold text-cyan-200 border border-white/5">
