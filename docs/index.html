@@ -597,17 +597,17 @@
 
     <!-- Daily Forecast -->
     <div class="glass glass-panel p-6 md:p-8">
-      <div class="flex items-center justify-between mb-6">
-        <h3 class="text-xl font-bold flex items-center gap-2">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <h3 class="text-xl font-bold flex items-center gap-2 self-start sm:self-auto">
           <i class="ph-fill ph-calendar-check text-purple-400"></i>
           <span data-translate="daily">Ближайшие дни</span>
         </h3>
-        <div class="flex gap-2">
-           <button id="history-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2">
+        <div class="flex gap-2 self-start sm:self-auto w-full sm:w-auto overflow-x-auto hide-scrollbar">
+           <button id="history-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap flex-shrink-0">
              <i class="ph-bold ph-clock-counter-clockwise"></i>
              <span data-translate="history">История</span>
            </button>
-           <button id="monthly-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2">
+           <button id="monthly-btn" class="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-3 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 whitespace-nowrap flex-shrink-0">
              <i class="ph-bold ph-calendar-plus"></i>
              <span data-translate="monthly_btn">16 Дней</span>
            </button>
