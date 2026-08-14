@@ -25,7 +25,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=20" />
+  <link rel="stylesheet" href="css/app.css?v=21" />
 </head>
 
 <body data-theme="adaptive">
@@ -303,18 +303,26 @@
       <!-- ==== Chart 24h ==== -->
       <section class="card chart-card reveal">
         <div class="section-head" style="margin-bottom:6px">
-          <div class="section-title"><span class="tint"><i class="ph ph-chart-line"></i></span><span data-translate="chart_title">Температура · 24 часа</span></div>
+          <div class="section-title"><span class="tint"><i class="ph ph-chart-line"></i></span><span id="chart-title" data-translate="chart_title">Температура · 24 часа</span></div>
           <div class="chart-legend">
             <span class="lg lg-temp"></span><span data-translate="temp_legend">Температура</span>
             <span class="lg lg-precip" style="margin-left:10px"></span><span data-translate="precip_legend">Осадки</span>
           </div>
         </div>
-        <div class="chart-plot" id="chart-plot">
-          <svg id="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-          <div class="chart-cols" id="chart-cols"></div>
-          <div class="chart-guide" id="chart-guide"><i id="chart-guide-dot"></i></div>
+        <div class="chart-scroll" id="chart-scroll" role="region" tabindex="0" aria-labelledby="chart-title" aria-describedby="chart-swipe-hint">
+          <div class="chart-track">
+            <div class="chart-plot" id="chart-plot">
+              <svg id="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+              <div class="chart-cols" id="chart-cols"></div>
+              <div class="chart-guide" id="chart-guide"><i id="chart-guide-dot"></i></div>
+            </div>
+            <div class="chart-axis" id="chart-axis"></div>
+          </div>
         </div>
-        <div class="chart-axis" id="chart-axis"></div>
+        <div class="chart-swipe-hint" id="chart-swipe-hint">
+          <i class="ph ph-arrows-left-right" aria-hidden="true"></i>
+          <span data-translate="chart_swipe">Проведите пальцем по графику влево или вправо</span>
+        </div>
         <div class="chart-detail" id="chart-detail"></div>
       </section>
 
@@ -432,7 +440,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=19"></script>
-  <script src="js/app.js?v=19"></script>
+  <script src="js/i18n.js?v=20"></script>
+  <script src="js/app.js?v=22"></script>
 </body>
 </html>

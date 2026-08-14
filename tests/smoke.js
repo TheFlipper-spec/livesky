@@ -120,6 +120,19 @@ function makeFetchStub() {
 }
 window.fetch = makeFetchStub();
 
+/* Capacitor's App.addListener may return a handle directly (not a Promise).
+   Keep the primary smoke run in native mode to guard Android startup. */
+let nativeBackHandler = null;
+window.Capacitor = {
+  isNativePlatform: () => true,
+  Plugins: {
+    App: {
+      addListener(event, handler) { nativeBackHandler = handler; return { remove() {} }; },
+      exitApp() {}
+    }
+  }
+};
+
 window.addEventListener('error', (e) => errors.push('window error: ' + e.message));
 process.on('unhandledRejection', (r) => errors.push('unhandled rejection: ' + (r && r.message)));
 
@@ -151,9 +164,30 @@ setTimeout(() => {
       /* hourly strip must be a horizontal no-wrap flex row (regression: items stacked vertically) */
       const hs = cssSrc.match(/\.hourly-strip\s*\{[^}]*\}/s);
       assert(hs && /display:\s*flex/.test(hs[0]) && /flex-direction:\s*row/.test(hs[0]) && /flex-wrap:\s*nowrap/.test(hs[0]), 'hourly strip is a horizontal no-wrap flex row');
+      /* the 24-hour temperature chart must remain swipeable instead of being squeezed on phones */
+      const chartScroller = cssSrc.match(/\.chart-scroll\s*\{[^}]*\}/s);
+      const chartTrack = cssSrc.match(/\.chart-track\s*\{[^}]*\}/s);
+      assert(chartScroller && /overflow-x:\s*auto/.test(chartScroller[0]) && /touch-action:\s*pan-x\s+pan-y/.test(chartScroller[0]), 'temperature chart supports native horizontal touch scrolling');
+      assert(chartTrack && /min-width:\s*1120px/.test(chartTrack[0]), 'temperature chart keeps touch-friendly hourly spacing');
       assert(/\.shell\s*\{[^}]*max-width:\s*1560px/s.test(cssSrc), 'shell uses the full width on big screens');
       assert(/min-width:\s*1750px/.test(cssSrc), 'wide-screen edge decorations exist');
+
+      /* Capacitor/Android project must stay wired to the static docs build. */
+      const root = path.join(DOCS, '..');
+      const cap = JSON.parse(fs.readFileSync(path.join(root, 'capacitor.config.json'), 'utf8'));
+      const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+      const manifest = fs.readFileSync(path.join(root, 'android', 'app', 'src', 'main', 'AndroidManifest.xml'), 'utf8');
+      assert(cap.appId === 'io.github.theflipperspec.livesky' && cap.webDir === 'docs', 'Capacitor uses the permanent LiveSky app id and docs web assets');
+      assert(pkg.dependencies['@capacitor/android'] && pkg.dependencies['@capacitor/geolocation'] && pkg.dependencies['@capacitor/local-notifications'], 'native Android, geolocation and notifications plugins are installed');
+      assert(pkg.scripts['android:build'] && pkg.scripts['cap:sync'], 'Android sync and APK build scripts exist');
+      const gradlew = fs.readFileSync(path.join(root, 'android', 'gradlew'), 'utf8');
+      assert(/JAVA_HOME_21_X64/.test(gradlew), 'Capacitor Android build selects its required Java 21 toolchain');
+      assert(/ACCESS_COARSE_LOCATION/.test(manifest) && /ACCESS_FINE_LOCATION/.test(manifest), 'Android location permissions are declared');
+      assert(/SCHEDULE_EXACT_ALARM[\s\S]*tools:node="remove"/.test(manifest), 'unused restricted exact-alarm permission is removed');
+      assert(/nativePlugin\('Geolocation'\)/.test(appSrc) && /nativePlugin\('LocalNotifications'\)/.test(appSrc) && /if \(isNativeApp\(\)\) return/.test(appSrc), 'web app includes native Capacitor adapters and skips PWA cache in Android');
     }
+    assert(typeof nativeBackHandler === 'function', 'Capacitor back-button listener accepts a direct listener handle');
+    assert(q('boot-error').classList.contains('hidden'), 'Capacitor native bridge does not block application startup');
     assert(q('loader').classList.contains('done'), 'loader hidden after data load');
     assert(/[-\d]+°/.test(q('temperature').textContent), 'temperature rendered: ' + q('temperature').textContent);
     assert(!q('temp-unit'), 'double degree span removed');
@@ -178,6 +212,9 @@ setTimeout(() => {
     assert(q('location').textContent === 'Москва', 'default location: ' + q('location').textContent);
     assert(q('hourly-strip').children.length === 24, 'hourly strip has 24 items');
     assert(q('daily-strip').children.length === 8, 'daily strip has 7 days + more button');
+    assert(q('chart-scroll') && q('chart-scroll').contains(q('chart-plot')), 'temperature chart is inside its horizontal scroll viewport');
+    assert(q('chart-scroll').getAttribute('tabindex') === '0', 'temperature chart scroller is keyboard focusable');
+    assert(q('chart-swipe-hint').textContent.includes('Проведите пальцем'), 'temperature chart has a touch gesture hint');
     assert(q('chart-svg').querySelectorAll('path').length >= 2, 'chart svg has paths');
     assert(q('sun-arc').querySelectorAll('path').length >= 1, 'sun arc rendered');
     assert(q('chart-axis').children.length === 5, 'chart axis 5 labels');

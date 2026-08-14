@@ -728,10 +728,44 @@ body.no-scroll { overflow: hidden; }
 .lg { width: 16px; height: 4px; border-radius: 99px; display: inline-block; }
 .lg-temp { background: linear-gradient(90deg, var(--accent), var(--accent-2)); height: 5px; }
 .lg-precip { background: #60a5fa; opacity: 0.75; }
+/* The graph keeps every hour comfortably wide instead of squeezing all 24
+   points into a phone screen. Native overflow gives touch devices momentum
+   scrolling while still allowing the page to move on a vertical gesture. */
+.chart-scroll {
+  position: relative;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: var(--stroke-strong) transparent;
+}
+.chart-scroll::-webkit-scrollbar { height: 6px; }
+.chart-scroll::-webkit-scrollbar-track { background: transparent; }
+.chart-scroll::-webkit-scrollbar-thumb {
+  background: var(--stroke-strong);
+  border: 1px solid transparent;
+  background-clip: content-box;
+}
+.chart-scroll:focus-visible { outline-offset: -2px; }
+.chart-track { width: 100%; min-width: 1120px; }
+.chart-swipe-hint {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 5px;
+  color: var(--text-4);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.chart-swipe-hint i { color: var(--accent); font-size: 14px; }
 .chart-plot { position: relative; height: 190px; margin-top: 8px; }
 .chart-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .chart-cols { position: absolute; inset: 0; display: flex; }
-.chart-col { flex: 1; cursor: crosshair; }
+.chart-col { flex: 1; min-width: 0; cursor: crosshair; }
 /* detail bar under the chart (never clipped, always pleasant) */
 .chart-detail {
   margin-top: 12px;
@@ -1537,6 +1571,12 @@ body.no-scroll { overflow: hidden; }
   .hero-grid { grid-template-columns: 1.95fr 1fr; }
 }
 
+/* A short gesture hint is useful on touch screens; the scrollbar remains
+   available on laptops and desktops where the chart also happens to overflow. */
+@media (hover: none) and (pointer: coarse) {
+  .chart-swipe-hint { display: flex; }
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 1080px) {
   .hero-grid { grid-template-columns: 1fr; }
@@ -1603,6 +1643,7 @@ body.no-scroll { overflow: hidden; }
   .section-title .tint { width: 34px; height: 34px; border-radius: 10px; }
   .chart-card, .hourly-card, .daily-card, .lifestyle-card { padding: 18px 14px; border-radius: 24px; }
   .chart-plot { height: 150px; }
+  .chart-swipe-hint { display: flex; }
   .chart-detail { gap: 4px; padding: 6px; min-height: 0; }
   .cd-item { flex-basis: calc(50% - 2px); padding: 8px 7px; }
   .cd-item + .cd-item { border-left: 0; }
