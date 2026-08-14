@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=12" />
+  <link rel="stylesheet" href="css/app.css?v=13" />
 </head>
 
 <body data-theme="adaptive">
@@ -252,7 +252,7 @@
           </div>
 
           <!-- Air quality -->
-          <div class="card aqi-card hover-lift">
+          <div class="card aqi-card hover-lift" id="aqi-card" role="button" tabindex="0" aria-label="Качество воздуха — подробности">
             <div class="section-head" style="margin-bottom:14px">
               <div class="section-title"><span class="tint"><i class="ph ph-leaf"></i></span><span data-translate="air_quality">Качество воздуха</span></div>
             </div>
@@ -271,7 +271,10 @@
                 <div class="poll"><span>NO₂</span><b id="aqi-no2">--</b></div>
               </div>
             </div>
-            <div class="aqi-note"><i class="ph ph-info"></i><span data-translate="aqi_note">Европейский индекс качества воздуха</span></div>
+            <div class="aqi-foot">
+              <div class="aqi-note"><i class="ph ph-info"></i><span data-translate="aqi_note">Европейский индекс качества воздуха</span></div>
+              <span class="aqi-more"><i class="ph ph-chart-line"></i><span data-translate="air_more">Подробности и графики</span><i class="ph-bold ph-caret-right"></i></span>
+            </div>
           </div>
         </aside>
       </div>
@@ -288,9 +291,10 @@
         <div class="chart-plot" id="chart-plot">
           <svg id="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
           <div class="chart-cols" id="chart-cols"></div>
-          <div class="chart-tooltip hidden" id="chart-tooltip"></div>
+          <div class="chart-guide" id="chart-guide"><i id="chart-guide-dot"></i></div>
         </div>
         <div class="chart-axis" id="chart-axis"></div>
+        <div class="chart-detail" id="chart-detail"></div>
       </section>
 
       <!-- ==== Hourly ==== -->
@@ -374,7 +378,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=12"></script>
-  <script src="js/app.js?v=12"></script>
+  <script src="js/i18n.js?v=13"></script>
+  <script src="js/app.js?v=13"></script>
 </body>
 </html>

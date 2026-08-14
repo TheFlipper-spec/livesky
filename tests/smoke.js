@@ -228,11 +228,25 @@ setTimeout(() => {
     q('search-clear').click();
     assert(q('city-input').value === '' && q('search-clear').classList.contains('hidden'), 'clear button clears input');
 
-    const col = q('chart-cols').firstChild;
-    col.dispatchEvent(new window.MouseEvent('mouseenter'));
-    assert(!q('chart-tooltip').classList.contains('hidden'), 'chart tooltip shows on hover');
-    assert(q('chart-tooltip').innerHTML.includes('Порывы'), 'tooltip shows wind gusts');
-    q('chart-cols').onmouseleave();
+    /* chart detail bar (replaced the clipped floating tooltip) */
+    assert(q('chart-detail') !== null, 'chart detail bar exists');
+    assert(q('chart-detail').innerHTML.includes('Сейчас'), 'detail bar shows current hour by default');
+    assert(q('chart-detail').innerHTML.includes('Порывы'), 'detail bar shows wind gusts row');
+    {
+      const col = q('chart-cols').children[10];
+      col.dispatchEvent(new window.MouseEvent('mouseenter'));
+      assert(q('chart-detail').innerHTML.includes(':00'), 'detail bar updates on hover (shows hour)');
+      assert(q('chart-guide').style.opacity === '1', 'hover guide line appears');
+      q('chart-cols').onmouseleave();
+      assert(q('chart-guide').style.opacity === '0', 'guide line hides on mouseleave');
+    }
+    /* air quality detail modal */
+    q('aqi-card').click();
+    assert(q('modal').classList.contains('open'), 'air quality card opens detail modal');
+    assert(q('modal-body').querySelector('.air-trend svg') !== null, 'air modal has AQI trend chart');
+    assert(q('modal-body').querySelectorAll('.air-poll-card svg').length === 4, 'air modal has 4 pollutant sparklines');
+    assert(q('modal-body').innerHTML.includes('Рекомендации'), 'air modal has health recommendations');
+    q('modal-close').click();
 
     window.showAdvice();
     assert(q('modal').classList.contains('open'), 'advice modal opens');
