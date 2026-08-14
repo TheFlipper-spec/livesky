@@ -190,7 +190,7 @@ body.no-scroll { overflow: hidden; }
 
 /* ---------- Shell & layout ---------- */
 .shell {
-  max-width: 1240px;
+  max-width: 1560px;
   margin: 0 auto;
   padding: 20px 22px 56px;
   position: relative;
@@ -789,6 +789,15 @@ body.no-scroll { overflow: hidden; }
 }
 
 .chart-axis { display: flex; justify-content: space-between; padding: 6px 2px 0; font-size: 11px; font-weight: 700; color: var(--text-4); font-variant-numeric: tabular-nums; }
+.hourly-strip {
+  display: flex; flex-direction: row; flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
 .hourly-strip::-webkit-scrollbar { display: none; }
 .hour-item {
   flex: none; width: 84px;
@@ -1345,6 +1354,40 @@ body.no-scroll { overflow: hidden; }
 .footer-link i { color: var(--accent); font-size: 16px; }
 .footer-copy { font-size: 11.5px; color: var(--text-4); line-height: 1.9; }
 .footer-copy a:hover { color: var(--accent); }
+
+/* ---------- Wide screens: fill the side zones ---------- */
+@media (min-width: 1750px) {
+  body::before,
+  body::after {
+    content: "";
+    position: fixed; top: 0; bottom: 0; width: 340px; z-index: -3;
+    pointer-events: none;
+    opacity: 0.7;
+  }
+  body::before {
+    left: 0;
+    background:
+      radial-gradient(60% 45% at 0% 18%, var(--blob-1), transparent 70%),
+      radial-gradient(55% 40% at 0% 78%, var(--blob-3), transparent 70%),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.07), transparent 85%);
+  }
+  body::after {
+    right: 0;
+    background:
+      radial-gradient(60% 45% at 100% 22%, var(--blob-2), transparent 70%),
+      radial-gradient(55% 40% at 100% 75%, var(--blob-1), transparent 70%),
+      linear-gradient(270deg, rgba(148, 163, 184, 0.07), transparent 85%);
+  }
+  [data-theme="light"] body::before,
+  [data-theme="light"] body::after { opacity: 0.5; }
+  .hour-item { width: 96px; }
+  .hero { padding: 34px 38px 28px; }
+  .hero-grid { grid-template-columns: 2fr 1fr; }
+  .card-pad { padding: 30px 34px; }
+}
+@media (min-width: 1400px) and (max-width: 1749px) {
+  .hero-grid { grid-template-columns: 1.95fr 1fr; }
+}
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1080px) {
