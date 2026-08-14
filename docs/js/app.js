@@ -34,6 +34,7 @@ const el = {
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
   logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label'),
   effectsSelect: $('effects-select'), installItem: $('install-item'), offlineBanner: $('offline-banner'),
+  notifItem: $('notif-item'), notifIco: $('notif-ico'), notifLabel: $('notif-label'),
   radarToggle: $('radar-toggle'), radarPanel: $('radar-panel'), radarLoading: $('radar-loading'),
   radarTime: $('radar-time'), radarSlider: $('radar-slider'), radarBack: $('radar-back'),
   radarNext: $('radar-next'), radarPlay: $('radar-play'), radarClose: $('radar-close')
@@ -71,6 +72,7 @@ const state = {
   units: store.get('livesky:units', 'metric'),
   model: store.get('livesky:model', 'auto'),
   effects: store.get('livesky:effects', 'auto'),
+  notif: store.get('livesky:notif', false),
   lat: 55.7558, lon: 37.6173,
   locationName: 'Москва', countryCode: 'RU', admin: '',
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -464,6 +466,7 @@ async function fetchWeather(silent) {
     renderAll();
     updateMap();
     fetchAir(seq);
+    checkWeatherAlerts();
   } catch (e) {
     if (seq !== fetchSeq) return;
     console.error('fetchWeather failed:', e);
@@ -938,6 +941,15 @@ function renderAlerts() {
   if (feels != null && feels <= -25) msgs.push(t('alert_cold'));
   if (feels != null && feels >= 37) msgs.push(t('alert_heat'));
   if (vis != null && vis < 1000) msgs.push(t('alert_fog'));
+  /* surface the nearest upcoming alert (next 12h) so the banner is forward-looking */
+  if (!msgs.length) {
+    const nowM = minOfDay(h.time[i]);
+    const soon = upcomingAlerts().find(a => {
+      const m = minOfDay(a.t);
+      return (m - nowM + 1440) % 1440 <= 12 * 60;
+    });
+    if (soon) msgs.push(t('notif_' + soon.type).replace('{t}', soon.t.slice(11, 16)));
+  }
   if (msgs.length) {
     el.alertMsg.textContent = msgs.join(' · ');
     el.alertBox.classList.remove('hidden');
@@ -2245,6 +2257,7 @@ function bindEvents() {
     if (state.effects === 'auto') PERF.start();
   });
   on(el.installItem, 'click', promptInstall);
+  on(el.notifItem, 'click', () => { setMenuOpen(false); toggleNotifications(); });
 
   /* rain radar */
   on(el.radarToggle, 'click', () => RADAR.toggle());
@@ -2311,9 +2324,10 @@ function bindEvents() {
       FX.running = false;
     }
   });
-  /* silent auto-refresh every 15 minutes */
+  /* silent auto-refresh every 15 minutes + periodic weather-alert check */
   setInterval(() => {
     if (!document.hidden && Date.now() - state.lastFetchTs > 15 * 60 * 1000) fetchWeather(true);
+    if (!document.hidden) checkWeatherAlerts();
   }, 60 * 1000);
   /* offline state is surfaced by the offline banner (see initConnectivity) */
 }
@@ -2550,6 +2564,115 @@ const RADAR = {
   toggle() { this.active ? this.disable() : this.enable(); }
 };
 
+/* ---------------- weather notifications (local + Web Push ready) ---------------- */
+/* Keeps a rolling record of alerts we already notified about so the user isn't
+   spammed with the same event every time the forecast refreshes. */
+let sentAlerts = store.get('livesky:sent_alerts', []);
+function prunSentAlerts() {
+  const now = Date.now();
+  sentAlerts = sentAlerts.filter(a => now - a.at < 3 * 3600 * 1000); /* 3h window */
+}
+function alertSignature(type, hourIso) { return type + '|' + hourIso.slice(0, 13); }
+function shouldSendAlert(sig) { prunSentAlerts(); return !sentAlerts.some(a => a.sig === sig); }
+function markSent(sig) {
+  sentAlerts.push({ sig, at: Date.now() });
+  sentAlerts = sentAlerts.slice(-60);
+  store.set('livesky:sent_alerts', sentAlerts);
+}
+
+/* Scan the next 24h of the hourly forecast for alert-worthy events. */
+function upcomingAlerts() {
+  if (!state.weather) return [];
+  const h = state.weather.hourly;
+  const alerts = [];
+  const end = Math.min(state.nowIdx + 24, h.time.length);
+  for (let i = state.nowIdx; i < end; i++) {
+    const code = getVal(h, 'weathercode', i);
+    const feels = getVal(h, 'apparent_temperature', i);
+    const gust = getVal(h, 'windgusts_10m', i);
+    const wind = getVal(h, 'windspeed_10m', i);
+    const vis = getVal(h, 'visibility', i);
+    if ([95, 96, 99].includes(code)) alerts.push({ type: 'storm', t: h.time[i] });
+    else if ([65, 82].includes(code)) alerts.push({ type: 'rain_heavy', t: h.time[i] });
+    if (feels != null && feels >= 37) alerts.push({ type: 'heat', t: h.time[i] });
+    if (feels != null && feels <= -25) alerts.push({ type: 'cold', t: h.time[i] });
+    if ((gust != null ? gust : wind) >= 25) alerts.push({ type: 'wind', t: h.time[i] });
+    if (vis != null && vis < 1000) alerts.push({ type: 'fog', t: h.time[i] });
+  }
+  return alerts;
+}
+
+function sendNotification(alert) {
+  const timeStr = alert.t.slice(11, 16);
+  const title = t('notif_title');
+  const body = t('notif_' + alert.type).replace('{t}', timeStr);
+  const opts = {
+    body, icon: 'icons/icon-192.png', badge: 'icons/icon-96.png',
+    tag: 'livesky-' + alert.type, data: { url: location.href },
+    renotify: false
+  };
+  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts))
+      .catch(() => { try { new Notification(title, opts); } catch (e) { /* ignore */ } });
+  } else {
+    try { new Notification(title, opts); } catch (e) { /* ignore */ }
+  }
+}
+
+/* Called on every forecast refresh and on a periodic timer. Only fires when the
+   user enabled alerts, permission is granted and the event hasn't been sent. */
+function checkWeatherAlerts() {
+  if (!state.notif || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  for (const a of upcomingAlerts()) {
+    const sig = alertSignature(a.type, a.t);
+    if (!shouldSendAlert(sig)) continue;
+    markSent(sig);
+    sendNotification(a);
+  }
+}
+
+function updateNotifItem() {
+  if (!el.notifItem) return;
+  const on = state.notif;
+  if (el.notifIco) el.notifIco.className = 'ph ' + (on ? 'ph-bell-ringing' : 'ph-bell');
+  if (el.notifLabel) {
+    el.notifLabel.dataset.translate = on ? 'notif_enabled' : 'notif_enable';
+    el.notifLabel.textContent = t(on ? 'notif_enabled' : 'notif_enable');
+  }
+  el.notifItem.classList.toggle('selected', on);
+}
+function toggleNotifications() {
+  if (state.notif) {
+    state.notif = false;
+    store.set('livesky:notif', false);
+    updateNotifItem();
+    toast(t('notif_toast_off'), 'info');
+    return;
+  }
+  if (typeof Notification === 'undefined') { toast(t('notif_unsupported'), 'error'); return; }
+  if (Notification.permission === 'denied') { toast(t('notif_blocked'), 'error'); return; }
+  if (Notification.permission === 'granted') {
+    state.notif = true;
+    store.set('livesky:notif', true);
+    updateNotifItem();
+    toast(t('notif_toast_on'), 'success');
+    checkWeatherAlerts();
+    return;
+  }
+  /* prompt the user for permission first time */
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      state.notif = true;
+      store.set('livesky:notif', true);
+      updateNotifItem();
+      toast(t('notif_toast_on'), 'success');
+      checkWeatherAlerts();
+    } else {
+      toast(t('notif_blocked'), 'error');
+    }
+  }).catch(() => { toast(t('notif_unsupported'), 'error'); });
+}
+
 /* ---------------- init ---------------- */
 function init() {
   /* sanitize persisted settings (old/foreign values must never break boot) */
@@ -2567,6 +2690,7 @@ function init() {
   syncMenuChecks();
   syncEffectsSelect();
   updateFavIcon();
+  updateNotifItem();
   startClock();
   bindEvents();
   initReveal();

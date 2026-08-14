@@ -23,7 +23,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=17" />
+  <link rel="stylesheet" href="css/app.css?v=18" />
 </head>
 
 <body data-theme="adaptive">
@@ -131,6 +131,7 @@
 
             <div class="dd-group-label" data-translate="actions">Действия</div>
             <button class="dd-item hidden" id="install-item"><i class="ph ph-download-simple"></i><span data-translate="install_app">Установить приложение</span></button>
+            <button class="dd-item" id="notif-item"><i id="notif-ico" class="ph ph-bell"></i><span id="notif-label" data-translate="notif_enable">Погодные уведомления</span></button>
             <button class="dd-item" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location">Моё местоположение</span></button>
             <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
             <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
@@ -426,7 +427,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=17"></script>
-  <script src="js/app.js?v=17"></script>
+  <script src="js/i18n.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
 </body>
 </html>

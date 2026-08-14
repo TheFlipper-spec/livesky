@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v3';
+const VERSION = 'livesky-v4';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -101,5 +101,39 @@ self.addEventListener('fetch', (event) => {
   /* Cross-origin non-API (fonts, icons, map tiles): network first, cache fallback. */
   event.respondWith(
     fetch(req).catch(() => caches.match(req).then((hit) => hit || Response.error()))
+  );
+});
+
+/* ============================================================
+   Notifications — Web Push ready + notification click handling
+   ============================================================ */
+/* A real push requires a backend + VAPID keys; this handler is here so that
+   if/when such a backend is wired up, notifications arrive and work.
+   Local forecast-driven alerts are sent from the page via showNotification. */
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { /* ignore */ }
+  const title = data.title || 'LiveSky · Опасная погода';
+  const body = data.body || 'Обратите внимание на прогноз погоды';
+  const options = {
+    body,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-96.png',
+    tag: data.tag || 'livesky-alert',
+    data: { url: data.url || './' }
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || './';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if ('focus' in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(url);
+    })
   );
 });
