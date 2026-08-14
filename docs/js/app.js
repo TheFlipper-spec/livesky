@@ -30,7 +30,7 @@ const el = {
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'), searchClear: $('search-clear'),
   menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'),
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
-  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn')
+  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), menuScrim: $('menu-scrim')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -145,7 +145,7 @@ function fmtPrecip(mm) {
 function windDir(deg) {
   if (deg == null || isNaN(deg)) return '';
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  return t('w_dir_' + dirs[Math.round(deg / 45) % 8]);
+  return t('w_dir_full_' + dirs[Math.round(deg / 45) % 8]);
 }
 function uvLabel(u) {
   if (u == null || isNaN(u)) return '';
@@ -529,11 +529,7 @@ function updateHero() {
 function updateMetrics() {
   const h = state.weather.hourly, i = state.nowIdx;
   el.mFeels.textContent = fmtTempDeg(getVal(h, 'apparent_temperature', i));
-  const wind = getVal(h, 'windspeed_10m', i);
-  const dir = getVal(h, 'winddirection_10m', i);
-  el.mWind.textContent = fmtWind(wind);
-  el.mWindDir.textContent = windDir(dir);
-  el.mWindArrow.style.transform = `rotate(${(dir || 45) - 45}deg)`;
+  updateWindTile();
   el.mHum.textContent = getVal(h, 'relativehumidity_2m', i) != null ? Math.round(getVal(h, 'relativehumidity_2m', i)) + '%' : '--';
   el.mVis.textContent = fmtVis(getVal(h, 'visibility', i));
   const pNow = getVal(h, 'surface_pressure', i);
@@ -557,6 +553,21 @@ function updateMetrics() {
     if (p != null && (maxP == null || p > maxP)) maxP = p;
   }
   el.mPrecip.textContent = maxP != null ? Math.round(maxP) + '%' : '--';
+}
+
+/* wind tile: full direction word + gusts, no cryptic abbreviations */
+function updateWindTile() {
+  const h = state.weather.hourly, i = state.nowIdx;
+  const wind = getVal(h, 'windspeed_10m', i);
+  const dir = getVal(h, 'winddirection_10m', i);
+  const gust = getVal(h, 'windgusts_10m', i);
+  el.mWind.textContent = fmtWind(wind);
+  const parts = [];
+  const dirFull = windDir(dir);
+  if (dirFull) parts.push(dirFull);
+  if (gust != null && gust > 0.1) parts.push(t('wind_gusts') + ' ' + fmtWind(gust));
+  el.mWindDir.textContent = parts.join(' · ');
+  el.mWindArrow.style.transform = `rotate(${(dir || 45) - 45}deg)`;
 }
 
 /* ---------- sun arc ---------- */
@@ -1181,6 +1192,7 @@ function selectCity(c, isFav) {
 function closeAutocomplete() {
   el.autoList.classList.add('hidden');
   acIndex = -1;
+  updateScrim();
 }
 /* keyboard navigation inside autocomplete list */
 let acIndex = -1;
@@ -1246,6 +1258,7 @@ function renderFavoritesList() {
     });
   }
   el.autoList.classList.remove('hidden');
+  updateScrim();
 }
 
 async function handleInput() {
@@ -1259,6 +1272,7 @@ async function handleInput() {
   if (q.length < 3) {
     el.autoList.innerHTML = '';
     el.autoList.classList.add('hidden');
+    updateScrim();
     return;
   }
   searchTimer = setTimeout(async () => {
@@ -1287,6 +1301,7 @@ async function handleInput() {
         });
       }
       el.autoList.classList.remove('hidden');
+      updateScrim();
     } catch (e) { /* silent */ }
   }, 280);
 }
@@ -1363,7 +1378,7 @@ function showModalHourly(h, i) {
     </div>
     <div class="m-grid">
       ${mTile('ph-thermometer', t('feels_like'), fmtTempDeg(feels))}
-      ${mTile('ph-wind', `${t('wind')} ${windDir(dir)}`, fmtWind(wind))}
+      ${mTile('ph-wind', windDir(dir) ? `${t('wind')} · ${windDir(dir)}` : t('wind'), fmtWind(wind))}
       ${mTile('ph-drop', t('humidity'), hum != null ? Math.round(hum) + '%' : '--')}
       ${mTile('ph-gauge', t('pressure'), fmtPress(press))}
       ${mTile('ph-drop-half', t('dew_point'), fmtTempDeg(dew))}
@@ -1797,6 +1812,14 @@ function setTheme(theme) {
 function setMenuOpen(open) {
   if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
   if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
+  updateScrim();
+}
+/* dim the page behind any open dropdown so it visually pops */
+function updateScrim() {
+  if (!el.menuScrim) return;
+  const menuOpen = el.mainMenu && el.mainMenu.classList.contains('open');
+  const acOpen = el.autoList && !el.autoList.classList.contains('hidden');
+  el.menuScrim.classList.toggle('on', menuOpen || acOpen);
 }
 function syncMenuChecks() {
   if (!el.mainMenu) return;
@@ -1939,6 +1962,7 @@ function bindEvents() {
     if (!el.searchForm.contains(e.target) && !el.autoList.contains(e.target)) closeAutocomplete();
     if (!el.menuBtn.contains(e.target) && !el.mainMenu.contains(e.target)) setMenuOpen(false);
   });
+  on(el.menuScrim, 'click', () => { setMenuOpen(false); closeAutocomplete(); });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
