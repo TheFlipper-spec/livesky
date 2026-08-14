@@ -100,32 +100,37 @@ function genAir() {
   return { timezone: 'Europe/Moscow', hourly };
 }
 
-window.fetch = async (url) => {
-  const u = String(url);
-  if (u.includes('/v1/forecast')) return { ok: true, json: async () => genForecast() };
-  if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
-  if (u.includes('geocoding-api')) return {
-    ok: true,
-    json: async () => ({ results: [{ name: 'Санкт-Петербург', latitude: 59.93, longitude: 30.34, country_code: 'RU', admin1: 'Санкт-Петербург', country: 'Россия' }] })
+function makeFetchStub() {
+  return async (url) => {
+    const u = String(url);
+    if (u.includes('/v1/forecast')) return { ok: true, json: async () => genForecast() };
+    if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
+    if (u.includes('geocoding-api')) return {
+      ok: true,
+      json: async () => ({ results: [{ name: 'Санкт-Петербург', latitude: 59.93, longitude: 30.34, country_code: 'RU', admin1: 'Санкт-Петербург', country: 'Россия' }] })
+    };
+    if (u.includes('nominatim')) return {
+      ok: true,
+      json: async () => ({ address: { road: 'Тверская улица', city: 'Москва', country_code: 'ru', state: 'Москва', country: 'Россия' } })
+    };
+    if (u.includes('bigdatacloud')) return { ok: true, json: async () => ({ city: 'Москва', countryCode: 'RU' }) };
+    throw new Error('unhandled url: ' + u);
   };
-  if (u.includes('nominatim')) return {
-    ok: true,
-    json: async () => ({ address: { road: 'Тверская улица', city: 'Москва', country_code: 'ru', state: 'Москва', country: 'Россия' } })
-  };
-  if (u.includes('bigdatacloud')) return { ok: true, json: async () => ({ city: 'Москва', countryCode: 'RU' }) };
-  throw new Error('unhandled url: ' + u);
-};
+}
+window.fetch = makeFetchStub();
 
 window.addEventListener('error', (e) => errors.push('window error: ' + e.message));
 process.on('unhandledRejection', (r) => errors.push('unhandled rejection: ' + (r && r.message)));
 
 /* ---- run app scripts (as classic inline scripts, like a browser) ---- */
+const i18nSrc = fs.readFileSync(path.join(DOCS, 'js', 'i18n.js'), 'utf8');
+const appSrc = fs.readFileSync(path.join(DOCS, 'js', 'app.js'), 'utf8');
 try {
   const s1 = document.createElement('script');
-  s1.textContent = fs.readFileSync(path.join(DOCS, 'js', 'i18n.js'), 'utf8');
+  s1.textContent = i18nSrc;
   document.body.appendChild(s1);
   const s2 = document.createElement('script');
-  s2.textContent = fs.readFileSync(path.join(DOCS, 'js', 'app.js'), 'utf8');
+  s2.textContent = appSrc;
   document.body.appendChild(s2);
 } catch (e) { errors.push('script failed: ' + e.message); }
 
@@ -254,18 +259,89 @@ setTimeout(() => {
       try {
         assert(q('location').textContent === 'Санкт-Петербург', 'search changes city: ' + q('location').textContent);
         assert(q('updated-chip').classList.contains('hidden') === false, 'updated chip visible');
-        const recent = JSON.parse(localStorage.getItem('livesky:recent') || '[]');
+        const recent = JSON.parse(window.localStorage.getItem('livesky:recent') || '[]');
         assert(recent.length > 0 && recent[0].name === 'Санкт-Петербург', 'recent city saved');
-        const favs = JSON.parse(localStorage.getItem('livesky:favorites') || '[]');
+        const favs = JSON.parse(window.localStorage.getItem('livesky:favorites') || '[]');
         assert(Array.isArray(favs), 'favorites storage works');
       } finally {
-        console.log('\nERRORS: ' + (errors.length ? errors.join('\n - ') : 'none'));
-        process.exit(errors.length ? 1 : 0);
+        phase2();
       }
     }, 700);
   } catch (e) {
     errors.push('test crashed: ' + e.message + '\n' + e.stack);
-    console.log('ERRORS: ' + errors.join('\n - '));
-    process.exit(1);
+    phase2();
   }
 }, 900);
+
+/* ================= failure scenarios ================= */
+function makeWorld(htmlMod) {
+  const d = new JSDOM(html, { url: 'https://livesky.local/', runScripts: 'dangerously', pretendToBeVisual: true });
+  const w = d.window, doc = d.window.document;
+  w.requestAnimationFrame = (cb) => setTimeout(() => cb(w.performance.now()), 16);
+  w.cancelAnimationFrame = () => {};
+  w.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
+  w.IntersectionObserver = class { observe() {} unobserve() {} };
+  w.HTMLElement.prototype.scrollBy = function () {};
+  w.HTMLElement.prototype.scrollIntoView = function () {};
+  w.HTMLCanvasElement.prototype.getContext = () => ctxStub;
+  w.L = { map: fakeMap, tileLayer: () => ({ addTo() { return this; }, setUrl() {} }), marker: () => ({ addTo() { return this; } }), divIcon: (o) => o };
+  w.addEventListener('error', (e) => errors.push('window error: ' + e.message));
+  return { w, doc };
+}
+
+/* phase 2: network hangs forever — watchdog must hide the loader and offer retry */
+function phase2() {
+  const { w, doc } = makeWorld();
+  w.LIVE_WATCHDOG_MS = 1200;
+  w.LIVE_FETCH_TIMEOUT_MS = 600000; /* fetch never aborts: only the watchdog can save us */
+  w.fetch = () => new Promise(() => {}); /* hangs forever */
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q2 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      assert(q2('loader').classList.contains('done'), 'phase2: watchdog hides loader on hung network');
+      assert(q2('boot-error').classList.contains('hidden'), 'phase2: no boot-error panel');
+      assert(doc.querySelectorAll('.toast').length >= 1, 'phase2: error toast with retry shown');
+      phase3();
+    } catch (e) { errors.push('phase2 crashed: ' + e.message); phase3(); }
+  }, 2500);
+}
+
+/* phase 3: stale page (menu elements missing) — app must boot gracefully, no eternal loader */
+function phase3() {
+  const { w, doc } = makeWorld();
+  w.fetch = makeFetchStub();
+  ['menu-btn', 'main-menu', 'search-clear'].forEach((id) => { const n = doc.getElementById(id); if (n) n.remove(); });
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q3 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      assert(q3('loader').classList.contains('done'), 'phase3: boots fine without menu elements');
+      assert(/[^--]+/.test(q3('temperature').textContent), 'phase3: data rendered');
+      assert(q3('boot-error').classList.contains('hidden'), 'phase3: no boot-error panel');
+      phase4();
+    } catch (e) { errors.push('phase3 crashed: ' + e.message); phase4(); }
+  }, 1200);
+}
+
+/* phase 4: i18n script missing — boot-error panel must replace the loader */
+function phase4() {
+  const { w, doc } = makeWorld();
+  w.fetch = makeFetchStub();
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q4 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      assert(q4('loader').classList.contains('done'), 'phase4: loader hidden on boot failure');
+      assert(!q4('boot-error').classList.contains('hidden'), 'phase4: boot-error panel shown');
+      finish();
+    } catch (e) { errors.push('phase4 crashed: ' + e.message); finish(); }
+  }, 800);
+}
+
+function finish() {
+  console.log('\nERRORS: ' + (errors.length ? errors.join('\n - ') : 'none'));
+  process.exit(errors.length ? 1 : 0);
+}

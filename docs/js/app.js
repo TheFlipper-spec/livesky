@@ -32,6 +32,8 @@ const el = {
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
   logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn')
 };
+/* safe event binding — never crashes if an element is missing */
+function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
 
 /* ---------------- state & storage ---------------- */
 const store = {
@@ -233,6 +235,21 @@ function wmoIcon(code, night) {
 
 /* ---------------- loader / progress / toasts ---------------- */
 let phraseTimer = null;
+let loaderWatchdog = null;
+const WATCHDOG_MS = window.LIVE_WATCHDOG_MS || 15000;
+const FETCH_MS = window.LIVE_FETCH_TIMEOUT_MS || 15000;
+
+/* fetch that can never hang forever */
+async function fetchWithTimeout(url, ms) {
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), ms || FETCH_MS) : null;
+  try {
+    return await fetch(url, ctrl ? { signal: ctrl.signal } : {});
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function showLoader() {
   el.loader.classList.remove('done');
   if (!phraseTimer) {
@@ -247,10 +264,33 @@ function showLoader() {
     setPhrase();
     phraseTimer = setInterval(setPhrase, 2600);
   }
+  /* watchdog: the loader must never stay on screen forever */
+  clearTimeout(loaderWatchdog);
+  loaderWatchdog = setTimeout(() => {
+    if (state._bootFailed || state.weather) return;
+    console.warn('LiveSky: loading watchdog fired — falling back');
+    hideLoader();
+    toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
+    if (!state.weather) fetchWeather();
+  }, WATCHDOG_MS);
 }
 function hideLoader() {
   if (phraseTimer) { clearInterval(phraseTimer); phraseTimer = null; }
+  clearTimeout(loaderWatchdog);
   el.loader.classList.add('done');
+}
+function bootFail(msg) {
+  if (state._bootFailed) return;
+  state._bootFailed = true;
+  console.error('LiveSky boot error:', msg);
+  hideLoader();
+  el.progress.classList.remove('on');
+  const panel = $('boot-error');
+  if (panel) {
+    panel.classList.remove('hidden');
+    const m = $('boot-error-msg');
+    if (m) m.textContent = String(msg || '').slice(0, 200);
+  }
 }
 function setLoading(on) {
   state.loading = Math.max(0, state.loading + (on ? 1 : -1));
@@ -347,7 +387,7 @@ async function fetchWeather(silent) {
     });
     if (state.model && state.model !== 'auto') params.append('models', `${state.model},best_match`);
 
-    const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${params}`, FETCH_MS);
     if (!res.ok) throw new Error('API ' + res.status);
     const data = await res.json();
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
@@ -379,7 +419,7 @@ async function fetchWeather(silent) {
 
 async function fetchAir(seq) {
   try {
-    const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`);
+    const res = await fetchWithTimeout(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`, 12000);
     if (!res.ok) return;
     const data = await res.json();
     if (!data || !data.hourly) return;
@@ -392,7 +432,7 @@ async function fetchAir(seq) {
 /* ---------------- geo ---------------- */
 async function reverseGeo(lat, lon) {
   try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1&accept-language=${state.lang}`);
+    const r = await fetchWithTimeout(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1&accept-language=${state.lang}`, 8000);
     if (r.ok) {
       const d = await r.json();
       if (d && d.address) {
@@ -407,7 +447,7 @@ async function reverseGeo(lat, lon) {
     }
   } catch (e) { console.warn('Nominatim failed', e); }
   try {
-    const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=${state.lang}`);
+    const r = await fetchWithTimeout(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=${state.lang}`, 8000);
     const d = await r.json();
     state.locationName = d.city || d.locality || d.principalSubdivision || `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     state.countryCode = (d.countryCode || '').toUpperCase();
@@ -1224,7 +1264,7 @@ async function handleInput() {
   searchTimer = setTimeout(async () => {
     if (el.input.value.trim() !== q) return; /* query changed while waiting */
     try {
-      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=${state.lang}&format=json`);
+      const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=${state.lang}&format=json`, 8000);
       const d = await r.json();
       if (el.input.value.trim() !== q) return; /* stale response */
       const results = d.results || [];
@@ -1257,7 +1297,7 @@ async function handleSearch(e) {
   if (!q) return;
   closeAutocomplete();
   try {
-    const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${state.lang}&format=json`);
+    const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${state.lang}&format=json`, 10000);
     const d = await r.json();
     if (!d.results || !d.results.length) {
       toast(t('toast_city_not_found'), 'error');
@@ -1666,8 +1706,8 @@ function initMap() {
   mapMark = L.marker([state.lat, state.lon], { icon: makePin('#38bdf8') }).addTo(mapInst);
   /* open fullscreen map on tap/click, but NOT after dragging the map */
   let dragStart = null;
-  el.mapSmall.addEventListener('pointerdown', (e) => { dragStart = { x: e.clientX, y: e.clientY }; });
-  el.mapSmall.addEventListener('pointerup', (e) => {
+  on(el.mapSmall, 'pointerdown', (e) => { dragStart = { x: e.clientX, y: e.clientY }; });
+  on(el.mapSmall, 'pointerup', (e) => {
     if (!dragStart) return;
     const dist = Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y);
     dragStart = null;
@@ -1755,16 +1795,18 @@ function setTheme(theme) {
   applyTheme();
 }
 function setMenuOpen(open) {
-  el.mainMenu.classList.toggle('open', open);
-  el.menuBtn.setAttribute('aria-expanded', String(open));
+  if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
+  if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
 }
 function syncMenuChecks() {
+  if (!el.mainMenu) return;
   el.mainMenu.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('selected', b.dataset.lang === state.lang));
   el.mainMenu.querySelectorAll('[data-theme]').forEach(b => b.classList.toggle('selected', b.dataset.theme === state.theme));
-  el.modelSelect.value = state.model;
-  el.unitsSelect.value = state.units;
+  if (el.modelSelect) el.modelSelect.value = state.model;
+  if (el.unitsSelect) el.unitsSelect.value = state.units;
 }
 function updateThemeLabel() {
+  if (!el.themeLabel) return;
   el.themeLabel.dataset.translate = THEME_KEYS[state.theme];
   el.themeLabel.textContent = t(THEME_KEYS[state.theme]);
 }
@@ -1777,9 +1819,9 @@ function applyTranslations() {
   });
   /* select options */
   const modelLabels = { auto: 'source_model_auto', ecmwf_ifs04: 'source_model_ecmwf', gfs_seamless: 'source_model_gfs', icon_seamless: 'source_model_icon' };
-  [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
+  if (el.modelSelect) [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
   const unitsLabels = { metric: 'units_metric', imperial: 'units_imperial' };
-  [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });
+  if (el.unitsSelect) [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });
   syncMenuChecks();
 }
 
@@ -1819,10 +1861,10 @@ function updateFsIcon() {
 
 /* ---------------- events ---------------- */
 function bindEvents() {
-  el.searchForm.addEventListener('submit', handleSearch);
-  el.input.addEventListener('input', handleInput);
-  el.input.addEventListener('focus', () => { if (!el.input.value.trim()) renderFavoritesList(); });
-  el.input.addEventListener('keydown', (e) => {
+  on(el.searchForm, 'submit', handleSearch);
+  on(el.input, 'input', handleInput);
+  on(el.input, 'focus', () => { if (!el.input.value.trim()) renderFavoritesList(); });
+  on(el.input, 'keydown', (e) => {
     if (e.key === 'Escape') { closeAutocomplete(); el.input.blur(); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       acMove(e.key === 'ArrowDown' ? 1 : -1);
@@ -1834,45 +1876,45 @@ function bindEvents() {
       if (active && !el.autoList.classList.contains('hidden')) { e.preventDefault(); active.click(); }
     }
   });
-  el.searchClear.addEventListener('click', () => {
+  on(el.searchClear, 'click', () => {
     el.input.value = '';
     el.searchClear.classList.add('hidden');
     el.input.focus();
     renderFavoritesList();
   });
-  el.favBtn.addEventListener('click', (e) => { e.preventDefault(); toggleFavorite(); });
-  el.locateBtn.addEventListener('click', (e) => { e.preventDefault(); getUserLocation(true); });
+  on(el.favBtn, 'click', (e) => { e.preventDefault(); toggleFavorite(); });
+  on(el.locateBtn, 'click', (e) => { e.preventDefault(); getUserLocation(true); });
 
   /* unified menu: language, theme, units, model, fullscreen, refresh */
-  el.menuBtn.addEventListener('click', (e) => {
+  on(el.menuBtn, 'click', (e) => {
     e.stopPropagation();
     setMenuOpen(!el.mainMenu.classList.contains('open'));
   });
-  el.mainMenu.addEventListener('click', (e) => {
+  on(el.mainMenu, 'click', (e) => {
     const langBtn = e.target.closest('[data-lang]');
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
     const themeBtn = e.target.closest('[data-theme]');
     if (themeBtn) { setTheme(themeBtn.dataset.theme); setMenuOpen(false); return; }
   });
-  el.modelSelect.addEventListener('change', () => {
+  on(el.modelSelect, 'change', () => {
     state.model = el.modelSelect.value;
     store.set('livesky:model', state.model);
     setMenuOpen(false);
     fetchWeather();
   });
-  el.unitsSelect.addEventListener('change', () => {
+  on(el.unitsSelect, 'change', () => {
     state.units = el.unitsSelect.value;
     store.set('livesky:units', state.units);
     setMenuOpen(false);
     if (state.weather) renderAll();
   });
-  el.fsItem.addEventListener('click', () => { setMenuOpen(false); toggleFullscreen(); });
-  el.refreshItem.addEventListener('click', () => { setMenuOpen(false); fetchWeather(true); });
+  on(el.fsItem, 'click', () => { setMenuOpen(false); toggleFullscreen(); });
+  on(el.refreshItem, 'click', () => { setMenuOpen(false); fetchWeather(true); });
 
-  el.adviceBtn.addEventListener('click', showAdvice);
-  el.historyBtn.addEventListener('click', () => showMonthly('history'));
-  el.sunCard.addEventListener('click', showSunDetails);
-  el.sunCard.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showSunDetails(); } });
+  on(el.adviceBtn, 'click', showAdvice);
+  on(el.historyBtn, 'click', () => showMonthly('history'));
+  on(el.sunCard, 'click', showSunDetails);
+  on(el.sunCard, 'keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showSunDetails(); } });
 
   document.getElementById('life-run').addEventListener('click', () => showLifestyle('run'));
   document.getElementById('life-car').addEventListener('click', () => showLifestyle('car'));
@@ -1883,15 +1925,15 @@ function bindEvents() {
     });
   });
 
-  el.modalClose.addEventListener('click', closeModal);
-  el.modal.addEventListener('click', (e) => { if (e.target === el.modal) closeModal(); });
-  el.mapClose.addEventListener('click', closeFullMap);
-  el.mapApply.addEventListener('click', applyMapLocation);
+  on(el.modalClose, 'click', closeModal);
+  on(el.modal, 'click', (e) => { if (e.target === el.modal) closeModal(); });
+  on(el.mapClose, 'click', closeFullMap);
+  on(el.mapApply, 'click', applyMapLocation);
 
-  el.hLeft.addEventListener('click', () => el.hStrip.scrollBy({ left: -420, behavior: 'smooth' }));
-  el.hRight.addEventListener('click', () => el.hStrip.scrollBy({ left: 420, behavior: 'smooth' }));
+  on(el.hLeft, 'click', () => el.hStrip.scrollBy({ left: -420, behavior: 'smooth' }));
+  on(el.hRight, 'click', () => el.hStrip.scrollBy({ left: 420, behavior: 'smooth' }));
 
-  el.brand.addEventListener('click', () => location.reload());
+  on(el.brand, 'click', () => location.reload());
 
   document.addEventListener('click', (e) => {
     if (!el.searchForm.contains(e.target) && !el.autoList.contains(e.target)) closeAutocomplete();
@@ -1948,6 +1990,12 @@ function initReveal() {
 
 /* ---------------- init ---------------- */
 function init() {
+  /* sanitize persisted settings (old/foreign values must never break boot) */
+  if (!I18N[state.lang]) state.lang = 'ru';
+  if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';
+  if (!['metric', 'imperial'].includes(state.units)) state.units = 'metric';
+  if (!['auto', 'ecmwf_ifs04', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
+
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
   el.input.placeholder = t('search_ph');
@@ -1974,4 +2022,16 @@ function init() {
   }
 }
 
-init();
+/* fatal errors must never leave the user staring at the loader */
+window.addEventListener('error', (e) => {
+  if (e && e.filename && /(app|i18n)\.js/.test(e.filename)) bootFail(e.message);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  if (!state.weather) bootFail((e.reason && e.reason.message) || String(e.reason || 'Unknown error'));
+});
+
+try {
+  init();
+} catch (err) {
+  bootFail(err && err.message ? err.message : String(err));
+}
