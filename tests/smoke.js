@@ -37,13 +37,14 @@ const ctxStub = new Proxy({}, {
 });
 window.HTMLCanvasElement.prototype.getContext = () => ctxStub;
 
-/* leaflet stub */
-const fakeMap = () => ({ setView() { return this; }, removeLayer() { return this; }, invalidateSize() {}, getZoom() { return 10; }, on() {} });
-window.L = {
-  map: fakeMap,
-  tileLayer: () => ({ addTo() { return this; }, setUrl() {} }),
-  marker: () => ({ addTo() { return this; }, bindPopup() { return { openPopup() {} }; } }),
-  divIcon: (o) => o
+/* maplibre gl stub */
+const fakeMap = () => ({ setStyle() {}, addControl() {}, flyTo() {}, resize() {}, getZoom() { return 10; }, on() {}, once() {}, remove() {} });
+window.maplibregl = {
+  Map: function () { return fakeMap(); },
+  Marker: function () { return { setLngLat() { return this; }, addTo() { return this; }, remove() {} }; },
+  Popup: function () { return { setLngLat() { return this; }, setHTML() { return this; }, addTo() { return this; }, remove() {} }; },
+  NavigationControl: function () {},
+  AttributionControl: function () {}
 };
 
 /* ---- synthetic Open-Meteo data (local time = Europe/Moscow) ---- */
@@ -147,9 +148,12 @@ setTimeout(() => {
     assert(q('m-feels') !== null, 'feels-like metric kept in grid');
     assert(q('condition').textContent.length > 1, 'condition label rendered: ' + q('condition').textContent);
     assert(!q('rain-status').classList.contains('hidden'), 'rain status visible next to temperature');
+    assert(q('m-precip').closest('.metric').querySelector('.metric-label').textContent.trim() === 'Макс. дождь за 24ч', 'rain tile label is short and clear');
+    assert(q('loader') !== null && q('loader').querySelector('.loader-orb') !== null, 'premium loader orb exists');
+    assert(q('loader').querySelector('.loader-bar') !== null, 'loader progress bar exists');
     {
       const rs = q('rain-status-text').textContent;
-      assert(/Вероятность дождя|Дождь закончится|Снег закончится|Дождь весь день/.test(rs), 'rain status is smart (prob or end time): ' + rs);
+      assert(/Вероятность дождя сейчас|Дождь закончится|Снег закончится|Дождь весь день/.test(rs), 'rain status is smart (prob or end time): ' + rs);
       if (/закончится/.test(rs)) assert(/ещё \d+ч/.test(rs), 'rain status shows remaining duration: ' + rs);
     }
     assert(q('location').textContent === 'Москва', 'default location: ' + q('location').textContent);
@@ -293,7 +297,7 @@ function makeWorld(htmlMod) {
   w.HTMLElement.prototype.scrollBy = function () {};
   w.HTMLElement.prototype.scrollIntoView = function () {};
   w.HTMLCanvasElement.prototype.getContext = () => ctxStub;
-  w.L = { map: fakeMap, tileLayer: () => ({ addTo() { return this; }, setUrl() {} }), marker: () => ({ addTo() { return this; } }), divIcon: (o) => o };
+  w.maplibregl = { Map: function () { return fakeMap(); }, Marker: function () { return { setLngLat() { return this; }, addTo() { return this; }, remove() {} }; }, Popup: function () { return { setLngLat() { return this; }, setHTML() { return this; }, addTo() { return this; }, remove() {} }; }, NavigationControl: function () {}, AttributionControl: function () {} };
   w.addEventListener('error', (e) => errors.push('window error: ' + e.message));
   return { w, doc };
 }

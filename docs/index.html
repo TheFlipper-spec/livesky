@@ -12,11 +12,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=9" />
+  <link rel="stylesheet" href="css/app.css?v=10" />
 </head>
 
 <body data-theme="adaptive">
@@ -40,14 +40,18 @@
 
   <!-- ==== Loader ==== -->
   <div id="loader">
-    <div class="loader-scene">
-      <div class="loader-sun"></div>
-      <div class="loader-rays"></div>
-      <i class="ph-fill ph-cloud loader-cloud"></i>
+    <div class="loader-orb">
+      <span class="orb-star st1"></span>
+      <span class="orb-star st2"></span>
+      <span class="orb-star st3"></span>
+      <div class="orb-ring ring-a"><i class="ph-fill ph-cloud orb-cloud"></i></div>
+      <div class="orb-ring ring-b"><span class="orb-dot"></span></div>
+      <div class="orb-core"></div>
     </div>
-    <div class="loader-title">LiveSky</div>
+    <div class="loader-brand">LiveSky</div>
+    <div class="loader-tag">PRO WEATHER</div>
     <div class="loader-phrase" id="loader-phrase">Загрузка...</div>
-    <div class="loader-dots"><i></i><i></i><i></i></div>
+    <div class="loader-bar"><i></i></div>
   </div>
 
   <!-- ==== Boot error (shown instead of endless loader if something fatal happens) ==== -->
@@ -341,7 +345,7 @@
         <a class="footer-link" href="https://docs.google.com/forms/d/e/1FAIpQLSeM6QLhVhqC-MmFMRKkzH860GsNJA8Rbx61bgU7y1dY5l8q2w/viewform?usp=dialog" target="_blank" rel="noopener"><i class="ph-bold ph-chat-teardrop-text"></i><span data-translate="footer_feedback">Обратная связь</span></a>
       </div>
       <p class="footer-copy"><span data-translate="footer_copy">LiveSky Weather Pro · данные: Open-Meteo</span><br />
-        Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Maps by <a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a> &amp; OSM · Geocoding by Open-Meteo / Nominatim</p>
+        Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Maps by <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL</a> &amp; OSM · Geocoding by Open-Meteo / Nominatim</p>
     </footer>
   </div>
 
@@ -369,7 +373,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=9"></script>
-  <script src="js/app.js?v=9"></script>
+  <script src="js/i18n.js?v=10"></script>
+  <script src="js/app.js?v=10"></script>
 </body>
 </html>
