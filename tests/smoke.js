@@ -167,6 +167,9 @@ setTimeout(() => {
       assert(cap.appId === 'io.github.theflipperspec.livesky' && cap.webDir === 'docs', 'Capacitor uses the permanent LiveSky app id and docs web assets');
       assert(pkg.dependencies['@capacitor/android'] && pkg.dependencies['@capacitor/geolocation'] && pkg.dependencies['@capacitor/local-notifications'], 'native Android, geolocation and notifications plugins are installed');
       assert(pkg.scripts['android:build'] && pkg.scripts['cap:sync'], 'Android sync and APK build scripts exist');
+      const gradlew = fs.readFileSync(path.join(root, 'android', 'gradlew'), 'utf8');
+      const androidCi = fs.readFileSync(path.join(root, 'android', 'ci', 'github-actions-android.yml.example'), 'utf8');
+      assert(/JAVA_HOME_21_X64/.test(gradlew) && /java-version:\s*21/.test(androidCi), 'Capacitor Android build uses its required Java 21 toolchain');
       assert(/ACCESS_COARSE_LOCATION/.test(manifest) && /ACCESS_FINE_LOCATION/.test(manifest), 'Android location permissions are declared');
       assert(/SCHEDULE_EXACT_ALARM[\s\S]*tools:node="remove"/.test(manifest), 'unused restricted exact-alarm permission is removed');
       assert(/nativePlugin\('Geolocation'\)/.test(appSrc) && /nativePlugin\('LocalNotifications'\)/.test(appSrc) && /if \(isNativeApp\(\)\) return/.test(appSrc), 'web app includes native Capacitor adapters and skips PWA cache in Android');
