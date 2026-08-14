@@ -148,6 +148,11 @@ setTimeout(() => {
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
       assert(/\.search-form input\s*\{[^}]*cursor:\s*text/s.test(cssSrc), 'search input uses a text cursor');
+      /* hourly strip must be a horizontal no-wrap flex row (regression: items stacked vertically) */
+      const hs = cssSrc.match(/\.hourly-strip\s*\{[^}]*\}/s);
+      assert(hs && /display:\s*flex/.test(hs[0]) && /flex-direction:\s*row/.test(hs[0]) && /flex-wrap:\s*nowrap/.test(hs[0]), 'hourly strip is a horizontal no-wrap flex row');
+      assert(/\.shell\s*\{[^}]*max-width:\s*1560px/s.test(cssSrc), 'shell uses the full width on big screens');
+      assert(/min-width:\s*1750px/.test(cssSrc), 'wide-screen edge decorations exist');
     }
     assert(q('loader').classList.contains('done'), 'loader hidden after data load');
     assert(/[-\d]+°/.test(q('temperature').textContent), 'temperature rendered: ' + q('temperature').textContent);
