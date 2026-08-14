@@ -4,9 +4,16 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>LiveSky — Погода, которая впечатляет</title>
-  <meta name="description" content="LiveSky Weather Pro — точный прогноз погоды с анимациями, графиками, качеством воздуха и прогнозом активностей." />
+  <meta name="description" content="LiveSky Weather Pro — точный прогноз погоды с анимациями, графиками, качеством воздуха, радаром осадков и офлайн-доступом." />
   <meta name="theme-color" content="#05070f" />
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M18 44c6-2 9-7 13-9 5-2 8 1 11 3 2 1 4 1 6 0' stroke='white' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3Ccircle cx='45' cy='22' r='7' fill='%23fde68a'/%3E%3C/svg%3E" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LiveSky" />
+  <link rel="manifest" href="manifest.webmanifest" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,7 +23,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=14" />
+  <link rel="stylesheet" href="css/app.css?v=15" />
 </head>
 
 <body data-theme="adaptive">
@@ -115,7 +122,15 @@
               <option value="icon_seamless">ICON (DWD)</option>
             </select>
 
+            <div class="dd-group-label"><span data-translate="effects_group">Производительность</span></div>
+            <select class="dd-select" id="effects-select">
+              <option value="auto" data-translate="effects_auto">Авто (по FPS)</option>
+              <option value="full" data-translate="effects_full">Максимум</option>
+              <option value="eco" data-translate="effects_eco">Эконом</option>
+            </select>
+
             <div class="dd-group-label" data-translate="actions">Действия</div>
+            <button class="dd-item hidden" id="install-item"><i class="ph ph-download-simple"></i><span data-translate="install_app">Установить приложение</span></button>
             <button class="dd-item" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location">Моё местоположение</span></button>
             <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
             <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
@@ -373,12 +388,45 @@
       <div class="map-instr" id="map-instr"><b data-translate="map_instr_title">Нажмите на карту</b><span data-translate="map_instr_sub">чтобы выбрать точку</span></div>
       <button class="map-apply hidden" id="map-apply-btn"><i class="ph-bold ph-check"></i><span data-translate="map_apply">Показать погоду здесь</span></button>
     </div>
+
+    <!-- Rain radar (RainViewer) over the fullscreen map with a timeline -->
+    <button class="radar-toggle" id="radar-toggle" aria-pressed="false" title="Радар осадков">
+      <i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_btn">Радар</span>
+    </button>
+
+    <div class="radar-panel hidden" id="radar-panel" role="region" aria-label="Радар осадков">
+      <div class="radar-head">
+        <span class="radar-title"><i class="ph ph-cloud-rain"></i><span data-translate="radar_title">Радар осадков</span></span>
+        <span class="radar-time" id="radar-time">--:--</span>
+        <button class="radar-close" id="radar-close" aria-label="Закрыть радар"><i class="ph-bold ph-x"></i></button>
+      </div>
+      <div class="radar-timeline">
+        <button class="radar-nav" id="radar-back" aria-label="Назад"><i class="ph-bold ph-caret-left"></i></button>
+        <div class="radar-range">
+          <input type="range" id="radar-slider" min="0" max="0" value="0" aria-label="Время кадра радара" />
+        </div>
+        <button class="radar-nav" id="radar-next" aria-label="Вперёд"><i class="ph-bold ph-caret-right"></i></button>
+        <button class="radar-play" id="radar-play" aria-label="Воспроизвести"><i class="ph-fill ph-play"></i></button>
+      </div>
+      <div class="radar-legend">
+        <span data-translate="radar_legend_weak">Слабо</span>
+        <span class="radar-legend-bar"></span>
+        <span data-translate="radar_legend_strong">Сильно</span>
+      </div>
+      <div class="radar-note"><i class="ph ph-info"></i><span data-translate="radar_note">Данные: RainViewer · кадры каждые 10 минут</span></div>
+      <div class="radar-loading hidden" id="radar-loading"><i class="ph-fill ph-circle-notch"></i><span data-translate="radar_loading">Загружаем радар...</span></div>
+    </div>
+  </div>
+
+  <!-- ==== Offline banner ==== -->
+  <div class="offline-banner hidden" id="offline-banner" role="status">
+    <i class="ph-fill ph-wifi-slash"></i><span data-translate="offline_banner">Нет соединения — показываем последний прогноз из кеша</span>
   </div>
 
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/i18n.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

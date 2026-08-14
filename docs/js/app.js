@@ -32,7 +32,11 @@ const el = {
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), searchClear: $('search-clear'),
   menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'), geoItem: $('geo-item'),
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
-  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label')
+  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label'),
+  effectsSelect: $('effects-select'), installItem: $('install-item'), offlineBanner: $('offline-banner'),
+  radarToggle: $('radar-toggle'), radarPanel: $('radar-panel'), radarLoading: $('radar-loading'),
+  radarTime: $('radar-time'), radarSlider: $('radar-slider'), radarBack: $('radar-back'),
+  radarNext: $('radar-next'), radarPlay: $('radar-play'), radarClose: $('radar-close')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -66,6 +70,7 @@ const state = {
   theme: store.get('livesky:theme', 'adaptive'),
   units: store.get('livesky:units', 'metric'),
   model: store.get('livesky:model', 'auto'),
+  effects: store.get('livesky:effects', 'auto'),
   lat: 55.7558, lon: 37.6173,
   locationName: 'Москва', countryCode: 'RU', admin: '',
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -1151,6 +1156,8 @@ const LOGOS = {
 };
 
 let lastBgKey = '';
+/* heavy effects are disabled when the user is in Eco mode or the FPS detector flagged a weak device */
+function effectsReduced() { return state.effects === 'eco' || (state.effects === 'auto' && state._perfLow); }
 function setBackground(gradient, key) {
   if (key && key === lastBgKey) return;
   lastBgKey = key || '';
@@ -1211,9 +1218,12 @@ function applyWeatherTheme() {
   else if (type === 'clear') fx = null;
   else if (type === 'fog') fx = 'fog';
   else if (type === 'cloudy') fx = 'clouds';
-  FX.start(fx);
 
-  if (type === 'storm') startStorm(); else stopStorm();
+  if (effectsReduced()) { FX.stop(); stopStorm(); }
+  else {
+    FX.start(fx);
+    if (type === 'storm') startStorm(); else stopStorm();
+  }
 }
 
 function stopStorm() {
@@ -2026,6 +2036,7 @@ function openFullMap() {
             el.mapInstr.style.display = 'none';
             el.mapApply.classList.remove('hidden');
           });
+          if (RADAR.active) { RADAR.ensureLayer(); RADAR.renderFrame(); }
         });
         fullMapInst.on('error', () => {
           if (!fullMapFallback) { fullMapFallback = true; try { fullMapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
@@ -2221,6 +2232,24 @@ function bindEvents() {
   on(el.refreshItem, 'click', () => { setMenuOpen(false); fetchWeather(true); });
   on(el.geoItem, 'click', () => { setMenuOpen(false); getUserLocation(true); });
 
+  /* quality preset (auto / maximum / eco) */
+  on(el.effectsSelect, 'change', () => {
+    state.effects = el.effectsSelect.value;
+    store.set('livesky:effects', state.effects);
+    setMenuOpen(false);
+    applyEffects();
+    if (state.effects === 'full') { state._perfLow = false; applyEffects(); }
+  });
+  on(el.installItem, 'click', promptInstall);
+
+  /* rain radar */
+  on(el.radarToggle, 'click', () => RADAR.toggle());
+  on(el.radarClose, 'click', () => RADAR.disable());
+  on(el.radarPlay, 'click', () => RADAR.togglePlay());
+  on(el.radarNext, 'click', () => RADAR.step(1));
+  on(el.radarBack, 'click', () => RADAR.step(-1));
+  on(el.radarSlider, 'input', (e) => RADAR.goto(+e.target.value));
+
   on(el.adviceBtn, 'click', showAdvice);
   on(el.historyBtn, 'click', () => showMonthly('history'));
   on(el.sunCard, 'click', showSunDetails);
@@ -2300,6 +2329,202 @@ function initReveal() {
   items.forEach(n => io.observe(n));
 }
 
+/* ---------------- PWA: service worker + install --------------- */
+let deferredInstallPrompt = null;
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (!/^https?:$/.test(location.protocol)) return; /* skip file:// and data: */
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* non-critical */ });
+  });
+}
+function updateInstallItem() {
+  if (el.installItem) el.installItem.classList.toggle('hidden', !deferredInstallPrompt);
+}
+function promptInstall() {
+  if (!deferredInstallPrompt) return;
+  const p = deferredInstallPrompt;
+  p.prompt();
+  p.userChoice && p.userChoice.then(() => { deferredInstallPrompt = null; updateInstallItem(); });
+}
+function initInstallPrompt() {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    updateInstallItem();
+    if (!state._installToastShown) {
+      state._installToastShown = true;
+      setTimeout(() => toast(t('toast_install_ready'), 'info', t('install_app'), promptInstall), 2500);
+    }
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateInstallItem();
+  });
+}
+
+/* ---------------- Offline / online banner --------------- */
+function initConnectivity() {
+  if (typeof navigator === 'undefined') return;
+  const show = () => { if (el.offlineBanner) { el.offlineBanner.classList.remove('out'); el.offlineBanner.classList.remove('hidden'); } };
+  const hide = () => {
+    if (!el.offlineBanner) return;
+    el.offlineBanner.classList.add('out');
+    setTimeout(() => el.offlineBanner.classList.add('hidden'), 320);
+  };
+  window.addEventListener('offline', show);
+  window.addEventListener('online', () => { hide(); if (state.weather) fetchWeather(true); });
+  if (navigator.onLine === false) show();
+}
+
+/* ---------------- Adaptive performance (FPS detector) --------------- */
+const PERF = {
+  raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0,
+  start() {
+    if (motionReduce) return;
+    this.windowStart = performance.now();
+    const tick = (t) => {
+      this.windowFrames++;
+      if (t - this.windowStart >= 2000) {
+        const fps = (this.windowFrames * 1000) / Math.max(1, t - this.windowStart);
+        this.windowFrames = 0; this.windowStart = t;
+        if (fps < 22) this.lowStreak++; else this.lowStreak = 0;
+        if (fps > 42) this.normalStreak++; else this.normalStreak = 0;
+        this.evaluate();
+      }
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+  evaluate() {
+    if (state.effects !== 'auto') return;
+    if (!state._perfLow && this.lowStreak >= 2) {
+      state._perfLow = true; this.lowStreak = 0; this.normalStreak = 0;
+      applyEffects();
+      toast(t('toast_perf_low'), 'info');
+    } else if (state._perfLow && this.normalStreak >= 6) {
+      state._perfLow = false; this.normalStreak = 0;
+      applyEffects();
+      toast(t('toast_perf_restored'), 'success');
+    }
+  }
+};
+
+/* Apply the current quality mode: Eco/low disable heavy canvas FX + storm flashes. */
+function applyEffects() {
+  const eco = state.effects === 'eco';
+  const low = eco || (state.effects === 'auto' && state._perfLow);
+  document.documentElement.setAttribute('data-perf', low ? (eco ? 'eco' : 'low') : '');
+  if (low) { FX.stop(); stopStorm(); }
+  else if (state.weather) applyWeatherTheme();
+}
+function syncEffectsSelect() {
+  if (el.effectsSelect) el.effectsSelect.value = state.effects;
+}
+
+/* ---------------- Rain radar (RainViewer) over the fullscreen map --------------- */
+const RADAR = {
+  frames: [], idx: -1, playing: false, playTimer: null, layerReady: false, active: false,
+  async load() {
+    this.showLoading(true);
+    try {
+      const r = await fetchWithTimeout('https://api.rainviewer.com/public/weather-maps.json', 12000);
+      if (!r.ok) throw new Error('rainviewer ' + r.status);
+      const d = await r.json();
+      const past = (d.radar && d.radar.past) || [];
+      const nowcast = (d.radar && d.radar.nowcast) || [];
+      this.frames = past.concat(nowcast).map(f => ({ time: f.time, url: d.host + f.path }));
+      if (!this.frames.length) { toast(t('toast_network'), 'error'); return; }
+      this.idx = Math.max(0, past.length - 1);
+      this.setupSlider();
+      this.ensureLayer();
+      this.renderFrame();
+    } catch (e) {
+      toast(t('toast_network'), 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+  showLoading(on) {
+    if (el.radarLoading) el.radarLoading.classList.toggle('hidden', !on);
+    if (el.radarToggle) el.radarToggle.classList.toggle('loading', on);
+  },
+  setupSlider() {
+    if (el.radarSlider) { el.radarSlider.max = String(this.frames.length - 1); el.radarSlider.value = String(this.idx); }
+    this.updateTime();
+  },
+  tileUrl() { return `${this.frames[this.idx].url}/256/{z}/{x}/{y}/2/1_1.png`; },
+  ensureLayer() {
+    if (!fullMapInst || !this.frames[this.idx]) return;
+    try {
+      if (!fullMapInst.getSource('radar')) {
+        fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: 256 });
+        fullMapInst.addLayer({
+          id: 'radar', type: 'raster', source: 'radar',
+          paint: { 'raster-opacity': 0.78, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
+        });
+      } else {
+        fullMapInst.getSource('radar').setTiles([this.tileUrl()]);
+      }
+      this.layerReady = true;
+    } catch (e) { /* map not ready yet */ }
+  },
+  renderFrame() {
+    if (!this.frames.length || this.idx < 0) return;
+    if (fullMapInst && this.layerReady) {
+      try { fullMapInst.getSource('radar').setTiles([this.tileUrl()]); } catch (e) { /* ignore */ }
+    }
+    if (el.radarSlider) el.radarSlider.value = String(this.idx);
+    this.updateTime();
+  },
+  updateTime() {
+    if (el.radarTime && this.frames[this.idx]) {
+      el.radarTime.textContent = new Date(this.frames[this.idx].time * 1000)
+        .toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
+    }
+  },
+  step(dir) { if (!this.frames.length) return; this.idx = Math.min(this.frames.length - 1, Math.max(0, this.idx + dir)); this.renderFrame(); },
+  goto(i) { if (i < 0 || i >= this.frames.length) return; this.idx = i; this.renderFrame(); },
+  togglePlay() { this.playing ? this.pause() : this.play(); },
+  play() {
+    if (!this.frames.length) return;
+    this.playing = true;
+    if (el.radarPlay) { el.radarPlay.classList.add('playing'); el.radarPlay.innerHTML = '<i class="ph-fill ph-pause"></i>'; }
+    this.playTimer = setInterval(() => {
+      this.idx = this.idx >= this.frames.length - 1 ? 0 : this.idx + 1;
+      this.renderFrame();
+    }, 700);
+  },
+  pause() {
+    this.playing = false;
+    if (this.playTimer) { clearInterval(this.playTimer); this.playTimer = null; }
+    if (el.radarPlay) { el.radarPlay.classList.remove('playing'); el.radarPlay.innerHTML = '<i class="ph-fill ph-play"></i>'; }
+  },
+  enable() {
+    if (this.active) return;
+    this.active = true;
+    if (el.radarPanel) el.radarPanel.classList.remove('hidden');
+    if (el.radarToggle) { el.radarToggle.classList.add('on'); el.radarToggle.setAttribute('aria-pressed', 'true'); }
+    this.ensureLayer();
+    this.load();
+  },
+  disable() {
+    this.pause();
+    this.active = false;
+    if (el.radarPanel) el.radarPanel.classList.add('hidden');
+    if (el.radarToggle) { el.radarToggle.classList.remove('on'); el.radarToggle.setAttribute('aria-pressed', 'false'); }
+    if (fullMapInst && this.layerReady) {
+      try {
+        if (fullMapInst.getLayer('radar')) fullMapInst.removeLayer('radar');
+        if (fullMapInst.getSource('radar')) fullMapInst.removeSource('radar');
+      } catch (e) { /* ignore */ }
+      this.layerReady = false;
+    }
+  },
+  toggle() { this.active ? this.disable() : this.enable(); }
+};
+
 /* ---------------- init ---------------- */
 function init() {
   /* sanitize persisted settings (old/foreign values must never break boot) */
@@ -2307,6 +2532,7 @@ function init() {
   if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';
   if (!['metric', 'imperial'].includes(state.units)) state.units = 'metric';
   if (!['auto', 'ecmwf_ifs04', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
+  if (!['auto', 'full', 'eco'].includes(state.effects)) state.effects = 'auto';
 
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
@@ -2314,12 +2540,21 @@ function init() {
   applyTranslations();
   updateThemeLabel();
   syncMenuChecks();
+  syncEffectsSelect();
   updateFavIcon();
   startClock();
   bindEvents();
   initReveal();
+  applyEffects();
   showLoader();
   initMap();
+
+  /* PWA + adaptive performance + offline */
+  registerServiceWorker();
+  initInstallPrompt();
+  updateInstallItem();
+  initConnectivity();
+  if (state.effects !== 'full') PERF.start();
 
   const last = store.get('livesky:last_city', null);
   if (last && last.lat != null) {
