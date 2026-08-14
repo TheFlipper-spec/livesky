@@ -124,6 +124,8 @@ window.addEventListener('error', (e) => errors.push('window error: ' + e.message
 process.on('unhandledRejection', (r) => errors.push('unhandled rejection: ' + (r && r.message)));
 
 /* ---- run app scripts (as classic inline scripts, like a browser) ---- */
+window.LIVE_FAV_DELAY_MS = 0;   /* open favorites list synchronously on focus */
+window.LIVE_UI_LOCK_MS = 200;   /* short UI lock after closing overlays */
 const i18nSrc = fs.readFileSync(path.join(DOCS, 'js', 'i18n.js'), 'utf8');
 const appSrc = fs.readFileSync(path.join(DOCS, 'js', 'app.js'), 'utf8');
 try {
@@ -140,6 +142,13 @@ const assert = (cond, msg) => { if (!cond) errors.push('ASSERT: ' + msg); consol
 
 setTimeout(() => {
   try {
+    /* CSS regressions: closed overlay must be inert, input must use text cursor */
+    {
+      const cssSrc = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
+      const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
+      assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
+      assert(/\.search-form input\s*\{[^}]*cursor:\s*text/s.test(cssSrc), 'search input uses a text cursor');
+    }
     assert(q('loader').classList.contains('done'), 'loader hidden after data load');
     assert(/[-\d]+°/.test(q('temperature').textContent), 'temperature rendered: ' + q('temperature').textContent);
     assert(!q('temp-unit'), 'double degree span removed');
@@ -281,8 +290,22 @@ setTimeout(() => {
         assert(recent.length > 0 && recent[0].name === 'Санкт-Петербург', 'recent city saved');
         const favs = JSON.parse(window.localStorage.getItem('livesky:favorites') || '[]');
         assert(Array.isArray(favs), 'favorites storage works');
+        /* after closing the fullscreen map the autocomplete must NOT pop up instantly */
+        window.closeFullMap();
+        q('city-input').focus();
+        q('city-input').dispatchEvent(new window.Event('focus'));
+        assert(q('autocomplete-list').classList.contains('hidden'), 'autocomplete stays closed right after closing fullscreen map');
+        setTimeout(() => {
+          try {
+            q('city-input').blur();
+            q('city-input').focus();
+            q('city-input').dispatchEvent(new window.Event('focus'));
+            assert(!q('autocomplete-list').classList.contains('hidden'), 'autocomplete opens again after the lock expires');
+          } catch (e) { errors.push('lock test crashed: ' + e.message); }
+          phase2();
+        }, 350);
       } finally {
-        phase2();
+        /* phase2 is chained from the nested timeout above */
       }
     }, 700);
   } catch (e) {
