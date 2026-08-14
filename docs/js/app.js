@@ -30,7 +30,7 @@ const el = {
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'), searchClear: $('search-clear'),
   menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'),
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
-  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), menuScrim: $('menu-scrim')
+  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -1192,7 +1192,6 @@ function selectCity(c, isFav) {
 function closeAutocomplete() {
   el.autoList.classList.add('hidden');
   acIndex = -1;
-  updateScrim();
 }
 /* keyboard navigation inside autocomplete list */
 let acIndex = -1;
@@ -1258,7 +1257,6 @@ function renderFavoritesList() {
     });
   }
   el.autoList.classList.remove('hidden');
-  updateScrim();
 }
 
 async function handleInput() {
@@ -1272,8 +1270,7 @@ async function handleInput() {
   if (q.length < 3) {
     el.autoList.innerHTML = '';
     el.autoList.classList.add('hidden');
-    updateScrim();
-    return;
+      return;
   }
   searchTimer = setTimeout(async () => {
     if (el.input.value.trim() !== q) return; /* query changed while waiting */
@@ -1301,8 +1298,7 @@ async function handleInput() {
         });
       }
       el.autoList.classList.remove('hidden');
-      updateScrim();
-    } catch (e) { /* silent */ }
+        } catch (e) { /* silent */ }
   }, 280);
 }
 
@@ -1812,14 +1808,6 @@ function setTheme(theme) {
 function setMenuOpen(open) {
   if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
   if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
-  updateScrim();
-}
-/* dim the page behind any open dropdown so it visually pops */
-function updateScrim() {
-  if (!el.menuScrim) return;
-  const menuOpen = el.mainMenu && el.mainMenu.classList.contains('open');
-  const acOpen = el.autoList && !el.autoList.classList.contains('hidden');
-  el.menuScrim.classList.toggle('on', menuOpen || acOpen);
 }
 function syncMenuChecks() {
   if (!el.mainMenu) return;
@@ -1962,7 +1950,6 @@ function bindEvents() {
     if (!el.searchForm.contains(e.target) && !el.autoList.contains(e.target)) closeAutocomplete();
     if (!el.menuBtn.contains(e.target) && !el.mainMenu.contains(e.target)) setMenuOpen(false);
   });
-  on(el.menuScrim, 'click', () => { setMenuOpen(false); closeAutocomplete(); });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {

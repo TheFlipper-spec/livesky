@@ -156,7 +156,6 @@ setTimeout(() => {
     assert(q('m-wind-dir').textContent.includes('Запад'), 'wind direction is a full word (not "З"): ' + q('m-wind-dir').textContent);
     assert(q('m-wind-dir').textContent.includes('Порывы'), 'wind tile shows gusts');
     assert(document.querySelectorAll('.metric-ico').length === 8, 'metrics redesigned with icon chips');
-    assert(q('menu-scrim') !== null, 'menu scrim element exists');
     assert(q('m-press').textContent !== '--', 'pressure metric');
     assert(q('aqi-value').textContent !== '--', 'AQI value: ' + q('aqi-value').textContent);
     assert(q('m-wind-arrow').style.transform.includes('deg'), 'wind arrow rotated');
@@ -174,14 +173,12 @@ setTimeout(() => {
     q('menu-btn').click();
     assert(q('main-menu').classList.contains('open'), 'unified menu opens');
     assert(q('menu-btn').getAttribute('aria-expanded') === 'true', 'menu aria-expanded');
-    assert(q('menu-scrim').classList.contains('on'), 'scrim dims page when menu is open');
     assert(q('main-menu').querySelector('[data-lang]') && q('main-menu').querySelector('[data-theme]'), 'menu has lang + theme items');
     assert(q('fs-item') !== null && q('refresh-item') !== null, 'menu has fullscreen + refresh actions');
     q('main-menu').querySelector('[data-lang="en"]').click();
     assert(q('theme-label').textContent === 'Adaptive', 'lang pick via menu (theme label en)');
     assert(q('city-input').placeholder === 'Search city...', 'lang pick via menu (placeholder)');
     assert(!q('main-menu').classList.contains('open'), 'menu closes after language pick');
-    assert(!q('menu-scrim').classList.contains('on'), 'scrim hides after menu closes');
     window.setLang('ru');
     q('menu-btn').click();
     q('main-menu').querySelector('[data-theme="light"]').click();
@@ -194,12 +191,10 @@ setTimeout(() => {
     q('city-input').focus();
     q('city-input').dispatchEvent(new window.Event('focus'));
     assert(!q('autocomplete-list').classList.contains('hidden'), 'autocomplete opens on focus');
-    assert(q('menu-scrim').classList.contains('on'), 'scrim dims page when autocomplete is open');
     q('city-input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
     assert(q('autocomplete-list').querySelector('.ac-item.active') !== null, 'arrow key highlights autocomplete item');
     q('city-input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     assert(q('autocomplete-list').classList.contains('hidden'), 'escape closes autocomplete');
-    assert(!q('menu-scrim').classList.contains('on'), 'scrim hides after autocomplete closes');
     q('fav-btn').click(); /* remove favorite again */
 
     /* search clear button */
