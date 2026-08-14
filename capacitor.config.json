@@ -1,0 +1,22 @@
+{
+  "appId": "io.github.theflipperspec.livesky",
+  "appName": "LiveSky",
+  "webDir": "docs",
+  "backgroundColor": "#05070f",
+  "loggingBehavior": "debug",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#05070f",
+    "webContentsDebuggingEnabled": false
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_livesky",
+      "iconColor": "#38BDF8"
+    }
+  }
+}
