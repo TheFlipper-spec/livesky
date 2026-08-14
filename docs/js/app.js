@@ -2805,27 +2805,33 @@ function initNativeBridge() {
 
   const nativeApp = nativePlugin('App');
   if (nativeApp) {
-    nativeApp.addListener('backButton', () => {
-      if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
-      if (el.modal.classList.contains('open')) { closeModal(); return; }
-      if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
-      if (el.autoList && !el.autoList.classList.contains('hidden')) { closeAutocomplete(); return; }
-      nativeApp.exitApp();
-    }).catch(() => {});
+    try {
+      /* Capacitor's addListener can return a PluginListenerHandle directly
+         instead of a Promise. Promise.resolve supports both API shapes. */
+      Promise.resolve(nativeApp.addListener('backButton', () => {
+        if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
+        if (el.modal.classList.contains('open')) { closeModal(); return; }
+        if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
+        if (el.autoList && !el.autoList.classList.contains('hidden')) { closeAutocomplete(); return; }
+        nativeApp.exitApp();
+      })).catch(() => {});
+    } catch (e) { /* a native listener must never block application startup */ }
   }
 
   const nativeNotifications = nativePlugin('LocalNotifications');
   if (nativeNotifications) {
-    nativeNotifications.createChannel({
-      id: 'weather-alerts',
-      name: 'LiveSky Weather',
-      description: 'Weather warnings and forecast alerts',
-      importance: 4,
-      visibility: 1,
-      vibration: true,
-      lights: true,
-      lightColor: '#38BDF8'
-    }).catch(() => {});
+    try {
+      Promise.resolve(nativeNotifications.createChannel({
+        id: 'weather-alerts',
+        name: 'LiveSky Weather',
+        description: 'Weather warnings and forecast alerts',
+        importance: 4,
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#38BDF8'
+      })).catch(() => {});
+    } catch (e) { /* notifications remain optional */ }
   }
 }
 
