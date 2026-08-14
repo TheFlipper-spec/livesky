@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v4';
+const VERSION = 'livesky-v5';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -15,6 +15,7 @@ const SHELL_ASSETS = [
   './js/i18n.js',
   './js/app.js',
   './manifest.webmanifest',
+  './favicon.ico',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-180.png',
