@@ -1741,29 +1741,79 @@ function showLifeSkySlot(index, type) {
   $('life-back').addEventListener('click', () => showLifestyle(type));
 }
 
-/* ---------------- maps ---------------- */
-let mapInst = null, mapMark = null, mapTiles = null;
-let fullMapInst = null, fullMapMark = null, fullTiles = null;
+/* ---------------- maps (MapLibre GL) ---------------- */
+let mapInst = null, mapMarkEl = null;
+let fullMapInst = null, fullMarkEl = null, fullPopup = null;
 let tempLat = null, tempLon = null;
 
-function tileUrl() {
-  return state.theme === 'light'
-    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+/* Vector styles themed per app theme (no API keys, © OpenStreetMap / OpenMapTiles) */
+const MAP_STYLES = {
+  dark: {
+    version: 8,
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sources: {
+      demotiles: { type: 'vector', url: 'https://demotiles.maplibre.org/tiles/tiles.json', attribution: '© OpenStreetMap contributors' }
+    },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#0a1322' } },
+      { id: 'water', type: 'fill', source: 'demotiles', 'source-layer': 'water', paint: { 'fill-color': '#0d2034' } },
+      { id: 'landuse-res', type: 'fill', source: 'demotiles', 'source-layer': 'landuse', filter: ['==', ['get', 'class'], 'residential'], paint: { 'fill-color': '#101c30', 'fill-opacity': 0.6 } },
+      { id: 'park', type: 'fill', source: 'demotiles', 'source-layer': 'park', paint: { 'fill-color': '#0e241c', 'fill-opacity': 0.55 } },
+      { id: 'waterway', type: 'line', source: 'demotiles', 'source-layer': 'waterway', paint: { 'line-color': '#0d2034', 'line-width': 1 } },
+      { id: 'road-casing', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#05090f', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.2, 14, 7] } },
+      { id: 'road-major', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#2b3d5c', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 14, 5] } },
+      { id: 'road-minor', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['secondary', 'tertiary']]], paint: { 'line-color': '#1d2c44', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 14, 3] } },
+      { id: 'road-path', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]], paint: { 'line-color': '#16223a', 'line-width': 0.8, 'line-dasharray': [1, 1.5] } },
+      { id: 'building', type: 'fill', source: 'demotiles', 'source-layer': 'building', paint: { 'fill-color': '#152238', 'fill-opacity': 0.7 } },
+      { id: 'place', type: 'symbol', source: 'demotiles', 'source-layer': 'place', filter: ['==', ['geometry-type'], 'Point'], layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 10, 15], 'text-anchor': 'top', 'text-offset': [0, 0.4], 'text-optional': true }, paint: { 'text-color': '#8fa6c0', 'text-halo-color': 'rgba(8,14,28,0.9)', 'text-halo-width': 1.2 } }
+    ]
+  },
+  light: {
+    version: 8,
+    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
+    sources: {
+      demotiles: { type: 'vector', url: 'https://demotiles.maplibre.org/tiles/tiles.json', attribution: '© OpenStreetMap contributors' }
+    },
+    layers: [
+      { id: 'bg', type: 'background', paint: { 'background-color': '#eef3f8' } },
+      { id: 'water', type: 'fill', source: 'demotiles', 'source-layer': 'water', paint: { 'fill-color': '#c4d9ef' } },
+      { id: 'landuse-res', type: 'fill', source: 'demotiles', 'source-layer': 'landuse', filter: ['==', ['get', 'class'], 'residential'], paint: { 'fill-color': '#e2e9f2', 'fill-opacity': 0.8 } },
+      { id: 'park', type: 'fill', source: 'demotiles', 'source-layer': 'park', paint: { 'fill-color': '#dcebdd', 'fill-opacity': 0.9 } },
+      { id: 'waterway', type: 'line', source: 'demotiles', 'source-layer': 'waterway', paint: { 'line-color': '#c4d9ef', 'line-width': 1.2 } },
+      { id: 'road-casing', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#c6d2e0', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.4, 14, 7.5] } },
+      { id: 'road-major', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.9, 14, 5.5] } },
+      { id: 'road-minor', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['secondary', 'tertiary']]], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 14, 3.2] } },
+      { id: 'building', type: 'fill', source: 'demotiles', 'source-layer': 'building', paint: { 'fill-color': '#e2e9f2', 'fill-opacity': 0.9 } },
+      { id: 'place', type: 'symbol', source: 'demotiles', 'source-layer': 'place', filter: ['==', ['geometry-type'], 'Point'], layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 10, 15], 'text-anchor': 'top', 'text-offset': [0, 0.4], 'text-optional': true }, paint: { 'text-color': '#3d4f66', 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.2 } }
+    ]
+  },
+  /* raster fallbacks (kept for reliability) */
+  fallbackDark: {
+    version: 8,
+    sources: { raster: { type: 'raster', tiles: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'], subdomains: ['a', 'b', 'c', 'd'], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' } },
+    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
+  },
+  fallbackLight: {
+    version: 8,
+    sources: { raster: { type: 'raster', tiles: ['https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'], subdomains: ['a', 'b', 'c', 'd'], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' } },
+    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
+  }
+};
+
+function mapStyle() {
+  return state.theme === 'light' ? MAP_STYLES.light : MAP_STYLES.dark;
 }
-function makePin(color) {
-  return L.divIcon({
-    className: '',
-    html: `<div class="map-pin" style="width:14px;height:14px;background:${color}"></div>`,
-    iconSize: [14, 14], iconAnchor: [7, 14]
-  });
+function mapFallbackStyle() {
+  return state.theme === 'light' ? MAP_STYLES.fallbackLight : MAP_STYLES.fallbackDark;
+}
+function makePinEl() {
+  const d = document.createElement('div');
+  d.className = 'map-pin';
+  return d;
 }
 
 function initMap() {
-  if (!window.L) return;
-  mapInst = L.map('map', { zoomControl: false, attributionControl: false }).setView([state.lat, state.lon], 10);
-  mapTiles = L.tileLayer(tileUrl(), { maxZoom: 19 }).addTo(mapInst);
-  mapMark = L.marker([state.lat, state.lon], { icon: makePin('#38bdf8') }).addTo(mapInst);
+  if (!window.maplibregl) { console.warn('LiveSky: MapLibre GL unavailable'); return; }
   /* open fullscreen map on tap/click, but NOT after dragging the map */
   let dragStart = null;
   on(el.mapSmall, 'pointerdown', (e) => { dragStart = { x: e.clientX, y: e.clientY }; });
@@ -1773,20 +1823,35 @@ function initMap() {
     dragStart = null;
     if (dist < 6) openFullMap();
   });
+  try {
+    mapInst = new maplibregl.Map({
+      container: 'map',
+      style: mapStyle(),
+      center: [state.lon, state.lat],
+      zoom: 10,
+      attributionControl: false,
+      scrollZoom: false,
+      boxZoom: false,
+      doubleClickZoom: false
+    });
+    mapInst.once('error', () => { try { mapInst.setStyle(mapFallbackStyle()); } catch (e) { /* ignore */ } });
+    mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
+  } catch (e) { console.warn('LiveSky: map init failed', e); }
 }
 function updateMap() {
-  if (!mapInst || !window.L) return;
-  mapInst.setView([state.lat, state.lon], Math.max(mapInst.getZoom(), 10));
-  if (mapMark) mapInst.removeLayer(mapMark);
-  mapMark = L.marker([state.lat, state.lon], { icon: makePin(state.accent) }).addTo(mapInst);
+  if (!mapInst || !window.maplibregl) return;
+  mapInst.flyTo({ center: [state.lon, state.lat], zoom: Math.max(mapInst.getZoom(), 10), duration: 900 });
+  if (mapMarkEl) mapMarkEl.setLngLat([state.lon, state.lat]);
+  else mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
 }
 function updateMapTiles() {
-  if (mapTiles) mapTiles.setUrl(tileUrl());
-  if (fullTiles) fullTiles.setUrl(tileUrl());
+  if (!window.maplibregl) return;
+  if (mapInst) mapInst.setStyle(mapStyle());
+  if (fullMapInst) fullMapInst.setStyle(mapStyle());
 }
 
 function openFullMap() {
-  if (!window.L) return;
+  if (!window.maplibregl) return;
   el.mapModal.classList.add('open');
   document.body.classList.add('no-scroll');
   tempLat = null; tempLon = null;
@@ -1794,23 +1859,40 @@ function openFullMap() {
   el.mapApply.classList.add('hidden');
   if (!fullMapInst) {
     setTimeout(() => {
-      fullMapInst = L.map('full-map', { zoomControl: true }).setView([state.lat, state.lon], 10);
-      fullTiles = L.tileLayer(tileUrl(), { maxZoom: 19 }).addTo(fullMapInst);
-      fullMapMark = L.marker([state.lat, state.lon], { icon: makePin(state.accent) }).addTo(fullMapInst);
-      fullMapInst.on('click', (e) => {
-        tempLat = e.latlng.lat; tempLon = e.latlng.lng;
-        if (fullMapMark) fullMapInst.removeLayer(fullMapMark);
-        fullMapMark = L.marker([tempLat, tempLon], { icon: makePin(state.accent) }).addTo(fullMapInst);
-        el.mapInstr.style.display = 'none';
-        el.mapApply.classList.remove('hidden');
-      });
-      setTimeout(() => fullMapInst.invalidateSize(), 120);
+      try {
+        fullMapInst = new maplibregl.Map({
+          container: 'full-map',
+          style: mapStyle(),
+          center: [state.lon, state.lat],
+          zoom: 10,
+          attributionControl: { compact: true }
+        });
+        fullMapInst.once('error', () => { try { fullMapInst.setStyle(mapFallbackStyle()); } catch (e) { /* ignore */ } });
+        fullMapInst.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'bottom-right');
+        fullMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(fullMapInst);
+        fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
+          .setLngLat([state.lon, state.lat])
+          .setHTML('<b>' + escHtml(state.locationName) + '</b>')
+          .addTo(fullMapInst);
+        fullMapInst.on('click', (e) => {
+          tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
+          if (fullMarkEl) fullMarkEl.setLngLat([tempLon, tempLat]);
+          if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+          el.mapInstr.style.display = 'none';
+          el.mapApply.classList.remove('hidden');
+        });
+        fullMapInst.resize();
+      } catch (e) { console.warn('LiveSky: full map init failed', e); }
     }, 320);
   } else {
-    fullMapInst.setView([state.lat, state.lon], 10);
-    if (fullMapMark) fullMapInst.removeLayer(fullMapMark);
-    fullMapMark = L.marker([state.lat, state.lon], { icon: makePin(state.accent) }).addTo(fullMapInst);
-    setTimeout(() => fullMapInst.invalidateSize(), 120);
+    fullMapInst.flyTo({ center: [state.lon, state.lat], zoom: 10, duration: 600 });
+    if (fullMarkEl) fullMarkEl.setLngLat([state.lon, state.lat]);
+    if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+    fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
+      .setLngLat([state.lon, state.lat])
+      .setHTML('<b>' + escHtml(state.locationName) + '</b>')
+      .addTo(fullMapInst);
+    setTimeout(() => fullMapInst.resize(), 120);
   }
 }
 function closeFullMap() {
