@@ -65,6 +65,7 @@
         <form class="search-form" id="search-form" autocomplete="off" role="search">
           <i class="ph ph-magnifying-glass search-ico"></i>
           <input type="text" id="city-input" placeholder="Поиск города..." aria-label="Поиск города" />
+          <button type="button" class="search-btn hidden" id="search-clear" aria-label="Очистить"><i class="ph-bold ph-x"></i></button>
           <button type="button" class="search-btn" id="fav-btn" aria-label="В избранное"><i id="fav-icon" class="ph ph-star"></i></button>
           <button type="button" class="search-btn" id="locate-btn" aria-label="Моё местоположение"><i class="ph ph-navigation-arrow"></i></button>
         </form>
@@ -73,8 +74,26 @@
 
       <div class="header-actions">
         <div class="relative">
-          <button class="hbtn" id="settings-btn" aria-label="Настройки"><i class="ph ph-sliders-horizontal"></i><span class="hbtn-label" data-translate="settings">Настройки</span></button>
-          <div class="dropdown" id="settings-menu">
+          <button class="hbtn" id="menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="Меню" title="Меню">
+            <i class="ph ph-sliders-horizontal"></i>
+          </button>
+          <div class="dropdown" id="main-menu">
+            <div class="dd-group-label" data-translate="language">Язык</div>
+            <button class="dd-item" data-lang="ru"><img class="lang-flag" src="https://flagcdn.com/20x15/ru.png" alt=""><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-lang="en"><img class="lang-flag" src="https://flagcdn.com/20x15/gb.png" alt=""><span data-translate="lang_en">English</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-lang="es"><img class="lang-flag" src="https://flagcdn.com/20x15/es.png" alt=""><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
+
+            <div class="dd-group-label"><span data-translate="theme_group">Тема</span> · <span id="theme-label"></span></div>
+            <button class="dd-item" data-theme="adaptive"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-theme="dark"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-theme="light"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check dd-check"></i></button>
+
+            <div class="dd-group-label" data-translate="units">Единицы</div>
+            <select class="dd-select" id="units-select">
+              <option value="metric">Metric (°C, km/h)</option>
+              <option value="imperial">Imperial (°F, mph)</option>
+            </select>
+
             <div class="dd-group-label" data-translate="source">Модель данных</div>
             <select class="dd-select" id="model-select">
               <option value="auto">Auto (Best Match)</option>
@@ -82,33 +101,12 @@
               <option value="gfs_seamless">GFS (Global)</option>
               <option value="icon_seamless">ICON (DWD)</option>
             </select>
-            <div class="dd-group-label" data-translate="units">Единицы</div>
-            <select class="dd-select" id="units-select">
-              <option value="metric">Metric (°C, km/h)</option>
-              <option value="imperial">Imperial (°F, mph)</option>
-            </select>
-            <div class="dd-group-label" data-translate="source_desc">Auto — оптимальный выбор</div>
+
+            <div class="dd-group-label" data-translate="actions">Действия</div>
+            <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
+            <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
           </div>
         </div>
-
-        <div class="relative">
-          <button class="hbtn" id="lang-btn" aria-label="Язык">
-            <img class="lang-flag" id="lang-flag" src="https://flagcdn.com/20x15/ru.png" alt="" />
-            <span class="hbtn-label" id="lang-label">RU</span>
-          </button>
-          <div class="dropdown" id="lang-menu">
-            <button class="dd-item" data-lang="ru"><img class="lang-flag" src="https://flagcdn.com/20x15/ru.png" alt="" /><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="en"><img class="lang-flag" src="https://flagcdn.com/20x15/gb.png" alt="" /><span data-translate="lang_en">English</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="es"><img class="lang-flag" src="https://flagcdn.com/20x15/es.png" alt="" /><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
-          </div>
-        </div>
-
-        <button class="hbtn" id="theme-btn" aria-label="Тема">
-          <i class="ph ph-palette"></i>
-          <span class="hbtn-label" id="theme-label" data-translate="theme_adaptive">Адаптивная</span>
-        </button>
-
-        <button class="hbtn hbtn-icon-only" id="fs-btn" aria-label="Полный экран"><i id="fs-icon" class="ph ph-corners-out"></i></button>
       </div>
     </header>
 
@@ -144,10 +142,8 @@
             <div class="hero-temp-col">
               <div class="temp-row">
                 <span class="temp-num" id="temperature">--</span>
-                <span class="temp-deg" id="temp-unit">°</span>
               </div>
               <p class="condition" id="condition">—</p>
-              <p class="feels-line" id="feels-line">—</p>
             </div>
             <div class="hero-icon" id="weather-icon-big"><i class="ph-duotone ph-cloud-sun"></i></div>
           </div>
