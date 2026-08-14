@@ -136,6 +136,7 @@
             <div class="hero-meta">
               <span class="chip"><i class="ph ph-clock"></i><span id="realtime-clock" style="font-variant-numeric:tabular-nums">--:--</span><i class="dot"></i></span>
               <span class="chip hidden" id="updated-chip"><i class="ph ph-arrow-clockwise"></i><span data-translate="updated">Обновлено</span> <span id="updated-at">--:--</span></span>
+              <span class="chip hidden" id="rain-soon-chip"><i class="ph ph-cloud-rain"></i><span data-translate="rain_soon">Дождь в ближайший час</span></span>
             </div>
           </div>
 
@@ -176,6 +177,7 @@
             <div class="metric tile-violet">
               <div class="metric-top"><span class="metric-label" data-translate="pressure">Давление</span><i class="ph ph-gauge"></i></div>
               <div class="metric-value" id="m-press">--</div>
+              <div class="metric-sub" id="m-press-trend"></div>
             </div>
             <div class="metric tile-cyan">
               <div class="metric-top"><span class="metric-label" data-translate="dew_point">Точка росы</span><i class="ph ph-drop-half"></i></div>
@@ -187,7 +189,7 @@
               <div class="metric-sub" id="m-uv-label"></div>
             </div>
             <div class="metric tile-blue">
-              <div class="metric-top"><span class="metric-label" data-translate="precip_24h">Осадки · 24ч</span><i class="ph ph-cloud-rain"></i></div>
+              <div class="metric-top"><span class="metric-label" data-translate="rain_prob_24h">Вероятность дождя · 24ч</span><i class="ph ph-cloud-rain"></i></div>
               <div class="metric-value" id="m-precip">--</div>
             </div>
           </div>
@@ -204,6 +206,7 @@
           <div class="card sun-card hover-lift" id="sun-card" role="button" tabindex="0">
             <div class="section-head" style="margin-bottom:2px">
               <div class="section-title"><span class="tint"><i class="ph ph-sun-horizon"></i></span><span data-translate="sun_card_title">Световой день</span></div>
+              <span class="moon-chip hidden" id="moon-chip"></span>
             </div>
             <div class="sun-arc-wrap"><svg id="sun-arc" viewBox="0 0 220 118" width="100%" height="118" aria-hidden="true"></svg></div>
             <div class="sun-times">
