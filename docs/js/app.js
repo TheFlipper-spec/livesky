@@ -10,7 +10,7 @@ const el = {
   bg1: $('bg-layer-1'), bg2: $('bg-layer-2'), aurora: $('aurora'), fxCanvas: $('fx-canvas'), flash: $('flash'),
   location: $('location'), locationFlag: $('location-flag'), locationAdmin: $('location-admin'),
   date: $('current-date'), clock: $('realtime-clock'), updatedChip: $('updated-chip'), updatedAt: $('updated-at'),
-  temp: $('temperature'), cond: $('condition'), feelsLine: $('feels-line'), bigIcon: $('weather-icon-big'),
+  temp: $('temperature'), cond: $('condition'), bigIcon: $('weather-icon-big'),
   mFeels: $('m-feels'), mWind: $('m-wind'), mWindDir: $('m-wind-dir'), mWindArrow: $('m-wind-arrow'),
   mHum: $('m-hum'), mVis: $('m-vis'), mPress: $('m-press'), mDew: $('m-dew'),
   mUv: $('m-uv'), mUvLabel: $('m-uv-label'), mPrecip: $('m-precip'),
@@ -27,10 +27,9 @@ const el = {
   rainSoon: $('rain-soon-chip'), moonChip: $('moon-chip'), mPressTrend: $('m-press-trend'),
   toastWrap: $('toast-wrap'),
   searchForm: $('search-form'), input: $('city-input'), autoList: $('autocomplete-list'),
-  favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'),
-  settingsBtn: $('settings-btn'), settingsMenu: $('settings-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'),
-  langBtn: $('lang-btn'), langMenu: $('lang-menu'), langLabel: $('lang-label'), langFlag: $('lang-flag'),
-  themeBtn: $('theme-btn'), themeLabel: $('theme-label'), fsBtn: $('fs-btn'), fsIcon: $('fs-icon'),
+  favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'), searchClear: $('search-clear'),
+  menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'),
+  themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
   logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn')
 };
 
@@ -478,7 +477,6 @@ function updateHero() {
   if (temp == null || isNaN(temp)) { el.temp.textContent = '--'; delete el.temp.dataset.v; }
   else animateNumber(el.temp, Math.round(convTemp(temp)));
   el.cond.textContent = wmoLabel(code);
-  el.feelsLine.textContent = `${t('feels_like')}: ${fmtTempDeg(feels)}`;
   setBigIcon(wmoIcon(code, night));
   el.rainSoon.classList.toggle('hidden', !rainSoonNow());
 
@@ -1136,13 +1134,27 @@ function selectCity(c, isFav) {
   saveRecent();
   closeAutocomplete();
   el.input.value = '';
+  el.searchClear.classList.add('hidden');
   el.input.blur();
   fetchWeather();
 }
-function closeAutocomplete() { el.autoList.classList.add('hidden'); }
+function closeAutocomplete() {
+  el.autoList.classList.add('hidden');
+  acIndex = -1;
+}
+/* keyboard navigation inside autocomplete list */
+let acIndex = -1;
+function acMove(dir) {
+  const items = [...el.autoList.querySelectorAll('.ac-item')];
+  if (!items.length) return;
+  acIndex = Math.min(items.length - 1, Math.max(0, acIndex + dir));
+  items.forEach((it, k) => it.classList.toggle('active', k === acIndex));
+  if (items[acIndex].scrollIntoView) items[acIndex].scrollIntoView({ block: 'nearest' });
+}
 
 function renderFavoritesList() {
   el.autoList.innerHTML = '';
+  acIndex = -1;
   const title = document.createElement('div');
   title.className = 'ac-list-title';
   title.textContent = t('favorites');
@@ -1199,6 +1211,7 @@ function renderFavoritesList() {
 async function handleInput() {
   clearTimeout(searchTimer);
   const q = el.input.value.trim();
+  el.searchClear.classList.toggle('hidden', !el.input.value);
   if (!q) {
     renderFavoritesList();
     return;
@@ -1215,6 +1228,7 @@ async function handleInput() {
       const d = await r.json();
       if (el.input.value.trim() !== q) return; /* stale response */
       const results = d.results || [];
+      acIndex = -1;
       el.autoList.innerHTML = '';
       if (!results.length) {
         const empty = document.createElement('div');
@@ -1256,6 +1270,7 @@ async function handleSearch(e) {
     state.admin = [c.admin1, c.country].filter(Boolean).join(', ');
     saveRecent();
     el.input.value = '';
+    el.searchClear.classList.add('hidden');
     el.input.blur();
     fetchWeather();
   } catch (e) {
@@ -1274,8 +1289,12 @@ function openModal(title, subtitle, bodyHtml) {
   el.modalBody.innerHTML = bodyHtml;
   el.modalBody.scrollTop = 0;
   el.modal.classList.add('open');
+  document.body.classList.add('no-scroll');
 }
-function closeModal() { el.modal.classList.remove('open'); }
+function closeModal() {
+  el.modal.classList.remove('open');
+  document.body.classList.remove('no-scroll');
+}
 
 function showModalHourly(h, i) {
   const code = getVal(h, 'weathercode', i);
@@ -1669,6 +1688,7 @@ function updateMapTiles() {
 function openFullMap() {
   if (!window.L) return;
   el.mapModal.classList.add('open');
+  document.body.classList.add('no-scroll');
   tempLat = null; tempLon = null;
   el.mapInstr.style.display = '';
   el.mapApply.classList.add('hidden');
@@ -1693,7 +1713,10 @@ function openFullMap() {
     setTimeout(() => fullMapInst.invalidateSize(), 120);
   }
 }
-function closeFullMap() { el.mapModal.classList.remove('open'); }
+function closeFullMap() {
+  el.mapModal.classList.remove('open');
+  document.body.classList.remove('no-scroll');
+}
 async function applyMapLocation() {
   if (tempLat == null || tempLon == null) return;
   closeFullMap();
@@ -1714,6 +1737,7 @@ function applyTheme() {
   updateThemeLabel();
   updateMapTiles();
   applyWeatherTheme();
+  syncMenuChecks();
   store.set('livesky:theme', state.theme);
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', state.theme === 'light' ? '#eef4fb' : '#05070f');
@@ -1724,6 +1748,21 @@ function applyTheme() {
 function cycleTheme() {
   state.theme = THEME_CYCLE[state.theme] || 'adaptive';
   applyTheme();
+}
+function setTheme(theme) {
+  if (!THEME_KEYS[theme]) return;
+  state.theme = theme;
+  applyTheme();
+}
+function setMenuOpen(open) {
+  el.mainMenu.classList.toggle('open', open);
+  el.menuBtn.setAttribute('aria-expanded', String(open));
+}
+function syncMenuChecks() {
+  el.mainMenu.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('selected', b.dataset.lang === state.lang));
+  el.mainMenu.querySelectorAll('[data-theme]').forEach(b => b.classList.toggle('selected', b.dataset.theme === state.theme));
+  el.modelSelect.value = state.model;
+  el.unitsSelect.value = state.units;
 }
 function updateThemeLabel() {
   el.themeLabel.dataset.translate = THEME_KEYS[state.theme];
@@ -1741,22 +1780,18 @@ function applyTranslations() {
   [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
   const unitsLabels = { metric: 'units_metric', imperial: 'units_imperial' };
   [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });
-  /* lang menu checkmarks */
-  el.langMenu.querySelectorAll('.dd-item').forEach(btn => {
-    btn.classList.toggle('selected', btn.dataset.lang === state.lang);
-  });
+  syncMenuChecks();
 }
 
 function setLang(lang) {
   if (!I18N[lang]) return;
   state.lang = lang;
   store.set('livesky:lang', lang);
-  el.langLabel.textContent = lang.toUpperCase();
-  el.langFlag.src = `https://flagcdn.com/20x15/${lang === 'en' ? 'gb' : lang}.png`;
   el.input.placeholder = t('search_ph');
-  el.langMenu.classList.remove('open');
+  setMenuOpen(false);
   applyTranslations();
   updateThemeLabel();
+  syncMenuChecks();
   clockTick();
   if (state.weather) renderAll();
 }
@@ -1787,38 +1822,52 @@ function bindEvents() {
   el.searchForm.addEventListener('submit', handleSearch);
   el.input.addEventListener('input', handleInput);
   el.input.addEventListener('focus', () => { if (!el.input.value.trim()) renderFavoritesList(); });
-  el.input.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeAutocomplete(); el.input.blur(); } });
+  el.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeAutocomplete(); el.input.blur(); return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      acMove(e.key === 'ArrowDown' ? 1 : -1);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'Enter') {
+      const active = el.autoList.querySelector('.ac-item.active');
+      if (active && !el.autoList.classList.contains('hidden')) { e.preventDefault(); active.click(); }
+    }
+  });
+  el.searchClear.addEventListener('click', () => {
+    el.input.value = '';
+    el.searchClear.classList.add('hidden');
+    el.input.focus();
+    renderFavoritesList();
+  });
   el.favBtn.addEventListener('click', (e) => { e.preventDefault(); toggleFavorite(); });
   el.locateBtn.addEventListener('click', (e) => { e.preventDefault(); getUserLocation(true); });
 
-  el.settingsBtn.addEventListener('click', (e) => {
+  /* unified menu: language, theme, units, model, fullscreen, refresh */
+  el.menuBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const open = el.settingsMenu.classList.toggle('open');
-    el.settingsBtn.setAttribute('aria-expanded', String(open));
-    el.langMenu.classList.remove('open');
-    el.langBtn.setAttribute('aria-expanded', 'false');
+    setMenuOpen(!el.mainMenu.classList.contains('open'));
   });
-  el.langBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = el.langMenu.classList.toggle('open');
-    el.langBtn.setAttribute('aria-expanded', String(open));
-    el.settingsMenu.classList.remove('open');
-    el.settingsBtn.setAttribute('aria-expanded', 'false');
+  el.mainMenu.addEventListener('click', (e) => {
+    const langBtn = e.target.closest('[data-lang]');
+    if (langBtn) { setLang(langBtn.dataset.lang); return; }
+    const themeBtn = e.target.closest('[data-theme]');
+    if (themeBtn) { setTheme(themeBtn.dataset.theme); setMenuOpen(false); return; }
   });
   el.modelSelect.addEventListener('change', () => {
     state.model = el.modelSelect.value;
     store.set('livesky:model', state.model);
-    el.settingsMenu.classList.remove('open');
+    setMenuOpen(false);
     fetchWeather();
   });
   el.unitsSelect.addEventListener('change', () => {
     state.units = el.unitsSelect.value;
     store.set('livesky:units', state.units);
-    el.settingsMenu.classList.remove('open');
+    setMenuOpen(false);
     if (state.weather) renderAll();
   });
-  el.themeBtn.addEventListener('click', cycleTheme);
-  el.fsBtn.addEventListener('click', toggleFullscreen);
+  el.fsItem.addEventListener('click', () => { setMenuOpen(false); toggleFullscreen(); });
+  el.refreshItem.addEventListener('click', () => { setMenuOpen(false); fetchWeather(true); });
 
   el.adviceBtn.addEventListener('click', showAdvice);
   el.historyBtn.addEventListener('click', () => showMonthly('history'));
@@ -1846,16 +1895,14 @@ function bindEvents() {
 
   document.addEventListener('click', (e) => {
     if (!el.searchForm.contains(e.target) && !el.autoList.contains(e.target)) closeAutocomplete();
-    if (!el.settingsBtn.contains(e.target) && !el.settingsMenu.contains(e.target)) el.settingsMenu.classList.remove('open');
-    if (!el.langBtn.contains(e.target) && !el.langMenu.contains(e.target)) el.langMenu.classList.remove('open');
+    if (!el.menuBtn.contains(e.target) && !el.mainMenu.contains(e.target)) setMenuOpen(false);
   });
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
       if (el.modal.classList.contains('open')) { closeModal(); return; }
-      el.settingsMenu.classList.remove('open');
-      el.langMenu.classList.remove('open');
+      setMenuOpen(false);
       closeAutocomplete();
       return;
     }
@@ -1903,13 +1950,10 @@ function initReveal() {
 function init() {
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
-  el.modelSelect.value = state.model;
-  el.unitsSelect.value = state.units;
-  el.langLabel.textContent = state.lang.toUpperCase();
-  el.langFlag.src = `https://flagcdn.com/20x15/${state.lang === 'en' ? 'gb' : state.lang}.png`;
   el.input.placeholder = t('search_ph');
   applyTranslations();
   updateThemeLabel();
+  syncMenuChecks();
   updateFavIcon();
   startClock();
   bindEvents();

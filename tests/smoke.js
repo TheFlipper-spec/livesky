@@ -136,6 +136,10 @@ setTimeout(() => {
   try {
     assert(q('loader').classList.contains('done'), 'loader hidden after data load');
     assert(/[-\d]+°/.test(q('temperature').textContent), 'temperature rendered: ' + q('temperature').textContent);
+    assert(!q('temp-unit'), 'double degree span removed');
+    assert(/^-?\d+°$/.test(q('temperature').textContent), 'single degree sign: ' + q('temperature').textContent);
+    assert(!q('feels-line'), 'feels-like line removed (no duplication)');
+    assert(q('m-feels') !== null, 'feels-like metric kept in grid');
     assert(q('condition').textContent.length > 1, 'condition label rendered: ' + q('condition').textContent);
     assert(q('location').textContent === 'Москва', 'default location: ' + q('location').textContent);
     assert(q('hourly-strip').children.length === 24, 'hourly strip has 24 items');
@@ -157,6 +161,41 @@ setTimeout(() => {
     assert(q('city-input').placeholder === 'Search city...', 'placeholder en');
     window.setLang('ru');
 
+    /* unified menu */
+    q('menu-btn').click();
+    assert(q('main-menu').classList.contains('open'), 'unified menu opens');
+    assert(q('menu-btn').getAttribute('aria-expanded') === 'true', 'menu aria-expanded');
+    assert(q('main-menu').querySelector('[data-lang]') && q('main-menu').querySelector('[data-theme]'), 'menu has lang + theme items');
+    assert(q('fs-item') !== null && q('refresh-item') !== null, 'menu has fullscreen + refresh actions');
+    q('main-menu').querySelector('[data-lang="en"]').click();
+    assert(q('theme-label').textContent === 'Adaptive', 'lang pick via menu (theme label en)');
+    assert(q('city-input').placeholder === 'Search city...', 'lang pick via menu (placeholder)');
+    assert(!q('main-menu').classList.contains('open'), 'menu closes after language pick');
+    window.setLang('ru');
+    q('menu-btn').click();
+    q('main-menu').querySelector('[data-theme="light"]').click();
+    assert(document.documentElement.dataset.theme === 'light', 'theme pick via menu works');
+    assert(!q('main-menu').classList.contains('open'), 'menu closes after theme pick');
+    window.setTheme('adaptive');
+
+    /* autocomplete keyboard navigation */
+    q('fav-btn').click(); /* add current city to favorites so the list has items */
+    q('city-input').focus();
+    q('city-input').dispatchEvent(new window.Event('focus'));
+    assert(!q('autocomplete-list').classList.contains('hidden'), 'autocomplete opens on focus');
+    q('city-input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+    assert(q('autocomplete-list').querySelector('.ac-item.active') !== null, 'arrow key highlights autocomplete item');
+    q('city-input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert(q('autocomplete-list').classList.contains('hidden'), 'escape closes autocomplete');
+    q('fav-btn').click(); /* remove favorite again */
+
+    /* search clear button */
+    q('city-input').value = 'abc';
+    q('city-input').dispatchEvent(new window.Event('input'));
+    assert(!q('search-clear').classList.contains('hidden'), 'clear button appears when typing');
+    q('search-clear').click();
+    assert(q('city-input').value === '' && q('search-clear').classList.contains('hidden'), 'clear button clears input');
+
     const col = q('chart-cols').firstChild;
     col.dispatchEvent(new window.MouseEvent('mouseenter'));
     assert(!q('chart-tooltip').classList.contains('hidden'), 'chart tooltip shows on hover');
@@ -165,9 +204,11 @@ setTimeout(() => {
 
     window.showAdvice();
     assert(q('modal').classList.contains('open'), 'advice modal opens');
+    assert(document.body.classList.contains('no-scroll'), 'body scroll locked on modal');
     assert(q('modal-body').innerHTML.includes('Что надеть'), 'advice modal has wear note');
     q('modal-close').click();
     assert(!q('modal').classList.contains('open'), 'modal closes');
+    assert(!document.body.classList.contains('no-scroll'), 'body scroll unlocked after close');
 
     window.showMonthly('forecast');
     assert(q('modal-body').querySelectorAll('.mo-row').length === 17, 'forecast modal rows (16 days + today)');
