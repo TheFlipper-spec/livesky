@@ -19,7 +19,7 @@ const el = {
   sunArc: $('sun-arc'), sunCard: $('sun-card'),
   aqiRing: $('aqi-ring-fg'), aqiValue: $('aqi-value'), aqiLabel: $('aqi-label'),
   aqiPm25: $('aqi-pm25'), aqiPm10: $('aqi-pm10'), aqiO3: $('aqi-o3'), aqiNo2: $('aqi-no2'),
-  chartSvg: $('chart-svg'), chartCols: $('chart-cols'), chartAxis: $('chart-axis'), chartPlot: $('chart-plot'),
+  chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartCols: $('chart-cols'), chartAxis: $('chart-axis'), chartPlot: $('chart-plot'),
   chartDetail: $('chart-detail'), chartGuide: $('chart-guide'), chartGuideDot: $('chart-guide-dot'),
   hStrip: $('hourly-strip'), hLeft: $('hourly-left'), hRight: $('hourly-right'),
   dStrip: $('daily-strip'), historyBtn: $('history-btn'),
@@ -41,6 +41,17 @@ const el = {
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
+
+/* Capacitor injects this bridge before the page loads inside the Android app.
+   Browser/PWA builds simply return null and keep using standard Web APIs. */
+function isNativeApp() {
+  const cap = window.Capacitor;
+  return !!(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform());
+}
+function nativePlugin(name) {
+  const cap = window.Capacitor;
+  return isNativeApp() && cap.Plugins ? cap.Plugins[name] || null : null;
+}
 
 /* ---------------- state & storage ---------------- */
 const store = {
@@ -564,22 +575,42 @@ async function reverseGeo(lat, lon) {
 }
 
 let geoWarned = false;
-function getUserLocation(notify) {
+async function applyUserPosition(pos, notify) {
+  state.lat = pos.coords.latitude;
+  state.lon = pos.coords.longitude;
+  await reverseGeo(state.lat, state.lon);
+  if (notify) toast(t('toast_loc_set'), 'success');
+  fetchWeather();
+}
+function handleLocationFailure() {
+  if (!geoWarned) { geoWarned = true; toast(t('toast_geo_denied'), 'info'); }
+  fetchWeather();
+}
+async function getUserLocation(notify) {
   showLoader();
+  const options = { enableHighAccuracy: true, timeout: 7000, maximumAge: 300000 };
+  const nativeGeo = nativePlugin('Geolocation');
+
+  if (nativeGeo) {
+    try {
+      let permission = await nativeGeo.checkPermissions();
+      if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') {
+        permission = await nativeGeo.requestPermissions();
+      }
+      if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('Location permission denied');
+      const pos = await nativeGeo.getCurrentPosition(options);
+      await applyUserPosition(pos, notify);
+    } catch (e) {
+      handleLocationFailure();
+    }
+    return;
+  }
+
   if (!navigator.geolocation) { fetchWeather(); return; }
   navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      state.lat = pos.coords.latitude;
-      state.lon = pos.coords.longitude;
-      await reverseGeo(state.lat, state.lon);
-      if (notify) toast(t('toast_loc_set'), 'success');
-      fetchWeather();
-    },
-    () => {
-      if (!geoWarned) { geoWarned = true; toast(t('toast_geo_denied'), 'info'); }
-      fetchWeather();
-    },
-    { enableHighAccuracy: true, timeout: 7000, maximumAge: 300000 }
+    (pos) => { applyUserPosition(pos, notify).catch(handleLocationFailure); },
+    handleLocationFailure,
+    options
   );
 }
 
@@ -2331,6 +2362,16 @@ function bindEvents() {
   on(el.mapClose, 'click', closeFullMap);
   on(el.mapApply, 'click', applyMapLocation);
 
+  /* The 24-hour graph is a native horizontal scroller on touch screens.
+     Arrow-key support keeps the focusable chart equally usable without touch. */
+  on(el.chartScroll, 'keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    e.stopPropagation();
+    const step = Math.max(180, Math.round((el.chartScroll.clientWidth || 320) * 0.65));
+    el.chartScroll.scrollBy({ left: e.key === 'ArrowRight' ? step : -step, behavior: 'smooth' });
+  });
+
   on(el.hLeft, 'click', () => el.hStrip.scrollBy({ left: -420, behavior: 'smooth' }));
   on(el.hRight, 'click', () => el.hStrip.scrollBy({ left: 420, behavior: 'smooth' }));
 
@@ -2394,6 +2435,7 @@ function initReveal() {
 let deferredInstallPrompt = null;
 
 function registerServiceWorker() {
+  if (isNativeApp()) return; /* Capacitor bundles the shell; a second cache layer only causes stale assets */
   if (!('serviceWorker' in navigator)) return;
   if (!/^https?:$/.test(location.protocol)) return; /* skip file:// and data: */
   window.addEventListener('load', () => {
@@ -2645,33 +2687,68 @@ function upcomingAlerts() {
   return alerts;
 }
 
+function nativeNotificationId(alert) {
+  const source = alertSignature(alert.type, alert.t);
+  let hash = 0;
+  for (let i = 0; i < source.length; i++) hash = ((hash * 31) + source.charCodeAt(i)) | 0;
+  return Math.max(1, hash & 0x7fffffff);
+}
 function sendNotification(alert) {
   const timeStr = alert.t.slice(11, 16);
   const title = t('notif_title');
   const body = t('notif_' + alert.type).replace('{t}', timeStr);
+  const nativeNotifications = nativePlugin('LocalNotifications');
+
+  if (nativeNotifications) {
+    return nativeNotifications.schedule({
+      notifications: [{
+        id: nativeNotificationId(alert), title, body,
+        channelId: 'weather-alerts',
+        smallIcon: 'ic_stat_livesky',
+        iconColor: '#38BDF8',
+        extra: { type: alert.type, forecastTime: alert.t }
+      }]
+    });
+  }
+
   const opts = {
     body, icon: 'icons/icon-192.png', badge: 'icons/icon-96.png',
     tag: 'livesky-' + alert.type, data: { url: location.href },
     renotify: false
   };
   if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts))
+    return navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts))
       .catch(() => { try { new Notification(title, opts); } catch (e) { /* ignore */ } });
-  } else {
-    try { new Notification(title, opts); } catch (e) { /* ignore */ }
+  }
+  try { new Notification(title, opts); } catch (e) { /* ignore */ }
+  return Promise.resolve();
+}
+
+function dispatchWeatherAlerts() {
+  for (const a of upcomingAlerts()) {
+    const sig = alertSignature(a.type, a.t);
+    if (!shouldSendAlert(sig)) continue;
+    markSent(sig);
+    Promise.resolve(sendNotification(a)).catch(() => { /* permission can be changed in Android settings */ });
   }
 }
 
 /* Called on every forecast refresh and on a periodic timer. Only fires when the
    user enabled alerts, permission is granted and the event hasn't been sent. */
 function checkWeatherAlerts() {
-  if (!state.notif || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  for (const a of upcomingAlerts()) {
-    const sig = alertSignature(a.type, a.t);
-    if (!shouldSendAlert(sig)) continue;
-    markSent(sig);
-    sendNotification(a);
+  if (!state.notif) return;
+  const nativeNotifications = nativePlugin('LocalNotifications');
+  if (nativeNotifications) {
+    if (state._notifPermissionCheck) return;
+    state._notifPermissionCheck = true;
+    nativeNotifications.checkPermissions()
+      .then(permission => { if (permission.display === 'granted') dispatchWeatherAlerts(); })
+      .catch(() => {})
+      .finally(() => { state._notifPermissionCheck = false; });
+    return;
   }
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  dispatchWeatherAlerts();
 }
 
 function updateNotifItem() {
@@ -2684,6 +2761,13 @@ function updateNotifItem() {
   }
   el.notifItem.classList.toggle('selected', on);
 }
+function setNotificationsEnabled() {
+  state.notif = true;
+  store.set('livesky:notif', true);
+  updateNotifItem();
+  toast(t('notif_toast_on'), 'success');
+  checkWeatherAlerts();
+}
 function toggleNotifications() {
   if (state.notif) {
     state.notif = false;
@@ -2692,28 +2776,57 @@ function toggleNotifications() {
     toast(t('notif_toast_off'), 'info');
     return;
   }
-  if (typeof Notification === 'undefined') { toast(t('notif_unsupported'), 'error'); return; }
-  if (Notification.permission === 'denied') { toast(t('notif_blocked'), 'error'); return; }
-  if (Notification.permission === 'granted') {
-    state.notif = true;
-    store.set('livesky:notif', true);
-    updateNotifItem();
-    toast(t('notif_toast_on'), 'success');
-    checkWeatherAlerts();
+
+  const nativeNotifications = nativePlugin('LocalNotifications');
+  if (nativeNotifications) {
+    nativeNotifications.checkPermissions()
+      .then(permission => permission.display === 'granted' ? permission : nativeNotifications.requestPermissions())
+      .then(permission => {
+        if (permission.display === 'granted') setNotificationsEnabled();
+        else toast(t('notif_blocked'), 'error');
+      })
+      .catch(() => { toast(t('notif_unsupported'), 'error'); });
     return;
   }
+
+  if (typeof Notification === 'undefined') { toast(t('notif_unsupported'), 'error'); return; }
+  if (Notification.permission === 'denied') { toast(t('notif_blocked'), 'error'); return; }
+  if (Notification.permission === 'granted') { setNotificationsEnabled(); return; }
   /* prompt the user for permission first time */
   Notification.requestPermission().then(perm => {
-    if (perm === 'granted') {
-      state.notif = true;
-      store.set('livesky:notif', true);
-      updateNotifItem();
-      toast(t('notif_toast_on'), 'success');
-      checkWeatherAlerts();
-    } else {
-      toast(t('notif_blocked'), 'error');
-    }
+    if (perm === 'granted') setNotificationsEnabled();
+    else toast(t('notif_blocked'), 'error');
   }).catch(() => { toast(t('notif_unsupported'), 'error'); });
+}
+
+/* ---------------- Capacitor / Android integration ---------------- */
+function initNativeBridge() {
+  if (!isNativeApp()) return;
+
+  const nativeApp = nativePlugin('App');
+  if (nativeApp) {
+    nativeApp.addListener('backButton', () => {
+      if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
+      if (el.modal.classList.contains('open')) { closeModal(); return; }
+      if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
+      if (el.autoList && !el.autoList.classList.contains('hidden')) { closeAutocomplete(); return; }
+      nativeApp.exitApp();
+    }).catch(() => {});
+  }
+
+  const nativeNotifications = nativePlugin('LocalNotifications');
+  if (nativeNotifications) {
+    nativeNotifications.createChannel({
+      id: 'weather-alerts',
+      name: 'LiveSky Weather',
+      description: 'Weather warnings and forecast alerts',
+      importance: 4,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+      lightColor: '#38BDF8'
+    }).catch(() => {});
+  }
 }
 
 /* ---------------- init ---------------- */
@@ -2736,6 +2849,7 @@ function init() {
   updateNotifItem();
   startClock();
   bindEvents();
+  initNativeBridge();
   initReveal();
   applyEffects();
   showLoader();

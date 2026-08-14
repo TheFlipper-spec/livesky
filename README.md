@@ -71,6 +71,28 @@ python3 -m http.server 8000 --directory docs
 - **iOS Safari** — «Поделиться» → «На экран “Домой”»
 - Офлайн показывается последний загруженный прогноз
 
+### Android APK (Capacitor)
+
+В репозитории есть нативный Android-проект на **Capacitor 8** с постоянным Application ID
+`io.github.theflipperspec.livesky`. Минимальная версия — Android 7.0 (API 24), целевая — API 36.
+В Android-обёртке подключены системная геолокация, локальные погодные уведомления и
+корректная обработка кнопки «Назад».
+
+Требования для локальной сборки: Node.js 22+, JDK 17+ и Android SDK 36.
+
+```bash
+npm ci
+npm run cap:sync       # скопировать docs/ и обновить нативные плагины
+npm run android:build  # debug APK
+npm run android:open   # открыть проект в Android Studio
+```
+
+Debug APK появится в `android/app/build/outputs/apk/debug/app-debug.apk`.
+Для Google Play используйте `npm run android:bundle` и настройте release-подпись через
+локальный keystore — файлы `*.jks`, `*.keystore` и `android/key.properties` исключены из Git.
+Иконки и splash-экраны можно повторно создать командой
+`./scripts/generate-android-assets.sh` (нужен ImageMagick).
+
 ---
 
 ## 📂 Структура проекта
@@ -85,6 +107,10 @@ docs/                        # публикуемый сайт (GitHub Pages)
 ├── manifest.webmanifest     # PWA-манифест
 ├── sw.js                    # service worker (кеш оболочки + прогноз + push)
 └── icons/                   # иконки приложения (16…512 px)
+android/                     # нативный проект Capacitor / Gradle
+capacitor.config.json        # ID, webDir и настройки Android WebView
+scripts/
+└── generate-android-assets.sh # генерация Android-иконок и splash-экранов
 tests/
 └── smoke.js                 # smoke-тест (jsdom + данные Open-Meteo)
 ```
@@ -93,7 +119,7 @@ tests/
 
 ```bash
 npm install
-npm test        # 92 проверки: рендеринг, модалки, темы, поиск, хранилище, отказы
+npm test        # 103 проверки: веб-рендеринг, Capacitor, свайп, модалки, темы и отказы
 ```
 
 Включая сценарии отказов: зависшая сеть (watchdog скрывает загрузчик), отсутствующие
@@ -118,6 +144,7 @@ npm test        # 92 проверки: рендеринг, модалки, те�
 | Слой | Технологии |
 |---|---|
 | Фронтенд | Ванильный JS, CSS-токены, canvas |
+| Android | Capacitor 8, Gradle, нативные плагины геолокации и уведомлений |
 | Погода | [Open-Meteo](https://open-meteo.com/) (forecast, air-quality, geocoding) |
 | Радар | [RainViewer](https://www.rainviewer.com/) Weather Maps |
 | Карты | [MapLibre GL](https://maplibre.org/) + OpenStreetMap / CartoDB |
