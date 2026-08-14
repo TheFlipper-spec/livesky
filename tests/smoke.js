@@ -120,6 +120,19 @@ function makeFetchStub() {
 }
 window.fetch = makeFetchStub();
 
+/* Capacitor's App.addListener may return a handle directly (not a Promise).
+   Keep the primary smoke run in native mode to guard Android startup. */
+let nativeBackHandler = null;
+window.Capacitor = {
+  isNativePlatform: () => true,
+  Plugins: {
+    App: {
+      addListener(event, handler) { nativeBackHandler = handler; return { remove() {} }; },
+      exitApp() {}
+    }
+  }
+};
+
 window.addEventListener('error', (e) => errors.push('window error: ' + e.message));
 process.on('unhandledRejection', (r) => errors.push('unhandled rejection: ' + (r && r.message)));
 
@@ -174,6 +187,8 @@ setTimeout(() => {
       assert(/SCHEDULE_EXACT_ALARM[\s\S]*tools:node="remove"/.test(manifest), 'unused restricted exact-alarm permission is removed');
       assert(/nativePlugin\('Geolocation'\)/.test(appSrc) && /nativePlugin\('LocalNotifications'\)/.test(appSrc) && /if \(isNativeApp\(\)\) return/.test(appSrc), 'web app includes native Capacitor adapters and skips PWA cache in Android');
     }
+    assert(typeof nativeBackHandler === 'function', 'Capacitor back-button listener accepts a direct listener handle');
+    assert(q('boot-error').classList.contains('hidden'), 'Capacitor native bridge does not block application startup');
     assert(q('loader').classList.contains('done'), 'loader hidden after data load');
     assert(/[-\d]+°/.test(q('temperature').textContent), 'temperature rendered: ' + q('temperature').textContent);
     assert(!q('temp-unit'), 'double degree span removed');
