@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=5" />
+  <link rel="stylesheet" href="css/app.css?v=6" />
 </head>
 
 <body data-theme="adaptive">
@@ -59,6 +59,9 @@
       <button class="btn btn-primary" onclick="location.reload()"><i class="ph ph-arrow-clockwise"></i> Перезагрузить</button>
     </div>
   </div>
+
+  <!-- ==== Scrim: dims the page behind open dropdowns, making them pop ==== -->
+  <div id="menu-scrim" class="menu-scrim"></div>
 
   <div class="shell">
     <!-- ==== Header ==== -->
@@ -144,7 +147,7 @@
             <div class="hero-meta">
               <span class="chip"><i class="ph ph-clock"></i><span id="realtime-clock" style="font-variant-numeric:tabular-nums">--:--</span><i class="dot"></i></span>
               <span class="chip hidden" id="updated-chip"><i class="ph ph-arrow-clockwise"></i><span data-translate="updated">Обновлено</span> <span id="updated-at">--:--</span></span>
-              <span class="chip hidden" id="rain-soon-chip"><i class="ph ph-cloud-rain"></i><span data-translate="rain_soon">Дождь в ближайший час</span></span>
+              <span class="chip warn hidden" id="rain-soon-chip"><i class="ph ph-cloud-rain"></i><span data-translate="rain_soon">Дождь в ближайший час</span></span>
             </div>
           </div>
 
@@ -164,39 +167,63 @@
 
           <div class="metrics">
             <div class="metric tile-cyan">
-              <div class="metric-top"><span class="metric-label" data-translate="feels_like">Ощущается</span><i class="ph ph-thermometer"></i></div>
-              <div class="metric-value" id="m-feels">--</div>
+              <div class="metric-ico"><i class="ph ph-thermometer"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="feels_like">Ощущается</span>
+                <span class="metric-value" id="m-feels">--</span>
+              </div>
             </div>
             <div class="metric tile-blue">
-              <div class="metric-top"><span class="metric-label" data-translate="wind">Ветер</span><span class="wind-arrow" id="m-wind-arrow"><i class="ph ph-navigation-arrow"></i></span></div>
-              <div class="metric-value" id="m-wind">--</div>
-              <div class="metric-sub" id="m-wind-dir"></div>
+              <div class="metric-ico"><span class="wind-arrow" id="m-wind-arrow"><i class="ph-fill ph-navigation-arrow"></i></span></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="wind">Ветер</span>
+                <span class="metric-value" id="m-wind">--</span>
+                <span class="metric-sub" id="m-wind-dir"></span>
+              </div>
             </div>
             <div class="metric tile-sky">
-              <div class="metric-top"><span class="metric-label" data-translate="humidity">Влажность</span><i class="ph ph-drop"></i></div>
-              <div class="metric-value" id="m-hum">--</div>
+              <div class="metric-ico"><i class="ph ph-drop"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="humidity">Влажность</span>
+                <span class="metric-value" id="m-hum">--</span>
+              </div>
             </div>
             <div class="metric tile-slate">
-              <div class="metric-top"><span class="metric-label" data-translate="visibility">Видимость</span><i class="ph ph-eye"></i></div>
-              <div class="metric-value" id="m-vis">--</div>
+              <div class="metric-ico"><i class="ph ph-eye"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="visibility">Видимость</span>
+                <span class="metric-value" id="m-vis">--</span>
+              </div>
             </div>
             <div class="metric tile-violet">
-              <div class="metric-top"><span class="metric-label" data-translate="pressure">Давление</span><i class="ph ph-gauge"></i></div>
-              <div class="metric-value" id="m-press">--</div>
-              <div class="metric-sub" id="m-press-trend"></div>
+              <div class="metric-ico"><i class="ph ph-gauge"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="pressure">Давление</span>
+                <span class="metric-value" id="m-press">--</span>
+                <span class="metric-sub" id="m-press-trend"></span>
+              </div>
             </div>
-            <div class="metric tile-cyan">
-              <div class="metric-top"><span class="metric-label" data-translate="dew_point">Точка росы</span><i class="ph ph-drop-half"></i></div>
-              <div class="metric-value" id="m-dew">--</div>
+            <div class="metric tile-sky">
+              <div class="metric-ico"><i class="ph ph-drop-half"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="dew_point">Точка росы</span>
+                <span class="metric-value" id="m-dew">--</span>
+              </div>
             </div>
             <div class="metric tile-amber">
-              <div class="metric-top"><span class="metric-label" data-translate="uv_index">УФ-индекс</span><i class="ph ph-sun"></i></div>
-              <div class="metric-value" id="m-uv">--</div>
-              <div class="metric-sub" id="m-uv-label"></div>
+              <div class="metric-ico"><i class="ph ph-sun"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="uv_index">УФ-индекс</span>
+                <span class="metric-value" id="m-uv">--</span>
+                <span class="metric-sub" id="m-uv-label"></span>
+              </div>
             </div>
             <div class="metric tile-blue">
-              <div class="metric-top"><span class="metric-label" data-translate="rain_prob_24h">Вероятность дождя · 24ч</span><i class="ph ph-cloud-rain"></i></div>
-              <div class="metric-value" id="m-precip">--</div>
+              <div class="metric-ico"><i class="ph ph-cloud-rain"></i></div>
+              <div class="metric-info">
+                <span class="metric-label" data-translate="rain_prob_24h">Вероятность дождя · 24ч</span>
+                <span class="metric-value" id="m-precip">--</span>
+              </div>
             </div>
           </div>
         </section>
@@ -345,7 +372,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=5"></script>
-  <script src="js/app.js?v=5"></script>
+  <script src="js/i18n.js?v=6"></script>
+  <script src="js/app.js?v=6"></script>
 </body>
 </html>
