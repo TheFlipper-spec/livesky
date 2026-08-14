@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=10" />
+  <link rel="stylesheet" href="css/app.css?v=11" />
 </head>
 
 <body data-theme="adaptive">
@@ -81,7 +81,6 @@
           <input type="text" id="city-input" placeholder="Поиск города..." aria-label="Поиск города" />
           <button type="button" class="search-btn hidden" id="search-clear" aria-label="Очистить"><i class="ph-bold ph-x"></i></button>
           <button type="button" class="search-btn" id="fav-btn" aria-label="В избранное"><i id="fav-icon" class="ph ph-star"></i></button>
-          <button type="button" class="search-btn" id="locate-btn" aria-label="Моё местоположение"><i class="ph ph-navigation-arrow"></i></button>
         </form>
         <div class="autocomplete hidden" id="autocomplete-list"></div>
       </div>
@@ -117,6 +116,7 @@
             </select>
 
             <div class="dd-group-label" data-translate="actions">Действия</div>
+            <button class="dd-item" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location">Моё местоположение</span></button>
             <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
             <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
           </div>
@@ -222,7 +222,7 @@
             <div class="metric tile-blue">
               <div class="metric-ico"><i class="ph ph-cloud-rain"></i></div>
               <div class="metric-info">
-                <span class="metric-label" data-translate="rain_prob_24h">Вероятность дождя · 24ч</span>
+                <span class="metric-label" id="m-precip-label">Дождь сегодня</span>
                 <span class="metric-value" id="m-precip">--</span>
               </div>
             </div>
@@ -232,6 +232,7 @@
         <aside class="side-col">
           <!-- Map -->
           <div class="card map-card hover-lift" id="map-card">
+            <div class="map-placeholder"><i class="ph ph-globe-hemisphere-west"></i><span data-translate="map_loading">Загружаем карту...</span></div>
             <div id="map" aria-label="Карта"></div>
             <div class="map-open-hint"><i class="ph ph-arrows-out-simple"></i><span data-translate="map_hint">Открыть карту</span></div>
           </div>
@@ -373,7 +374,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=10"></script>
-  <script src="js/app.js?v=10"></script>
+  <script src="js/i18n.js?v=11"></script>
+  <script src="js/app.js?v=11"></script>
 </body>
 </html>
