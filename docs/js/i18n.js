@@ -233,6 +233,9 @@ window.LIVE_I18N = {
     footer_copy: 'LiveSky Weather Pro · данные: Open-Meteo',
     footer_telegram: 'LiveSky/Dev',
     footer_feedback: 'Обратная связь',
+    report_bug: 'Сообщить об ошибке',
+    reload_btn: 'Перезагрузить',
+    bug_report_hint: 'Спасибо! Опишите, пожалуйста, что пошло не так — так вы поможете нам быстрее исправить ошибку.',
     loading_phrases: [
       'Сканируем облака...',
       'Измеряем скорость ветра...',
@@ -473,6 +476,9 @@ window.LIVE_I18N = {
     footer_copy: 'LiveSky Weather Pro · data: Open-Meteo',
     footer_telegram: 'LiveSky/Dev',
     footer_feedback: 'Feedback',
+    report_bug: 'Report a bug',
+    reload_btn: 'Reload',
+    bug_report_hint: 'Thank you! Please describe what went wrong — it will help us fix the issue faster.',
     loading_phrases: [
       'Scanning the clouds...',
       'Measuring wind speed...',
@@ -713,6 +719,9 @@ window.LIVE_I18N = {
     footer_copy: 'LiveSky Weather Pro · datos: Open-Meteo',
     footer_telegram: 'LiveSky/Dev',
     footer_feedback: 'Comentarios',
+    report_bug: 'Reportar un error',
+    reload_btn: 'Recargar',
+    bug_report_hint: '¡Gracias! Describe qué ha fallado — nos ayudará a corregirlo antes.',
     loading_phrases: [
       'Escaneando las nubes...',
       'Midiendo el viento...',

@@ -23,7 +23,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=18" />
+  <link rel="stylesheet" href="css/app.css?v=19" />
 </head>
 
 <body data-theme="adaptive">
@@ -67,7 +67,10 @@
       <i class="ph-fill ph-warning-circle boot-error-ico"></i>
       <h2>Не удалось запустить приложение</h2>
       <p id="boot-error-msg">Попробуйте перезагрузить страницу.</p>
-      <button class="btn btn-primary" onclick="location.reload()"><i class="ph ph-arrow-clockwise"></i> Перезагрузить</button>
+      <div class="boot-error-actions">
+        <button class="btn btn-primary" onclick="location.reload()"><i class="ph ph-arrow-clockwise"></i> <span data-translate="reload_btn">Перезагрузить</span></button>
+        <a class="btn" id="boot-report-btn" href="#" target="_blank" rel="noopener"><i class="ph-bold ph-bug"></i> <span data-translate="report_bug">Сообщить об ошибке</span></a>
+      </div>
     </div>
   </div>
 
@@ -363,7 +366,7 @@
     <footer class="site-footer">
       <div class="footer-links">
         <a class="footer-link" href="https://t.me/liveskydev" target="_blank" rel="noopener"><i class="ph-fill ph-telegram-logo"></i><span data-translate="footer_telegram">LiveSky/Dev</span></a>
-        <a class="footer-link" href="https://docs.google.com/forms/d/e/1FAIpQLSeM6QLhVhqC-MmFMRKkzH860GsNJA8Rbx61bgU7y1dY5l8q2w/viewform?usp=dialog" target="_blank" rel="noopener"><i class="ph-bold ph-chat-teardrop-text"></i><span data-translate="footer_feedback">Обратная связь</span></a>
+        <a class="footer-link" href="https://github.com/TheFlipper-spec/livesky/issues" target="_blank" rel="noopener"><i class="ph-bold ph-chat-teardrop-text"></i><span data-translate="footer_feedback">Обратная связь</span></a>
       </div>
       <p class="footer-copy"><span data-translate="footer_copy">LiveSky Weather Pro · данные: Open-Meteo</span><br />
         Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Maps by <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL</a> &amp; OSM · Geocoding by Open-Meteo / Nominatim</p>
@@ -427,7 +430,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=18"></script>
-  <script src="js/app.js?v=18"></script>
+  <script src="js/i18n.js?v=19"></script>
+  <script src="js/app.js?v=19"></script>
 </body>
 </html>

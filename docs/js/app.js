@@ -350,6 +350,8 @@ function bootFail(msg) {
     panel.classList.remove('hidden');
     const m = $('boot-error-msg');
     if (m) m.textContent = String(msg || '').slice(0, 200);
+    const r = $('boot-report-btn');
+    if (r) r.href = reportBugUrl(msg);
   }
 }
 function setLoading(on) {
@@ -363,19 +365,60 @@ function setLoading(on) {
   }
 }
 
+/* Builds a GitHub issues URL with the bug context pre-filled so the user can
+   describe the problem without copy-pasting details manually.
+   Safe even when i18n itself failed to load (that is exactly when bootFail runs). */
+function safeT(key, fallback) {
+  try { return t(key); } catch (e) { return fallback; }
+}
+function reportBugUrl(message) {
+  const title = safeT('report_bug', 'report a bug');
+  const hint = safeT('bug_report_hint', 'Please describe what went wrong');
+  const body = [
+    hint,
+    '',
+    '---',
+    '**Страница / Page:** ' + (location.href || ''),
+    '**Версия / Version:** ' + (navigator.appVersion || ''),
+    '**Ошибка / Error:** ' + (message || '—'),
+    '',
+    '**Что случилось / What happened:**',
+    ''
+  ].join('\n');
+  return 'https://github.com/TheFlipper-spec/livesky/issues/new?title='
+    + encodeURIComponent('LiveSky: ' + title)
+    + '&body=' + encodeURIComponent(body);
+}
+
 function toast(msg, type, actionLabel, actionFn) {
   if (state.toastCount >= 3) return; /* keep max 3 on screen */
   const node = document.createElement('div');
   node.className = `toast ${type || 'info'}`;
   const icons = { info: 'ph-info', error: 'ph-warning-circle', success: 'ph-check-circle' };
   node.innerHTML = `<span class="t-ico"><i class="ph-fill ${icons[type] || 'ph-info'}"></i></span><span>${msg}</span>`;
+  /* right-aligned action cluster (retry + report-bug) */
+  const actions = document.createElement('div');
+  actions.className = 't-actions';
   if (actionLabel && actionFn) {
     const a = document.createElement('button');
     a.className = 't-action';
     a.textContent = actionLabel;
     a.onclick = () => { actionFn(); dismiss(); };
-    node.appendChild(a);
+    actions.appendChild(a);
   }
+  /* on any error toast, offer a one-click way to report the bug on GitHub */
+  if (type === 'error') {
+    const b = document.createElement('a');
+    b.className = 't-bug';
+    b.href = reportBugUrl(msg);
+    b.target = '_blank';
+    b.rel = 'noopener';
+    b.innerHTML = '<i class="ph-bold ph-bug"></i>';
+    b.title = t('report_bug');
+    b.setAttribute('aria-label', t('report_bug'));
+    actions.appendChild(b);
+  }
+  if (actions.children.length) node.appendChild(actions);
   el.toastWrap.appendChild(node);
   state.toastCount = (state.toastCount || 0) + 1;
   const dismiss = () => {
