@@ -374,16 +374,14 @@ body.no-scroll { overflow: hidden; }
 }
 .dropdown.open { opacity: 1; transform: none; pointer-events: auto; }
 
-/* scrim that dims the page behind open dropdowns */
+/* scrim that dims the page behind open dropdowns (no blur — must stay crisp) */
 .menu-scrim {
   position: fixed; inset: 0; z-index: 60;
-  background: rgba(3, 6, 15, 0.42);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(3, 6, 15, 0.32);
   opacity: 0; pointer-events: none;
   transition: opacity 0.25s ease;
 }
-[data-theme="light"] .menu-scrim { background: rgba(30, 41, 59, 0.26); }
+[data-theme="light"] .menu-scrim { background: rgba(30, 41, 59, 0.18); }
 .menu-scrim.on { opacity: 1; pointer-events: auto; }
 
 @keyframes menuIn {
