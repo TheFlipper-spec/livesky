@@ -24,6 +24,7 @@ const el = {
   alertBox: $('alert-box'), alertMsg: $('alert-msg'), alertTitle: $('alert-title'),
   modal: $('modal'), modalTitle: $('modal-title'), modalSubtitle: $('modal-subtitle'), modalBody: $('modal-body'), modalClose: $('modal-close'),
   mapModal: $('map-modal'), fullMap: $('full-map'), mapClose: $('map-close'), mapInstr: $('map-instr'), mapApply: $('map-apply-btn'), mapSmall: $('map'),
+  rainSoon: $('rain-soon-chip'), moonChip: $('moon-chip'), mPressTrend: $('m-press-trend'),
   toastWrap: $('toast-wrap'),
   searchForm: $('search-form'), input: $('city-input'), autoList: $('autocomplete-list'),
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'),
@@ -39,6 +40,24 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } }
 };
 
+/* migrate legacy storage keys from LiveSky v1 */
+try {
+  if (!localStorage.getItem('livesky:favorites')) {
+    const old = localStorage.getItem('livesky_favorites');
+    if (old) {
+      const favs = JSON.parse(old);
+      localStorage.setItem('livesky:favorites', JSON.stringify(favs.map(f => ({ name: f.name, country: f.country || '', admin: '', lat: f.lat, lon: f.lon }))));
+    }
+  }
+  if (!localStorage.getItem('livesky:last_city')) {
+    const old = localStorage.getItem('livesky_last_city');
+    if (old) {
+      const c = JSON.parse(old);
+      localStorage.setItem('livesky:last_city', JSON.stringify({ lat: c.lat, lon: c.lon, name: c.name, cc: c.countryCode || c.cc || '', admin: '' }));
+    }
+  }
+} catch (e) { /* ignore */ }
+
 const state = {
   lang: store.get('livesky:lang', 'ru'),
   theme: store.get('livesky:theme', 'adaptive'),
@@ -50,11 +69,14 @@ const state = {
   weather: null, air: null,
   nowIdx: 0, todayIdx: 16,
   favorites: store.get('livesky:favorites', []),
+  recent: store.get('livesky:recent', []),
+  elevation: null, lastFetchTs: Date.now(),
   loading: 0, slowTimer: null,
   lastTemp: null, currentIcon: null,
   fxKind: null, stormTimer: null,
   accent: '#38bdf8', accent2: '#818cf8'
 };
+let fetchSeq = 0; /* guards against stale/out-of-order responses */
 
 const I18N = window.LIVE_I18N;
 const WMO = window.LIVE_WMO;
@@ -131,6 +153,36 @@ function uvLabel(u) {
   if (u < 8) return t('uv_high');
   if (u < 11) return t('uv_very_high');
   return t('uv_extreme');
+}
+/* temperature colour coding (based on raw °C) */
+function tempClass(c) {
+  if (c == null || isNaN(c)) return '';
+  if (c < 0) return 'temp-frigid';
+  if (c < 10) return 'temp-cold';
+  if (c < 22) return 'temp-mild';
+  if (c < 30) return 'temp-warm';
+  return 'temp-hot';
+}
+/* moon phase */
+const MOON_EMOJI = ['🌑', '🌒', '🌓', '🌔', '🌕', '🌖', '🌗', '🌘'];
+const MOON_KEYS = ['moon_new', 'moon_waxing_crescent', 'moon_first_quarter', 'moon_waxing_gibbous', 'moon_full', 'moon_waning_gibbous', 'moon_last_quarter', 'moon_waning_crescent'];
+function moonPhaseInfo(date) {
+  const synodic = 29.53058867;
+  const knownNew = Date.UTC(2000, 0, 6, 18, 14);
+  const phase = (((date.getTime() - knownNew) / (synodic * 86400000)) % 1 + 1) % 1;
+  const idx = Math.round(phase * 8) % 8;
+  return { idx, emoji: MOON_EMOJI[idx], label: t(MOON_KEYS[idx]) };
+}
+function rainSoonNow() {
+  if (!state.weather) return false;
+  const h = state.weather.hourly;
+  const raining = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+  for (let k = state.nowIdx; k <= state.nowIdx + 1 && k < h.time.length; k++) {
+    const p = getVal(h, 'precipitation_probability', k) || 0;
+    const c = getVal(h, 'weathercode', k);
+    if (p >= 40 || (raining.includes(c) && p >= 25)) return true;
+  }
+  return false;
 }
 
 /* ---------------- data helpers ---------------- */
@@ -284,12 +336,13 @@ function setBigIcon(iconClass) {
 }
 
 /* ---------------- data fetching ---------------- */
-async function fetchWeather() {
-  setLoading(true);
+async function fetchWeather(silent) {
+  const seq = ++fetchSeq;
+  if (!silent) setLoading(true);
   try {
     const params = new URLSearchParams({
       latitude: state.lat, longitude: state.lon,
-      hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,winddirection_10m,relativehumidity_2m,surface_pressure,dewpoint_2m,visibility,uv_index,is_day',
+      hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,windgusts_10m,winddirection_10m,relativehumidity_2m,surface_pressure,dewpoint_2m,visibility,uv_index,is_day',
       daily: 'weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,precipitation_sum,uv_index_max,windspeed_10m_max,winddirection_10m_dominant',
       timezone: 'auto', forecast_days: 16, past_days: 16
     });
@@ -299,33 +352,39 @@ async function fetchWeather() {
     if (!res.ok) throw new Error('API ' + res.status);
     const data = await res.json();
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
+    if (seq !== fetchSeq) return; /* a newer request is in flight */
 
     if (data.timezone) state.tz = data.timezone;
+    if (data.elevation != null) state.elevation = Math.round(data.elevation);
     state.weather = data;
     state.nowIdx = data.hourly.time.findIndex(tm => tm.startsWith(tzNow(state.tz).iso));
     if (state.nowIdx === -1) state.nowIdx = data.hourly.time.length - 25;
     state.todayIdx = data.daily.time.findIndex(tm => tm === tzNow(state.tz).date);
     if (state.todayIdx === -1) state.todayIdx = 16;
+    state.lastFetchTs = Date.now();
 
     store.set('livesky:last_city', { lat: state.lat, lon: state.lon, name: state.locationName, cc: state.countryCode, admin: state.admin });
     renderAll();
     updateMap();
-    fetchAir();
+    fetchAir(seq);
   } catch (e) {
+    if (seq !== fetchSeq) return;
     console.error('fetchWeather failed:', e);
-    toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
+    if (!silent) toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
   } finally {
-    setLoading(false);
+    if (seq !== fetchSeq) return;
+    if (!silent) setLoading(false);
     hideLoader();
   }
 }
 
-async function fetchAir() {
+async function fetchAir(seq) {
   try {
     const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`);
     if (!res.ok) return;
     const data = await res.json();
     if (!data || !data.hourly) return;
+    if (seq && seq !== fetchSeq) return;
     state.air = data;
     renderAir();
   } catch (e) { /* non-critical */ }
@@ -362,14 +421,15 @@ async function reverseGeo(lat, lon) {
 }
 
 let geoWarned = false;
-function getUserLocation(silent) {
-  if (!silent) showLoader();
+function getUserLocation(notify) {
+  showLoader();
   if (!navigator.geolocation) { fetchWeather(); return; }
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
       state.lat = pos.coords.latitude;
       state.lon = pos.coords.longitude;
       await reverseGeo(state.lat, state.lon);
+      if (notify) toast(t('toast_loc_set'), 'success');
       fetchWeather();
     },
     () => {
@@ -398,8 +458,15 @@ function updateHero() {
   el.location.textContent = state.locationName;
   el.locationFlag.classList.toggle('hidden', !state.countryCode);
   if (state.countryCode) el.locationFlag.src = `https://flagcdn.com/w40/${state.countryCode.toLowerCase()}.png`;
-  el.locationAdmin.textContent = state.admin || '';
-  el.locationAdmin.classList.toggle('hidden', !state.admin);
+  let adminLine = state.admin || '';
+  if (state.elevation != null) {
+    const elev = state.units === 'imperial'
+      ? `${Math.round(state.elevation * 3.28084)} ft`
+      : `${state.elevation} ${state.lang === 'ru' ? 'м' : 'm'}`;
+    adminLine = adminLine ? `${adminLine} · ${elev}` : elev;
+  }
+  el.locationAdmin.textContent = adminLine;
+  el.locationAdmin.classList.toggle('hidden', !adminLine);
 
   const h = state.weather.hourly, i = state.nowIdx;
   const temp = getVal(h, 'temperature_2m', i);
@@ -407,11 +474,13 @@ function updateHero() {
   const feels = getVal(h, 'apparent_temperature', i);
   const night = hourIsNight(i);
 
+  el.temp.className = 'temp-num' + (tempClass(temp) ? ' ' + tempClass(temp) : '');
   if (temp == null || isNaN(temp)) { el.temp.textContent = '--'; delete el.temp.dataset.v; }
   else animateNumber(el.temp, Math.round(convTemp(temp)));
   el.cond.textContent = wmoLabel(code);
   el.feelsLine.textContent = `${t('feels_like')}: ${fmtTempDeg(feels)}`;
   setBigIcon(wmoIcon(code, night));
+  el.rainSoon.classList.toggle('hidden', !rainSoonNow());
 
   const now = tzNow(state.tz);
   el.updatedAt.textContent = `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`;
@@ -429,7 +498,16 @@ function updateMetrics() {
   el.mWindArrow.style.transform = `rotate(${(dir || 45) - 45}deg)`;
   el.mHum.textContent = getVal(h, 'relativehumidity_2m', i) != null ? Math.round(getVal(h, 'relativehumidity_2m', i)) + '%' : '--';
   el.mVis.textContent = fmtVis(getVal(h, 'visibility', i));
-  el.mPress.textContent = fmtPress(getVal(h, 'surface_pressure', i));
+  const pNow = getVal(h, 'surface_pressure', i);
+  el.mPress.textContent = fmtPress(pNow);
+  const pPrev = i - 3 >= 0 ? getVal(h, 'surface_pressure', i - 3) : null;
+  let trend = '';
+  if (pNow != null && pPrev != null) {
+    const diff = pNow - pPrev;
+    if (diff > 0.5) trend = '↗ ' + t('press_rising');
+    else if (diff < -0.5) trend = '↘ ' + t('press_falling');
+  }
+  el.mPressTrend.textContent = trend;
   el.mDew.textContent = fmtTempDeg(getVal(h, 'dewpoint_2m', i));
   const uv = getVal(h, 'uv_index', i);
   el.mUv.textContent = uv != null ? (Math.round(uv * 10) / 10).toLocaleString(loc()) : '--';
@@ -478,9 +556,9 @@ function renderSunArc() {
       </linearGradient>
       <mask id="moonMask"><rect width="220" height="118" fill="#fff"/><circle cx="117" cy="30" r="9.5" fill="#000"/></mask>
     </defs>
-    <line x1="10" y1="104" x2="210" y2="104" stroke="var(--stroke-strong)" stroke-width="1" stroke-dasharray="3 5" opacity="0.6"/>
+    <line class="sun-base" x1="10" y1="104" x2="210" y2="104" stroke-width="1" stroke-dasharray="3 5" opacity="0.6"/>
     <path class="arc-track" d="M ${SUN_P0[0]} ${SUN_P0[1]} Q ${SUN_P1[0]} ${SUN_P1[1]} ${SUN_P2[0]} ${SUN_P2[1]}"
-      fill="none" stroke="var(--stroke-strong)" stroke-width="2.5" stroke-linecap="round" opacity="0.45"
+      fill="none" stroke-width="2.5" stroke-linecap="round" opacity="0.45"
       style="transition: opacity .3s"/>`;
 
   if (isDay) {
@@ -495,7 +573,7 @@ function renderSunArc() {
     svg += `<circle cx="${sun[0].toFixed(1)}" cy="${sun[1].toFixed(1)}" r="8" fill="url(#sunGrad)" stroke="#fff" stroke-width="1.6"/>`;
   } else {
     /* night: moon on the arc */
-    svg += `<circle cx="106" cy="32" r="12" fill="#e2e8f0" mask="url(#moonMask)" opacity="0.95"/>`;
+    svg += `<circle class="moon-body" cx="106" cy="32" r="12" mask="url(#moonMask)" opacity="0.95"/>`;
     svg += `<circle cx="70" cy="12" r="1.3" fill="#e2e8f0" opacity="0.8"/><circle cx="150" cy="8" r="1" fill="#e2e8f0" opacity="0.6"/><circle cx="178" cy="20" r="1.4" fill="#e2e8f0" opacity="0.7"/>`;
     let label;
     if (p < 0) { label = `${fmtDur(srMin - nowMin, true)} ${t('hours_to_sunrise')}`; }
@@ -503,7 +581,16 @@ function renderSunArc() {
     el.dayLengthLabel.dataset.translate = '';
     el.dayLengthLabel.textContent = label;
   }
-  svg += '';
+
+  /* moon phase chip (night only) */
+  const moon = moonPhaseInfo(new Date());
+  if (!isDay) {
+    el.moonChip.textContent = `${moon.emoji} ${moon.label}`;
+    el.moonChip.classList.remove('hidden');
+  } else {
+    el.moonChip.classList.add('hidden');
+  }
+
   el.sunArc.innerHTML = svg;
 }
 
@@ -566,7 +653,7 @@ function renderChart() {
   let grid = '';
   for (let g = 0; g <= 4; g++) {
     const y = 8 + g * 21;
-    grid += `<line x1="0" y1="${y}" x2="100" y2="${y}" stroke="var(--grid-line)" stroke-width="0.5"/>`;
+    grid += `<line class="grid-line" x1="0" y1="${y}" x2="100" y2="${y}"/>`;
   }
 
   el.chartSvg.innerHTML = `
@@ -594,8 +681,9 @@ function renderChart() {
     const tv = getVal(h, 'temperature_2m', i);
     const pv = getVal(h, 'precipitation', i) || 0;
     const wv = getVal(h, 'windspeed_10m', i);
+    const gv = getVal(h, 'windgusts_10m', i);
     const hv = getVal(h, 'relativehumidity_2m', i);
-    chartData.push({ k, i, time: times[k], temp: tv, prec: pv, wind: wv, hum: hv });
+    chartData.push({ k, i, time: times[k], temp: tv, prec: pv, wind: wv, gust: gv, hum: hv });
     col.addEventListener('mouseenter', () => showChartTip(k));
     col.addEventListener('mousemove', () => showChartTip(k));
     col.addEventListener('click', () => showModalHourly(state.weather.hourly, i));
@@ -623,8 +711,11 @@ function showChartTip(k) {
     <div class="tt-row"><span>${t('temp')}</span><b class="tt-temp">${fmtTempDeg(d.temp)}</b></div>
     <div class="tt-row"><span>${t('precip')}</span><b>${fmtPrecip(d.prec)}</b></div>
     <div class="tt-row"><span>${t('wind')}</span><b>${fmtWind(d.wind)}</b></div>
+    ${d.gust != null && d.gust > 0.1 ? `<div class="tt-row"><span>${t('wind_gusts')}</span><b>${fmtWind(d.gust)}</b></div>` : ''}
     <div class="tt-row"><span>${t('humidity')}</span><b>${d.hum != null ? Math.round(d.hum) + '%' : '--'}</b></div>`;
-  el.chartTooltip.style.left = `${((k + 0.5) / chartData.length) * 100}%`;
+  /* clamp so the tooltip never clips at chart edges */
+  const pct = Math.min(90, Math.max(10, ((k + 0.5) / chartData.length) * 100));
+  el.chartTooltip.style.left = `${pct}%`;
   el.chartTooltip.classList.remove('hidden');
 }
 
@@ -647,7 +738,7 @@ function renderHourly() {
     item.className = 'hour-item' + (isNow ? ' active' : '');
     item.innerHTML = `
       <span class="h-time">${isNow ? t('now') : String(hr).padStart(2, '0') + ':00'}</span>
-      <i class="ph-duotone ${wmoIcon(code, night)} h-icon"></i>
+      <i class="ph-duotone ${wmoIcon(code, night)} h-icon w-${wmo(code).type}"></i>
       <span class="h-temp">${fmtTemp(temp)}°</span>
       <span class="h-rain" style="${prob == null || prob < 5 ? 'opacity:.45' : ''}"><i class="ph-fill ph-drop"></i>${prob != null ? Math.round(prob) : 0}%</span>`;
     item.title = `${h.time[i].slice(11, 16)} · ${wmoLabel(code)}`;
@@ -692,7 +783,7 @@ function renderDaily() {
     item.innerHTML = `
       <span class="d-weekday">${isToday ? t('today') : wdCap}</span>
       <span class="d-date">${dt.getDate()} ${dt.toLocaleDateString(loc(), { month: 'short' }).replace('.', '')}</span>
-      <i class="ph-duotone ${wmoIcon(code, false)} d-icon"></i>
+      <i class="ph-duotone ${wmoIcon(code, false)} d-icon w-${wmo(code).type}"></i>
       <div class="d-temps"><span class="tmax">${fmtTemp(mx)}°</span><span class="tmin">${fmtTemp(mn)}°</span></div>
       <div class="d-range"><i style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%"></i></div>
       <span class="d-rain ${prob == null || prob < 5 ? 'zero' : ''}"><i class="ph-fill ph-drop"></i>${prob != null ? Math.round(prob) : 0}%</span>`;
@@ -886,6 +977,7 @@ const FX = {
     el.fxCanvas.style.height = this.h + 'px';
     const ctx = el.fxCanvas.getContext('2d');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    if (this.kind) this.build(); /* reposition particles for the new viewport */
   },
   build() {
     this.parts = [];
@@ -1030,11 +1122,18 @@ function updateFavIcon() {
 
 /* ---------------- search ---------------- */
 let searchTimer = null;
+function saveRecent() {
+  state.recent = state.recent.filter(r => !(r.name === state.locationName && r.lat === state.lat));
+  state.recent.unshift({ name: state.locationName, country: state.countryCode, admin: state.admin, lat: state.lat, lon: state.lon });
+  state.recent = state.recent.slice(0, 5);
+  store.set('livesky:recent', state.recent);
+}
 function selectCity(c, isFav) {
   state.lat = c.lat; state.lon = c.lon;
   state.locationName = c.name;
   state.countryCode = c.country || '';
   state.admin = c.admin || '';
+  saveRecent();
   closeAutocomplete();
   el.input.value = '';
   el.input.blur();
@@ -1075,6 +1174,25 @@ function renderFavoritesList() {
       el.autoList.appendChild(div);
     });
   }
+
+  /* recent cities (excluding favorites) */
+  const recents = state.recent.filter(r => !state.favorites.some(f => f.name === r.name && f.lat === r.lat));
+  if (recents.length) {
+    const rTitle = document.createElement('div');
+    rTitle.className = 'ac-list-title';
+    rTitle.textContent = t('recent');
+    el.autoList.appendChild(rTitle);
+    recents.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'ac-item';
+      div.innerHTML = `
+        ${f.country ? `<img class="ac-flag" src="https://flagcdn.com/20x15/${f.country.toLowerCase()}.png" alt="">` : '<span class="ac-flag"></span>'}
+        <span><span class="ac-name">${escHtml(f.name)}</span>${f.admin ? `<br><span class="ac-admin">${escHtml(f.admin)}</span>` : ''}</span>
+        <i class="ph ph-clock-counter-clockwise ac-star"></i>`;
+      div.addEventListener('click', () => selectCity({ lat: f.lat, lon: f.lon, name: f.name, country: f.country, admin: f.admin }));
+      el.autoList.appendChild(div);
+    });
+  }
   el.autoList.classList.remove('hidden');
 }
 
@@ -1091,9 +1209,11 @@ async function handleInput() {
     return;
   }
   searchTimer = setTimeout(async () => {
+    if (el.input.value.trim() !== q) return; /* query changed while waiting */
     try {
       const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=${state.lang}&format=json`);
       const d = await r.json();
+      if (el.input.value.trim() !== q) return; /* stale response */
       const results = d.results || [];
       el.autoList.innerHTML = '';
       if (!results.length) {
@@ -1122,7 +1242,6 @@ async function handleSearch(e) {
   const q = el.input.value.trim();
   if (!q) return;
   closeAutocomplete();
-  setLoading(true);
   try {
     const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${state.lang}&format=json`);
     const d = await r.json();
@@ -1135,13 +1254,12 @@ async function handleSearch(e) {
     state.locationName = c.name;
     state.countryCode = c.country_code || '';
     state.admin = [c.admin1, c.country].filter(Boolean).join(', ');
+    saveRecent();
     el.input.value = '';
     el.input.blur();
     fetchWeather();
   } catch (e) {
-    toast(t('toast_network'), 'error');
-  } finally {
-    setLoading(false);
+    toast(t('toast_network'), 'error', t('toast_retry'), () => handleSearch(e));
   }
 }
 
@@ -1172,6 +1290,7 @@ function showModalHourly(h, i) {
   const uv = getVal(h, 'uv_index', i);
   const prob = getVal(h, 'precipitation_probability', i);
   const prec = getVal(h, 'precipitation', i);
+  const gust = getVal(h, 'windgusts_10m', i);
   const night = hourIsNight(i);
   const timeStr = h.time[i].slice(11, 16);
   const dateObj = parseLocal(h.time[i]);
@@ -1192,6 +1311,7 @@ function showModalHourly(h, i) {
       ${mTile('ph-eye', t('visibility'), fmtVis(vis))}
       ${mTile('ph-sun', t('uv_index'), uv != null ? (Math.round(uv * 10) / 10).toLocaleString(loc()) + ' · ' + uvLabel(uv) : '--')}
       ${mTile('ph-cloud-rain', t('rain_chance'), `${prob != null ? Math.round(prob) + '%' : '--'}${prec != null && prec > 0 ? ' · ' + fmtPrecip(prec) : ''}`)}
+      ${mTile('ph-wind', t('wind_gusts'), fmtWind(gust))}
     </div>`;
   openModal(`${t('modal_hourly')} ${timeStr}`, dateStr, body);
 }
@@ -1224,7 +1344,7 @@ function showModalDaily(d, i) {
       strip += `
         <div class="hour-item" style="width:64px" data-j="${j}">
           <span class="h-time">${h.time[j].slice(11, 16)}</span>
-          <i class="ph-duotone ${wmoIcon(hCode, hNight)} h-icon"></i>
+          <i class="ph-duotone ${wmoIcon(hCode, hNight)} h-icon w-${wmo(hCode).type}"></i>
           <span class="h-temp">${fmtTemp(hTemp)}°</span>
         </div>`;
       const v = getVal(h, 'visibility', j);
@@ -1286,7 +1406,7 @@ function showMonthly(mode) {
     const width = Math.max(8, ((mx - mn) / span) * 100);
     rows += `
       <div class="mo-row" data-i="${i}">
-        <i class="ph-duotone ${wmoIcon(code, false)} mo-icon"></i>
+        <i class="ph-duotone ${wmoIcon(code, false)} mo-icon w-${wmo(code).type}"></i>
         <span class="mo-date">${wd.charAt(0).toUpperCase() + wd.slice(1)}<small>${dt.toLocaleDateString(loc(), { day: 'numeric', month: 'long' })}</small></span>
         <span class="mo-range"><i style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%"></i></span>
         <span class="mo-temps">${fmtTemp(mx)}°<small>${fmtTemp(mn)}°</small></span>
@@ -1336,6 +1456,10 @@ function showSunDetails() {
     <div class="m-grid">
       ${block(t('sunrise'), srIso, srIdx, '#fb923c')}
       ${block(t('sunset'), ssIso, ssIdx, '#818cf8')}
+    </div>
+    <div class="m-tile" style="grid-column:1/-1;margin-top:2px">
+      <div class="m-label"><i class="ph ph-moon-stars"></i>${t('moon_phase_label')}</div>
+      <div class="m-val" style="font-size:15px;font-family:var(--font-body)">${moonPhaseInfo(new Date()).emoji} ${moonPhaseInfo(new Date()).label}</div>
     </div>
     <div class="m-note"><i class="ph-fill ph-camera"></i><p><b>${t('golden_title')}.</b> ${t('golden_desc')}</p></div>`;
   openModal(t('sun_modal_title'), state.locationName, body);
@@ -1521,7 +1645,15 @@ function initMap() {
   mapInst = L.map('map', { zoomControl: false, attributionControl: false }).setView([state.lat, state.lon], 10);
   mapTiles = L.tileLayer(tileUrl(), { maxZoom: 19 }).addTo(mapInst);
   mapMark = L.marker([state.lat, state.lon], { icon: makePin('#38bdf8') }).addTo(mapInst);
-  el.mapSmall.addEventListener('click', openFullMap);
+  /* open fullscreen map on tap/click, but NOT after dragging the map */
+  let dragStart = null;
+  el.mapSmall.addEventListener('pointerdown', (e) => { dragStart = { x: e.clientX, y: e.clientY }; });
+  el.mapSmall.addEventListener('pointerup', (e) => {
+    if (!dragStart) return;
+    const dist = Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y);
+    dragStart = null;
+    if (dist < 6) openFullMap();
+  });
 }
 function updateMap() {
   if (!mapInst || !window.L) return;
@@ -1583,6 +1715,8 @@ function applyTheme() {
   updateMapTiles();
   applyWeatherTheme();
   store.set('livesky:theme', state.theme);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', state.theme === 'light' ? '#eef4fb' : '#05070f');
   if (window.pywebview && window.pywebview.api && window.pywebview.api.set_window_theme) {
     window.pywebview.api.set_window_theme(state.theme).catch(() => {});
   }
@@ -1659,13 +1793,17 @@ function bindEvents() {
 
   el.settingsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    el.settingsMenu.classList.toggle('open');
+    const open = el.settingsMenu.classList.toggle('open');
+    el.settingsBtn.setAttribute('aria-expanded', String(open));
     el.langMenu.classList.remove('open');
+    el.langBtn.setAttribute('aria-expanded', 'false');
   });
   el.langBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    el.langMenu.classList.toggle('open');
+    const open = el.langMenu.classList.toggle('open');
+    el.langBtn.setAttribute('aria-expanded', String(open));
     el.settingsMenu.classList.remove('open');
+    el.settingsBtn.setAttribute('aria-expanded', 'false');
   });
   el.modelSelect.addEventListener('change', () => {
     state.model = el.modelSelect.value;
@@ -1723,6 +1861,7 @@ function bindEvents() {
     }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
     if (typing || el.modal.classList.contains('open') || el.mapModal.classList.contains('open')) return;
+    if (e.key === '/' ) { e.preventDefault(); el.input.focus(); el.input.select(); return; }
     if (e.key === 'ArrowRight') el.hStrip.scrollBy({ left: 220, behavior: 'smooth' });
     if (e.key === 'ArrowLeft') el.hStrip.scrollBy({ left: -220, behavior: 'smooth' });
   });
@@ -1732,11 +1871,16 @@ function bindEvents() {
     if (!document.hidden) {
       clockTick();
       FX.resume();
+      if (Date.now() - state.lastFetchTs > 15 * 60 * 1000) fetchWeather(true);
     } else if (FX.running) {
       cancelAnimationFrame(FX.raf);
       FX.running = false;
     }
   });
+  /* silent auto-refresh every 15 minutes */
+  setInterval(() => {
+    if (!document.hidden && Date.now() - state.lastFetchTs > 15 * 60 * 1000) fetchWeather(true);
+  }, 60 * 1000);
   window.addEventListener('offline', () => toast(t('toast_network'), 'error'));
 }
 
