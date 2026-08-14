@@ -2440,11 +2440,23 @@ const RADAR = {
       this.setupSlider();
       this.ensureLayer();
       this.renderFrame();
+      /* if the map wasn't ready yet, retry until the radar layer is on screen */
+      if (!this.layerReady) this.retryUntilReady();
     } catch (e) {
       toast(t('toast_network'), 'error');
     } finally {
       this.showLoading(false);
     }
+  },
+  retryUntilReady() {
+    let tries = 0;
+    const t = setInterval(() => {
+      if (!this.active) { clearInterval(t); return; }
+      if (this.layerReady || tries > 5) { clearInterval(t); return; }
+      tries++;
+      this.ensureLayer();
+      if (this.layerReady) this.renderFrame();
+    }, 500);
   },
   showLoading(on) {
     if (el.radarLoading) el.radarLoading.classList.toggle('hidden', !on);
@@ -2454,12 +2466,14 @@ const RADAR = {
     if (el.radarSlider) { el.radarSlider.max = String(this.frames.length - 1); el.radarSlider.value = String(this.idx); }
     this.updateTime();
   },
-  tileUrl() { return `${this.frames[this.idx].url}/256/{z}/{x}/{y}/2/1_1.png`; },
+  /* RainViewer radar tiles exist only up to zoom 7 — cap the source so MapLibre
+     upscales the finest available tiles instead of requesting zoom-10 tiles (404). */
+  tileUrl() { return `${this.frames[this.idx].url}/${(window.devicePixelRatio >= 2 ? 512 : 256)}/{z}/{x}/{y}/2/1_1.png`; },
   ensureLayer() {
     if (!fullMapInst || !this.frames[this.idx]) return;
     try {
       if (!fullMapInst.getSource('radar')) {
-        fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: 256 });
+        fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: 256, minzoom: 0, maxzoom: 7 });
         fullMapInst.addLayer({
           id: 'radar', type: 'raster', source: 'radar',
           paint: { 'raster-opacity': 0.78, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
