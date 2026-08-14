@@ -32,7 +32,12 @@ const el = {
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), searchClear: $('search-clear'),
   menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'), geoItem: $('geo-item'),
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
-  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label')
+  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label'),
+  effectsSelect: $('effects-select'), installItem: $('install-item'), offlineBanner: $('offline-banner'),
+  notifItem: $('notif-item'), notifIco: $('notif-ico'), notifLabel: $('notif-label'),
+  radarToggle: $('radar-toggle'), radarPanel: $('radar-panel'), radarLoading: $('radar-loading'),
+  radarTime: $('radar-time'), radarSlider: $('radar-slider'), radarBack: $('radar-back'),
+  radarNext: $('radar-next'), radarPlay: $('radar-play'), radarClose: $('radar-close')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -66,6 +71,8 @@ const state = {
   theme: store.get('livesky:theme', 'adaptive'),
   units: store.get('livesky:units', 'metric'),
   model: store.get('livesky:model', 'auto'),
+  effects: store.get('livesky:effects', 'auto'),
+  notif: store.get('livesky:notif', false),
   lat: 55.7558, lon: 37.6173,
   locationName: 'Москва', countryCode: 'RU', admin: '',
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -343,6 +350,8 @@ function bootFail(msg) {
     panel.classList.remove('hidden');
     const m = $('boot-error-msg');
     if (m) m.textContent = String(msg || '').slice(0, 200);
+    const r = $('boot-report-btn');
+    if (r) r.href = reportBugUrl(msg);
   }
 }
 function setLoading(on) {
@@ -356,19 +365,60 @@ function setLoading(on) {
   }
 }
 
+/* Builds a GitHub issues URL with the bug context pre-filled so the user can
+   describe the problem without copy-pasting details manually.
+   Safe even when i18n itself failed to load (that is exactly when bootFail runs). */
+function safeT(key, fallback) {
+  try { return t(key); } catch (e) { return fallback; }
+}
+function reportBugUrl(message) {
+  const title = safeT('report_bug', 'report a bug');
+  const hint = safeT('bug_report_hint', 'Please describe what went wrong');
+  const body = [
+    hint,
+    '',
+    '---',
+    '**Страница / Page:** ' + (location.href || ''),
+    '**Версия / Version:** ' + (navigator.appVersion || ''),
+    '**Ошибка / Error:** ' + (message || '—'),
+    '',
+    '**Что случилось / What happened:**',
+    ''
+  ].join('\n');
+  return 'https://github.com/TheFlipper-spec/livesky/issues/new?title='
+    + encodeURIComponent('LiveSky: ' + title)
+    + '&body=' + encodeURIComponent(body);
+}
+
 function toast(msg, type, actionLabel, actionFn) {
   if (state.toastCount >= 3) return; /* keep max 3 on screen */
   const node = document.createElement('div');
   node.className = `toast ${type || 'info'}`;
   const icons = { info: 'ph-info', error: 'ph-warning-circle', success: 'ph-check-circle' };
   node.innerHTML = `<span class="t-ico"><i class="ph-fill ${icons[type] || 'ph-info'}"></i></span><span>${msg}</span>`;
+  /* right-aligned action cluster (retry + report-bug) */
+  const actions = document.createElement('div');
+  actions.className = 't-actions';
   if (actionLabel && actionFn) {
     const a = document.createElement('button');
     a.className = 't-action';
     a.textContent = actionLabel;
     a.onclick = () => { actionFn(); dismiss(); };
-    node.appendChild(a);
+    actions.appendChild(a);
   }
+  /* on any error toast, offer a one-click way to report the bug on GitHub */
+  if (type === 'error') {
+    const b = document.createElement('a');
+    b.className = 't-bug';
+    b.href = reportBugUrl(msg);
+    b.target = '_blank';
+    b.rel = 'noopener';
+    b.innerHTML = '<i class="ph-bold ph-bug"></i>';
+    b.title = t('report_bug');
+    b.setAttribute('aria-label', t('report_bug'));
+    actions.appendChild(b);
+  }
+  if (actions.children.length) node.appendChild(actions);
   el.toastWrap.appendChild(node);
   state.toastCount = (state.toastCount || 0) + 1;
   const dismiss = () => {
@@ -459,6 +509,7 @@ async function fetchWeather(silent) {
     renderAll();
     updateMap();
     fetchAir(seq);
+    checkWeatherAlerts();
   } catch (e) {
     if (seq !== fetchSeq) return;
     console.error('fetchWeather failed:', e);
@@ -933,6 +984,15 @@ function renderAlerts() {
   if (feels != null && feels <= -25) msgs.push(t('alert_cold'));
   if (feels != null && feels >= 37) msgs.push(t('alert_heat'));
   if (vis != null && vis < 1000) msgs.push(t('alert_fog'));
+  /* surface the nearest upcoming alert (next 12h) so the banner is forward-looking */
+  if (!msgs.length) {
+    const nowM = minOfDay(h.time[i]);
+    const soon = upcomingAlerts().find(a => {
+      const m = minOfDay(a.t);
+      return (m - nowM + 1440) % 1440 <= 12 * 60;
+    });
+    if (soon) msgs.push(t('notif_' + soon.type).replace('{t}', soon.t.slice(11, 16)));
+  }
   if (msgs.length) {
     el.alertMsg.textContent = msgs.join(' · ');
     el.alertBox.classList.remove('hidden');
@@ -991,8 +1051,9 @@ function airSpark(values, color, max) {
   if (!clean.length) return '';
   const W = 120, H = 34, P = 3;
   const vmax = Math.max(1, max || Math.max(...clean));
+  const denom = Math.max(1, clean.length - 1); /* avoid division by zero for a single point */
   const pts = clean.map((v, i) => {
-    const x = P + (i / (clean.length - 1)) * (W - 2 * P);
+    const x = P + (i / denom) * (W - 2 * P);
     const y = H - P - 1 - (Math.min(v, vmax) / vmax) * (H - 2 * P - 2);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
@@ -1006,7 +1067,7 @@ function airSpark(values, color, max) {
 /* big 24h AQI trend with gradient area, animated draw and level-colored dots */
 function airTrendSVG(series) {
   const W = 620, H = 150, P = 28;
-  const n = series.length;
+  const n = Math.max(2, series.length); /* avoid division by zero for a single point */
   const X = k => P + (k / (n - 1)) * (W - 2 * P);
   const Y = v => H - P - (Math.min(Math.max(v, 0), 120) / 120) * (H - 2 * P);
   let line = '', area = '';
@@ -1151,6 +1212,8 @@ const LOGOS = {
 };
 
 let lastBgKey = '';
+/* heavy effects are disabled when the user is in Eco mode or the FPS detector flagged a weak device */
+function effectsReduced() { return state.effects === 'eco' || (state.effects === 'auto' && state._perfLow); }
 function setBackground(gradient, key) {
   if (key && key === lastBgKey) return;
   lastBgKey = key || '';
@@ -1211,9 +1274,12 @@ function applyWeatherTheme() {
   else if (type === 'clear') fx = null;
   else if (type === 'fog') fx = 'fog';
   else if (type === 'cloudy') fx = 'clouds';
-  FX.start(fx);
 
-  if (type === 'storm') startStorm(); else stopStorm();
+  if (effectsReduced()) { FX.stop(); stopStorm(); }
+  else {
+    FX.start(fx);
+    if (type === 'storm') startStorm(); else stopStorm();
+  }
 }
 
 function stopStorm() {
@@ -2026,6 +2092,7 @@ function openFullMap() {
             el.mapInstr.style.display = 'none';
             el.mapApply.classList.remove('hidden');
           });
+          if (RADAR.active) { RADAR.ensureLayer(); RADAR.renderFrame(); }
         });
         fullMapInst.on('error', () => {
           if (!fullMapFallback) { fullMapFallback = true; try { fullMapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
@@ -2221,6 +2288,28 @@ function bindEvents() {
   on(el.refreshItem, 'click', () => { setMenuOpen(false); fetchWeather(true); });
   on(el.geoItem, 'click', () => { setMenuOpen(false); getUserLocation(true); });
 
+  /* quality preset (auto / maximum / eco) */
+  on(el.effectsSelect, 'change', () => {
+    state.effects = el.effectsSelect.value;
+    store.set('livesky:effects', state.effects);
+    setMenuOpen(false);
+    if (state.effects === 'full') state._perfLow = false;
+    applyEffects();
+    /* if the FPS detector hadn't been started yet (e.g. the app booted in
+       "Maximum"), start it now that the user is back on Auto */
+    if (state.effects === 'auto') PERF.start();
+  });
+  on(el.installItem, 'click', promptInstall);
+  on(el.notifItem, 'click', () => { setMenuOpen(false); toggleNotifications(); });
+
+  /* rain radar */
+  on(el.radarToggle, 'click', () => RADAR.toggle());
+  on(el.radarClose, 'click', () => RADAR.disable());
+  on(el.radarPlay, 'click', () => RADAR.togglePlay());
+  on(el.radarNext, 'click', () => RADAR.step(1));
+  on(el.radarBack, 'click', () => RADAR.step(-1));
+  on(el.radarSlider, 'input', (e) => RADAR.goto(+e.target.value));
+
   on(el.adviceBtn, 'click', showAdvice);
   on(el.historyBtn, 'click', () => showMonthly('history'));
   on(el.sunCard, 'click', showSunDetails);
@@ -2278,11 +2367,12 @@ function bindEvents() {
       FX.running = false;
     }
   });
-  /* silent auto-refresh every 15 minutes */
+  /* silent auto-refresh every 15 minutes + periodic weather-alert check */
   setInterval(() => {
     if (!document.hidden && Date.now() - state.lastFetchTs > 15 * 60 * 1000) fetchWeather(true);
+    if (!document.hidden) checkWeatherAlerts();
   }, 60 * 1000);
-  window.addEventListener('offline', () => toast(t('toast_network'), 'error'));
+  /* offline state is surfaced by the offline banner (see initConnectivity) */
 }
 
 /* ---------------- reveal on scroll ---------------- */
@@ -2300,6 +2390,332 @@ function initReveal() {
   items.forEach(n => io.observe(n));
 }
 
+/* ---------------- PWA: service worker + install --------------- */
+let deferredInstallPrompt = null;
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  if (!/^https?:$/.test(location.protocol)) return; /* skip file:// and data: */
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => { /* non-critical */ });
+  });
+}
+function updateInstallItem() {
+  if (el.installItem) el.installItem.classList.toggle('hidden', !deferredInstallPrompt);
+}
+function promptInstall() {
+  if (!deferredInstallPrompt) return;
+  const p = deferredInstallPrompt;
+  p.prompt();
+  p.userChoice && p.userChoice.then(() => { deferredInstallPrompt = null; updateInstallItem(); });
+}
+function initInstallPrompt() {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    updateInstallItem();
+    if (!state._installToastShown) {
+      state._installToastShown = true;
+      setTimeout(() => toast(t('toast_install_ready'), 'info', t('install_app'), promptInstall), 2500);
+    }
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstallPrompt = null;
+    updateInstallItem();
+  });
+}
+
+/* ---------------- Offline / online banner --------------- */
+function initConnectivity() {
+  if (typeof navigator === 'undefined') return;
+  const show = () => { if (el.offlineBanner) { el.offlineBanner.classList.remove('out'); el.offlineBanner.classList.remove('hidden'); } };
+  const hide = () => {
+    if (!el.offlineBanner) return;
+    el.offlineBanner.classList.add('out');
+    setTimeout(() => el.offlineBanner.classList.add('hidden'), 320);
+  };
+  window.addEventListener('offline', show);
+  window.addEventListener('online', () => { hide(); if (state.weather) fetchWeather(true); });
+  if (navigator.onLine === false) show();
+}
+
+/* ---------------- Adaptive performance (FPS detector) --------------- */
+const PERF = {
+  raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0, started: false,
+  start() {
+    if (motionReduce || this.started) return;
+    this.started = true;
+    this.windowStart = performance.now();
+    const tick = (t) => {
+      this.windowFrames++;
+      if (t - this.windowStart >= 2000) {
+        const fps = (this.windowFrames * 1000) / Math.max(1, t - this.windowStart);
+        this.windowFrames = 0; this.windowStart = t;
+        if (fps < 22) this.lowStreak++; else this.lowStreak = 0;
+        if (fps > 42) this.normalStreak++; else this.normalStreak = 0;
+        this.evaluate();
+      }
+      this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  },
+  evaluate() {
+    if (state.effects !== 'auto') return;
+    if (!state._perfLow && this.lowStreak >= 2) {
+      state._perfLow = true; this.lowStreak = 0; this.normalStreak = 0;
+      applyEffects();
+      toast(t('toast_perf_low'), 'info');
+    } else if (state._perfLow && this.normalStreak >= 6) {
+      state._perfLow = false; this.normalStreak = 0;
+      applyEffects();
+      toast(t('toast_perf_restored'), 'success');
+    }
+  }
+};
+
+/* Apply the current quality mode: Eco/low disable heavy canvas FX + storm flashes. */
+function applyEffects() {
+  const eco = state.effects === 'eco';
+  const low = eco || (state.effects === 'auto' && state._perfLow);
+  document.documentElement.setAttribute('data-perf', low ? (eco ? 'eco' : 'low') : '');
+  if (low) { FX.stop(); stopStorm(); }
+  else if (state.weather) applyWeatherTheme();
+}
+function syncEffectsSelect() {
+  if (el.effectsSelect) el.effectsSelect.value = state.effects;
+}
+
+/* ---------------- Rain radar (RainViewer) over the fullscreen map --------------- */
+const RADAR = {
+  frames: [], idx: -1, playing: false, playTimer: null, layerReady: false, active: false,
+  async load() {
+    this.showLoading(true);
+    try {
+      const r = await fetchWithTimeout('https://api.rainviewer.com/public/weather-maps.json', 12000);
+      if (!r.ok) throw new Error('rainviewer ' + r.status);
+      const d = await r.json();
+      const past = (d.radar && d.radar.past) || [];
+      const nowcast = (d.radar && d.radar.nowcast) || [];
+      this.frames = past.concat(nowcast).map(f => ({ time: f.time, url: d.host + f.path }));
+      if (!this.frames.length) { toast(t('toast_network'), 'error'); return; }
+      this.idx = Math.max(0, past.length - 1);
+      this.setupSlider();
+      this.ensureLayer();
+      this.renderFrame();
+      /* if the map wasn't ready yet, retry until the radar layer is on screen */
+      if (!this.layerReady) this.retryUntilReady();
+    } catch (e) {
+      toast(t('toast_network'), 'error');
+    } finally {
+      this.showLoading(false);
+    }
+  },
+  retryUntilReady() {
+    let tries = 0;
+    const t = setInterval(() => {
+      if (!this.active) { clearInterval(t); return; }
+      if (this.layerReady || tries > 5) { clearInterval(t); return; }
+      tries++;
+      this.ensureLayer();
+      if (this.layerReady) this.renderFrame();
+    }, 500);
+  },
+  showLoading(on) {
+    if (el.radarLoading) el.radarLoading.classList.toggle('hidden', !on);
+    if (el.radarToggle) el.radarToggle.classList.toggle('loading', on);
+  },
+  setupSlider() {
+    if (el.radarSlider) { el.radarSlider.max = String(this.frames.length - 1); el.radarSlider.value = String(this.idx); }
+    this.updateTime();
+  },
+  /* RainViewer radar tiles exist only up to zoom 7 — cap the source so MapLibre
+     upscales the finest available tiles instead of requesting zoom-10 tiles (404). */
+  tileUrl() { return `${this.frames[this.idx].url}/${(window.devicePixelRatio >= 2 ? 512 : 256)}/{z}/{x}/{y}/2/1_1.png`; },
+  /* Source and layer are added independently so a retry can always complete:
+     even if addSource succeeded but addLayer was interrupted, the next call
+     adds the missing layer instead of just re-pointing tiles. */
+  ensureLayer() {
+    if (!fullMapInst || !this.frames[this.idx]) return false;
+    try {
+      if (!fullMapInst.getSource('radar')) {
+        fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: 256, minzoom: 0, maxzoom: 7 });
+      } else {
+        fullMapInst.getSource('radar').setTiles([this.tileUrl()]);
+      }
+      if (!fullMapInst.getLayer('radar')) {
+        fullMapInst.addLayer({
+          id: 'radar', type: 'raster', source: 'radar',
+          paint: { 'raster-opacity': 0.78, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
+        });
+      }
+      this.layerReady = true;
+      return true;
+    } catch (e) { return false; }
+  },
+  renderFrame() {
+    if (!this.frames.length || this.idx < 0) return;
+    if (fullMapInst && this.layerReady) {
+      try { fullMapInst.getSource('radar').setTiles([this.tileUrl()]); } catch (e) { /* ignore */ }
+    }
+    if (el.radarSlider) el.radarSlider.value = String(this.idx);
+    this.updateTime();
+  },
+  updateTime() {
+    if (el.radarTime && this.frames[this.idx]) {
+      el.radarTime.textContent = new Date(this.frames[this.idx].time * 1000)
+        .toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
+    }
+  },
+  step(dir) { if (!this.frames.length) return; this.idx = Math.min(this.frames.length - 1, Math.max(0, this.idx + dir)); this.renderFrame(); },
+  goto(i) { if (i < 0 || i >= this.frames.length) return; this.idx = i; this.renderFrame(); },
+  togglePlay() { this.playing ? this.pause() : this.play(); },
+  play() {
+    if (!this.frames.length) return;
+    this.playing = true;
+    if (el.radarPlay) { el.radarPlay.classList.add('playing'); el.radarPlay.innerHTML = '<i class="ph-fill ph-pause"></i>'; }
+    this.playTimer = setInterval(() => {
+      this.idx = this.idx >= this.frames.length - 1 ? 0 : this.idx + 1;
+      this.renderFrame();
+    }, 700);
+  },
+  pause() {
+    this.playing = false;
+    if (this.playTimer) { clearInterval(this.playTimer); this.playTimer = null; }
+    if (el.radarPlay) { el.radarPlay.classList.remove('playing'); el.radarPlay.innerHTML = '<i class="ph-fill ph-play"></i>'; }
+  },
+  enable() {
+    if (this.active) return;
+    this.active = true;
+    if (el.radarPanel) el.radarPanel.classList.remove('hidden');
+    if (el.radarToggle) { el.radarToggle.classList.add('on'); el.radarToggle.setAttribute('aria-pressed', 'true'); }
+    this.ensureLayer();
+    this.load();
+  },
+  disable() {
+    this.pause();
+    this.active = false;
+    if (el.radarPanel) el.radarPanel.classList.add('hidden');
+    if (el.radarToggle) { el.radarToggle.classList.remove('on'); el.radarToggle.setAttribute('aria-pressed', 'false'); }
+    if (fullMapInst && this.layerReady) {
+      try {
+        if (fullMapInst.getLayer('radar')) fullMapInst.removeLayer('radar');
+        if (fullMapInst.getSource('radar')) fullMapInst.removeSource('radar');
+      } catch (e) { /* ignore */ }
+      this.layerReady = false;
+    }
+  },
+  toggle() { this.active ? this.disable() : this.enable(); }
+};
+
+/* ---------------- weather notifications (local + Web Push ready) ---------------- */
+/* Keeps a rolling record of alerts we already notified about so the user isn't
+   spammed with the same event every time the forecast refreshes. */
+let sentAlerts = store.get('livesky:sent_alerts', []);
+function prunSentAlerts() {
+  const now = Date.now();
+  sentAlerts = sentAlerts.filter(a => now - a.at < 3 * 3600 * 1000); /* 3h window */
+}
+function alertSignature(type, hourIso) { return type + '|' + hourIso.slice(0, 13); }
+function shouldSendAlert(sig) { prunSentAlerts(); return !sentAlerts.some(a => a.sig === sig); }
+function markSent(sig) {
+  sentAlerts.push({ sig, at: Date.now() });
+  sentAlerts = sentAlerts.slice(-60);
+  store.set('livesky:sent_alerts', sentAlerts);
+}
+
+/* Scan the next 24h of the hourly forecast for alert-worthy events. */
+function upcomingAlerts() {
+  if (!state.weather) return [];
+  const h = state.weather.hourly;
+  const alerts = [];
+  const end = Math.min(state.nowIdx + 24, h.time.length);
+  for (let i = state.nowIdx; i < end; i++) {
+    const code = getVal(h, 'weathercode', i);
+    const feels = getVal(h, 'apparent_temperature', i);
+    const gust = getVal(h, 'windgusts_10m', i);
+    const wind = getVal(h, 'windspeed_10m', i);
+    const vis = getVal(h, 'visibility', i);
+    if ([95, 96, 99].includes(code)) alerts.push({ type: 'storm', t: h.time[i] });
+    else if ([65, 82].includes(code)) alerts.push({ type: 'rain_heavy', t: h.time[i] });
+    if (feels != null && feels >= 37) alerts.push({ type: 'heat', t: h.time[i] });
+    if (feels != null && feels <= -25) alerts.push({ type: 'cold', t: h.time[i] });
+    if ((gust != null ? gust : wind) >= 25) alerts.push({ type: 'wind', t: h.time[i] });
+    if (vis != null && vis < 1000) alerts.push({ type: 'fog', t: h.time[i] });
+  }
+  return alerts;
+}
+
+function sendNotification(alert) {
+  const timeStr = alert.t.slice(11, 16);
+  const title = t('notif_title');
+  const body = t('notif_' + alert.type).replace('{t}', timeStr);
+  const opts = {
+    body, icon: 'icons/icon-192.png', badge: 'icons/icon-96.png',
+    tag: 'livesky-' + alert.type, data: { url: location.href },
+    renotify: false
+  };
+  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+    navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts))
+      .catch(() => { try { new Notification(title, opts); } catch (e) { /* ignore */ } });
+  } else {
+    try { new Notification(title, opts); } catch (e) { /* ignore */ }
+  }
+}
+
+/* Called on every forecast refresh and on a periodic timer. Only fires when the
+   user enabled alerts, permission is granted and the event hasn't been sent. */
+function checkWeatherAlerts() {
+  if (!state.notif || typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  for (const a of upcomingAlerts()) {
+    const sig = alertSignature(a.type, a.t);
+    if (!shouldSendAlert(sig)) continue;
+    markSent(sig);
+    sendNotification(a);
+  }
+}
+
+function updateNotifItem() {
+  if (!el.notifItem) return;
+  const on = state.notif;
+  if (el.notifIco) el.notifIco.className = 'ph ' + (on ? 'ph-bell-ringing' : 'ph-bell');
+  if (el.notifLabel) {
+    el.notifLabel.dataset.translate = on ? 'notif_enabled' : 'notif_enable';
+    el.notifLabel.textContent = t(on ? 'notif_enabled' : 'notif_enable');
+  }
+  el.notifItem.classList.toggle('selected', on);
+}
+function toggleNotifications() {
+  if (state.notif) {
+    state.notif = false;
+    store.set('livesky:notif', false);
+    updateNotifItem();
+    toast(t('notif_toast_off'), 'info');
+    return;
+  }
+  if (typeof Notification === 'undefined') { toast(t('notif_unsupported'), 'error'); return; }
+  if (Notification.permission === 'denied') { toast(t('notif_blocked'), 'error'); return; }
+  if (Notification.permission === 'granted') {
+    state.notif = true;
+    store.set('livesky:notif', true);
+    updateNotifItem();
+    toast(t('notif_toast_on'), 'success');
+    checkWeatherAlerts();
+    return;
+  }
+  /* prompt the user for permission first time */
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      state.notif = true;
+      store.set('livesky:notif', true);
+      updateNotifItem();
+      toast(t('notif_toast_on'), 'success');
+      checkWeatherAlerts();
+    } else {
+      toast(t('notif_blocked'), 'error');
+    }
+  }).catch(() => { toast(t('notif_unsupported'), 'error'); });
+}
+
 /* ---------------- init ---------------- */
 function init() {
   /* sanitize persisted settings (old/foreign values must never break boot) */
@@ -2307,6 +2723,7 @@ function init() {
   if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';
   if (!['metric', 'imperial'].includes(state.units)) state.units = 'metric';
   if (!['auto', 'ecmwf_ifs04', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
+  if (!['auto', 'full', 'eco'].includes(state.effects)) state.effects = 'auto';
 
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
@@ -2314,12 +2731,22 @@ function init() {
   applyTranslations();
   updateThemeLabel();
   syncMenuChecks();
+  syncEffectsSelect();
   updateFavIcon();
+  updateNotifItem();
   startClock();
   bindEvents();
   initReveal();
+  applyEffects();
   showLoader();
   initMap();
+
+  /* PWA + adaptive performance + offline */
+  registerServiceWorker();
+  initInstallPrompt();
+  updateInstallItem();
+  initConnectivity();
+  if (state.effects !== 'full') PERF.start();
 
   const last = store.get('livesky:last_city', null);
   if (last && last.lat != null) {
