@@ -682,8 +682,21 @@ body.no-scroll { overflow: hidden; }
 .aqi-poll .poll { background: var(--surface-2); border: 1px solid var(--stroke); border-radius: 13px; padding: 9px 11px; }
 .aqi-poll .poll span { font-size: 10px; font-weight: 700; color: var(--text-4); display: block; }
 .aqi-poll .poll b { font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.aqi-note { margin-top: 12px; font-size: 10.5px; color: var(--text-4); display: flex; align-items: center; gap: 6px; }
+.aqi-card[role="button"] { cursor: pointer; }
+.aqi-foot { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.aqi-note { font-size: 10.5px; color: var(--text-4); display: flex; align-items: center; gap: 6px; }
 .aqi-note i { font-size: 13px; color: var(--accent); }
+.aqi-more {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--stroke-accent);
+  padding: 7px 12px; border-radius: 999px;
+  transition: transform 0.25s, box-shadow 0.25s, background 0.25s;
+}
+.aqi-card:hover .aqi-more { transform: translateX(3px); box-shadow: 0 8px 20px -10px var(--glow-accent); background: var(--accent); color: var(--accent-contrast); }
+.aqi-card:hover .aqi-ring-fg { filter: drop-shadow(0 0 6px var(--glow-accent)); }
 
 /* ---------- Alert banner ---------- */
 .alert-box {
@@ -716,38 +729,66 @@ body.no-scroll { overflow: hidden; }
 .chart-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .chart-cols { position: absolute; inset: 0; display: flex; }
 .chart-col { flex: 1; cursor: crosshair; }
-.chart-axis { display: flex; justify-content: space-between; padding: 6px 2px 0; font-size: 11px; font-weight: 700; color: var(--text-4); font-variant-numeric: tabular-nums; }
-.chart-tooltip {
-  position: absolute; z-index: 30; top: 0;
-  transform: translate(-50%, -108%);
-  background: rgba(8, 14, 28, 0.94);
-  border: 1px solid var(--stroke-strong);
-  border-radius: 14px;
-  padding: 11px 14px;
-  min-width: 148px;
-  box-shadow: var(--shadow-pop);
-  pointer-events: none;
-  animation: tooltipIn 0.16s ease-out;
-  backdrop-filter: blur(8px);
+/* detail bar under the chart (never clipped, always pleasant) */
+.chart-detail {
+  margin-top: 12px;
+  display: flex; align-items: stretch; gap: 8px; flex-wrap: wrap;
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  padding: 10px;
+  min-height: 66px;
 }
-[data-theme="light"] .chart-tooltip { background: rgba(255, 255, 255, 0.96); }
-.chart-tooltip .tt-time { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; }
-.chart-tooltip .tt-row { display: flex; justify-content: space-between; gap: 14px; font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-top: 2px; }
-.chart-tooltip .tt-row b { font-variant-numeric: tabular-nums; }
-.chart-tooltip .tt-temp { font-size: 15px; }
-@keyframes tooltipIn { from { opacity: 0; transform: translate(-50%, -100%); } to { opacity: 1; transform: translate(-50%, -108%); } }
+.chart-detail .cd-empty {
+  margin: auto; color: var(--text-4);
+  font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.cd-item {
+  flex: 1 1 130px; min-width: 0;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 9px 13px; border-radius: 12px;
+  transition: background 0.3s, border-color 0.3s;
+}
+.cd-item + .cd-item { border-left: 1px solid var(--stroke); }
+.cd-item .cd-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cd-item .cd-label i { color: var(--accent); font-size: 13px; flex: none; }
+.cd-item .cd-val {
+  font-family: var(--font-display); font-size: 15px; font-weight: 600;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cd-item.cd-time {
+  background: var(--accent-soft);
+  border: 1px solid var(--stroke-accent);
+  border-left: none;
+}
+.cd-item.cd-time .cd-val { color: var(--accent); }
+.cd-item.swap { animation: cdSwap 0.28s ease; }
+@keyframes cdSwap { from { opacity: 0.25; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
-/* ---------- Hourly strip ---------- */
-.hourly-card { padding: 22px 26px; }
-.hourly-shell { position: relative; }
-.hourly-strip {
-  display: flex; gap: 10px;
-  overflow-x: auto;
-  padding: 4px 2px 8px;
-  scroll-behavior: smooth;
-  scrollbar-width: none;
-  scroll-snap-type: x proximity;
+/* hover guide line + dot on the chart */
+.chart-guide {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 1px;
+  background: linear-gradient(180deg, var(--accent), transparent 85%);
+  opacity: 0; pointer-events: none; z-index: 5;
+  transition: left 0.14s ease-out, opacity 0.25s;
 }
+.chart-guide i {
+  position: absolute; top: 50%; left: 50%;
+  width: 10px; height: 10px; border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--accent);
+  border: 2px solid var(--bg-1);
+  box-shadow: 0 0 12px var(--glow-accent);
+  transition: top 0.14s ease-out;
+}
+
+.chart-axis { display: flex; justify-content: space-between; padding: 6px 2px 0; font-size: 11px; font-weight: 700; color: var(--text-4); font-variant-numeric: tabular-nums; }
 .hourly-strip::-webkit-scrollbar { display: none; }
 .hour-item {
   flex: none; width: 84px;
@@ -950,6 +991,72 @@ body.no-scroll { overflow: hidden; }
 }
 .m-back:hover { background: var(--surface-3); color: var(--text-1); }
 .m-back i { font-size: 14px; }
+
+/* ---------- Air quality detail modal ---------- */
+.air-hero {
+  display: flex; align-items: center; gap: 18px;
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 20px;
+  padding: 18px;
+  margin-bottom: 14px;
+}
+.air-hero .aqi-ring-box { width: 92px; height: 92px; }
+.air-hero-info { flex: 1; min-width: 0; }
+.air-hero-info .ah-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
+.air-hero-info .ah-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+
+.air-trend {
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 20px;
+  padding: 16px 14px 10px;
+  margin-bottom: 14px;
+}
+.air-trend .at-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-4); margin-bottom: 8px; padding: 0 4px;
+}
+.air-trend .at-title i { color: var(--accent); font-size: 14px; }
+.air-trend svg { width: 100%; height: auto; display: block; }
+.air-trend .at-axis {
+  display: flex; justify-content: space-between;
+  padding: 6px 6px 0;
+  font-size: 10.5px; font-weight: 700; color: var(--text-4);
+  font-variant-numeric: tabular-nums;
+}
+
+.air-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 14px; }
+.air-poll-card {
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 16px;
+  padding: 13px 14px 11px;
+}
+.air-poll-card .ap-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.air-poll-card .ap-name { font-weight: 800; font-size: 13px; }
+.air-poll-card .ap-val { font-family: var(--font-display); font-size: 15.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.air-poll-card .ap-note { font-size: 10px; color: var(--text-4); margin-top: 6px; }
+.air-poll-card svg { width: 100%; height: 36px; display: block; }
+
+.air-health {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: var(--accent-soft);
+  border: 1px solid var(--stroke-accent);
+  border-radius: 16px;
+  padding: 14px 16px;
+}
+.air-health i { color: var(--accent); font-size: 20px; flex: none; margin-top: 1px; }
+.air-health p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.air-health p b { display: block; margin-bottom: 3px; }
+
+/* animated line drawing (used by air quality charts) */
+.anim-draw { animation-name: drawLine; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); animation-fill-mode: forwards; }
+@keyframes drawLine { to { stroke-dashoffset: 0; } }
+.anim-area { opacity: 0; animation: fadeArea 1s ease 0.5s forwards; }
+@keyframes fadeArea { to { opacity: 1; } }
+.anim-pop { animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
 
 /* history / monthly rows */
 .mo-row {

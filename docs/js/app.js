@@ -15,10 +15,12 @@ const el = {
   mHum: $('m-hum'), mVis: $('m-vis'), mPress: $('m-press'), mDew: $('m-dew'),
   mUv: $('m-uv'), mUvLabel: $('m-uv-label'), mPrecip: $('m-precip'),
   sunrise: $('sunrise'), sunset: $('sunset'), dayLength: $('day-length'), dayLengthLabel: $('day-length-label'),
+  aqiCard: $('aqi-card'),
   sunArc: $('sun-arc'), sunCard: $('sun-card'),
   aqiRing: $('aqi-ring-fg'), aqiValue: $('aqi-value'), aqiLabel: $('aqi-label'),
   aqiPm25: $('aqi-pm25'), aqiPm10: $('aqi-pm10'), aqiO3: $('aqi-o3'), aqiNo2: $('aqi-no2'),
-  chartSvg: $('chart-svg'), chartCols: $('chart-cols'), chartTooltip: $('chart-tooltip'), chartAxis: $('chart-axis'), chartPlot: $('chart-plot'),
+  chartSvg: $('chart-svg'), chartCols: $('chart-cols'), chartAxis: $('chart-axis'), chartPlot: $('chart-plot'),
+  chartDetail: $('chart-detail'), chartGuide: $('chart-guide'), chartGuideDot: $('chart-guide-dot'),
   hStrip: $('hourly-strip'), hLeft: $('hourly-left'), hRight: $('hourly-right'),
   dStrip: $('daily-strip'), historyBtn: $('history-btn'),
   alertBox: $('alert-box'), alertMsg: $('alert-msg'), alertTitle: $('alert-title'),
@@ -796,13 +798,14 @@ function renderChart() {
     const wv = getVal(h, 'windspeed_10m', i);
     const gv = getVal(h, 'windgusts_10m', i);
     const hv = getVal(h, 'relativehumidity_2m', i);
-    chartData.push({ k, i, time: times[k], temp: tv, prec: pv, wind: wv, gust: gv, hum: hv });
-    col.addEventListener('mouseenter', () => showChartTip(k));
-    col.addEventListener('mousemove', () => showChartTip(k));
+    chartData.push({ k, i, time: times[k], temp: tv, prec: pv, wind: wv, gust: gv, hum: hv, yPct: tv != null ? Y(tv) : null });
+    col.addEventListener('mouseenter', () => showChartDetail(k));
+    col.addEventListener('mousemove', () => showChartDetail(k));
     col.addEventListener('click', () => showModalHourly(state.weather.hourly, i));
     el.chartCols.appendChild(col);
   }
-  el.chartCols.onmouseleave = () => el.chartTooltip.classList.add('hidden');
+  el.chartCols.onmouseleave = () => hideChartGuide();
+  showChartDetail(0); /* detail bar shows the current hour by default */
 
   /* axis labels every 6 hours */
   let axis = '';
@@ -814,22 +817,26 @@ function renderChart() {
   el.chartAxis.innerHTML = axis;
 }
 
-function showChartTip(k) {
+function showChartDetail(k) {
   const d = chartData[k];
   if (!d) return;
   const hr = parseInt(d.time.slice(11, 13), 10);
   const when = k === 0 ? t('now') : `${String(hr).padStart(2, '0')}:00`;
-  el.chartTooltip.innerHTML = `
-    <div class="tt-time">${when}</div>
-    <div class="tt-row"><span>${t('temp')}</span><b class="tt-temp">${fmtTempDeg(d.temp)}</b></div>
-    <div class="tt-row"><span>${t('precip')}</span><b>${fmtPrecip(d.prec)}</b></div>
-    <div class="tt-row"><span>${t('wind')}</span><b>${fmtWind(d.wind)}</b></div>
-    ${d.gust != null && d.gust > 0.1 ? `<div class="tt-row"><span>${t('wind_gusts')}</span><b>${fmtWind(d.gust)}</b></div>` : ''}
-    <div class="tt-row"><span>${t('humidity')}</span><b>${d.hum != null ? Math.round(d.hum) + '%' : '--'}</b></div>`;
-  /* clamp so the tooltip never clips at chart edges */
-  const pct = Math.min(90, Math.max(10, ((k + 0.5) / chartData.length) * 100));
-  el.chartTooltip.style.left = `${pct}%`;
-  el.chartTooltip.classList.remove('hidden');
+  el.chartDetail.innerHTML = `
+    <div class="cd-item cd-time"><span class="cd-label"><i class="ph ph-clock"></i>${when}</span><span class="cd-val">${fmtTempDeg(d.temp)}</span></div>
+    <div class="cd-item"><span class="cd-label"><i class="ph ph-cloud-rain"></i>${t('precip')}</span><span class="cd-val">${fmtPrecip(d.prec)}</span></div>
+    <div class="cd-item"><span class="cd-label"><i class="ph ph-wind"></i>${t('wind')}</span><span class="cd-val">${fmtWind(d.wind)}</span></div>
+    ${d.gust != null && d.gust > 0.1 ? `<div class="cd-item"><span class="cd-label"><i class="ph ph-wind"></i>${t('wind_gusts')}</span><span class="cd-val">${fmtWind(d.gust)}</span></div>` : ''}
+    <div class="cd-item"><span class="cd-label"><i class="ph ph-drop"></i>${t('humidity')}</span><span class="cd-val">${d.hum != null ? Math.round(d.hum) + '%' : '--'}</span></div>`;
+  el.chartDetail.querySelectorAll('.cd-item').forEach(n => n.classList.add('swap'));
+  /* hover guide: vertical line + glowing dot pinned to the hovered point */
+  el.chartGuide.style.left = `${((k + 0.5) / chartData.length) * 100}%`;
+  el.chartGuide.style.opacity = '1';
+  if (d.yPct != null) el.chartGuideDot.style.top = `${d.yPct}%`;
+  else el.chartGuideDot.style.top = '50%';
+}
+function hideChartGuide() {
+  el.chartGuide.style.opacity = '0';
 }
 
 /* ---------- hourly strip ---------- */
@@ -964,6 +971,150 @@ function renderAir() {
   el.aqiO3.textContent = getVal(h, 'ozone', idx) != null ? Math.round(getVal(h, 'ozone', idx)) + ' µg/m³' : '--';
   el.aqiNo2.textContent = getVal(h, 'nitrogen_dioxide', idx) != null ? Math.round(getVal(h, 'nitrogen_dioxide', idx)) + ' µg/m³' : '--';
 }
+
+/* ---------- air quality detail modal ---------- */
+function airNowIdx() {
+  if (!state.air) return -1;
+  const h = state.air.hourly;
+  const nowIso = tzNow(state.tz).iso;
+  let idx = h.time.findIndex(tm => tm === nowIso);
+  if (idx === -1) idx = h.time.length - 1;
+  while (idx >= 0 && getVal(h, 'european_aqi', idx) == null) idx--;
+  return idx;
+}
+function aqiLevel(v) {
+  return AQI_LEVELS.find(l => v <= l.max) || AQI_LEVELS[AQI_LEVELS.length - 1];
+}
+/* mini sparkline for a pollutant */
+function airSpark(values, color, max) {
+  const clean = values.map(v => (v == null || isNaN(v)) ? 0 : v);
+  if (!clean.length) return '';
+  const W = 120, H = 34, P = 3;
+  const vmax = Math.max(1, max || Math.max(...clean));
+  const pts = clean.map((v, i) => {
+    const x = P + (i / (clean.length - 1)) * (W - 2 * P);
+    const y = H - P - 1 - (Math.min(v, vmax) / vmax) * (H - 2 * P - 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const len = Math.max(60, Math.hypot(W, H));
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"
+      vector-effect="non-scaling-stroke" class="anim-draw"
+      style="stroke-dasharray:${len.toFixed(0)};stroke-dashoffset:${len.toFixed(0)};animation-duration:${(0.9 + len / 400).toFixed(2)}s"/>
+  </svg>`;
+}
+/* big 24h AQI trend with gradient area, animated draw and level-colored dots */
+function airTrendSVG(series) {
+  const W = 620, H = 150, P = 28;
+  const n = series.length;
+  const X = k => P + (k / (n - 1)) * (W - 2 * P);
+  const Y = v => H - P - (Math.min(Math.max(v, 0), 120) / 120) * (H - 2 * P);
+  let line = '', area = '';
+  series.forEach((s, k) => {
+    const x = X(k).toFixed(1), y = Y(s.aqi).toFixed(1);
+    line += (k ? 'L' : 'M') + x + ' ' + y;
+  });
+  area = `${line} L ${X(n - 1).toFixed(1)} ${H - P} L ${X(0).toFixed(1)} ${H - P} Z`;
+  const dots = series.map((s, k) => `<circle cx="${X(k).toFixed(1)}" cy="${Y(s.aqi).toFixed(1)}" r="3.4" fill="${aqiLevel(s.aqi).color}" stroke="var(--bg-1)" stroke-width="1.4"/>`).join('');
+  let grid = '';
+  for (let g = 0; g <= 3; g++) {
+    const y = (P + g * ((H - 2 * P) / 3)).toFixed(1);
+    grid += `<line class="grid-line" x1="${P}" y1="${y}" x2="${W - P}" y2="${y}"/>`;
+  }
+  const len = Math.max(200, W * 1.2);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="airGrad" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${state.accent}"/><stop offset="100%" stop-color="${state.accent2}"/>
+      </linearGradient>
+      <linearGradient id="airAreaGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${hexToRgba(state.accent, 0.26)}"/><stop offset="100%" stop-color="${hexToRgba(state.accent, 0)}"/>
+      </linearGradient>
+    </defs>
+    ${grid}
+    <path d="${area}" fill="url(#airAreaGrad)" class="anim-area"/>
+    <path d="${line}" fill="none" stroke="url(#airGrad)" stroke-width="2.6" stroke-linecap="round" vector-effect="non-scaling-stroke"
+      class="anim-draw" style="stroke-dasharray:${len.toFixed(0)};stroke-dashoffset:${len.toFixed(0)};animation-duration:1.5s"/>
+    <g class="anim-pop" style="animation-delay:1.1s">${dots}</g>
+  </svg>`;
+}
+
+function showAirDetails() {
+  if (!state.air) return;
+  const idx = airNowIdx();
+  if (idx < 0) return;
+  const h = state.air.hourly;
+  const n = Math.min(24, h.time.length - idx);
+  const series = [];
+  for (let k = 0; k < n; k++) {
+    const i = idx + k;
+    series.push({
+      time: h.time[i],
+      aqi: getVal(h, 'european_aqi', i),
+      pm25: getVal(h, 'pm2_5', i),
+      pm10: getVal(h, 'pm10', i),
+      o3: getVal(h, 'ozone', i),
+      no2: getVal(h, 'nitrogen_dioxide', i)
+    });
+  }
+  const nowS = series[0];
+  const lvl = aqiLevel(nowS.aqi || 0);
+  const healthKey = lvl.label.replace('aqi_', 'air_health_');
+  const C = 263.9;
+
+  const pollutants = [
+    { key: 'pm25', name: 'PM2.5', color: '#60a5fa', max: 80, note: t('air_pm25_note') },
+    { key: 'pm10', name: 'PM10', color: '#a78bfa', max: 120, note: t('air_pm10_note') },
+    { key: 'o3', name: 'O₃', color: '#34d399', max: 180, note: t('air_o3_note') },
+    { key: 'no2', name: 'NO₂', color: '#fbbf24', max: 100, note: t('air_no2_note') }
+  ];
+
+  const pollCards = pollutants.map(p => {
+    const vals = series.map(s => s[p.key]);
+    const cur = nowS[p.key];
+    return `
+      <div class="air-poll-card anim-pop">
+        <div class="ap-head"><span class="ap-name" style="color:${p.color}">${p.name}</span><span class="ap-val">${cur != null ? Math.round(cur) + ' µg/m³' : '--'}</span></div>
+        ${airSpark(vals, p.color, p.max)}
+        <div class="ap-note">${p.note}</div>
+      </div>`;
+  }).join('');
+
+  const axisLabels = [0, 6, 12, 18].map(k => {
+    if (!series[k]) return '';
+    return k === 0 ? t('now') : series[k].time.slice(11, 16);
+  }).join('<span></span>');
+
+  const body = `
+    <div class="air-hero anim-pop">
+      <div class="aqi-ring-box">
+        <svg viewBox="0 0 100 100">
+          <circle class="aqi-ring-bg" cx="50" cy="50" r="42"></circle>
+          <circle class="aqi-ring-fg" cx="50" cy="50" r="42" stroke="${lvl.color}" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.min(nowS.aqi || 0, 120) / 120)}" style="transition: stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)"></circle>
+        </svg>
+        <div class="aqi-center"><b style="color:${lvl.color}">${Math.round(nowS.aqi || 0)}</b><span>${t(lvl.label)}</span></div>
+      </div>
+      <div class="air-hero-info">
+        <div class="ah-title">${t('air_quality')} · ${t(lvl.label)}</div>
+        <div class="ah-sub">${t('air_now_note')} ${state.locationName}.</div>
+      </div>
+    </div>
+
+    <div class="air-trend anim-pop" style="animation-delay:0.1s">
+      <div class="at-title"><i class="ph ph-chart-line"></i>${t('air_trend_title')}</div>
+      ${airTrendSVG(series)}
+      <div class="at-axis">${axisLabels}</div>
+    </div>
+
+    <div class="air-grid">${pollCards}</div>
+
+    <div class="air-health anim-pop" style="animation-delay:0.25s">
+      <i class="ph-fill ph-heartbeat"></i>
+      <p><b>${t('air_health')}</b>${t(healthKey)}</p>
+    </div>`;
+  openModal(t('air_quality'), `${state.locationName} · ${t('air_next24')}`, body);
+}
+
 
 /* ---------- weather theme / background / effects ---------- */
 const ACCENTS = {
@@ -2073,6 +2224,8 @@ function bindEvents() {
   on(el.adviceBtn, 'click', showAdvice);
   on(el.historyBtn, 'click', () => showMonthly('history'));
   on(el.sunCard, 'click', showSunDetails);
+  on(el.aqiCard, 'click', showAirDetails);
+  on(el.aqiCard, 'keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showAirDetails(); } });
   on(el.sunCard, 'keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showSunDetails(); } });
 
   document.getElementById('life-run').addEventListener('click', () => showLifestyle('run'));
