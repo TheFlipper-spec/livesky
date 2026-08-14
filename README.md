@@ -2,10 +2,13 @@
 
 # LiveSky · Weather Pro 🌤
 
-**Премиальное погодное веб-приложение** — живые анимированные фоны, радар осадков,
-графики, качество воздуха, PWA-офлайн и умные уведомления о погоде.
+**Премиальное погодное приложение для Web и Android** — живые фоны, радар осадков,
+графики, качество воздуха, офлайн-режим и умные погодные уведомления.
 
-[![Live Site](https://img.shields.io/badge/🌤%20Открыть%20сайт-theflipper--spec.github.io%2Flivesky-38bdf8?style=for-the-badge&labelColor=0b1120)](https://theflipper-spec.github.io/livesky/)
+[![Live Site](https://img.shields.io/badge/🌤%20Открыть%20сайт-LiveSky-38bdf8?style=for-the-badge&labelColor=0b1120)](https://theflipper-spec.github.io/livesky/)
+[![Android Beta](https://img.shields.io/badge/Android-Beta%20APK-3ddc84?style=for-the-badge&logo=android&logoColor=white&labelColor=0b1120)](https://github.com/TheFlipper-spec/livesky/releases/tag/v2.0.0-android-beta.1)
+
+[![Release](https://img.shields.io/github/v/release/TheFlipper-spec/livesky?include_prereleases&style=flat-square&color=818cf8)](https://github.com/TheFlipper-spec/livesky/releases)
 [![Issues](https://img.shields.io/github/issues/TheFlipper-spec/livesky?style=flat-square&color=f87171)](https://github.com/TheFlipper-spec/livesky/issues)
 [![License](https://img.shields.io/badge/license-MIT-818cf8?style=flat-square)](LICENSE)
 
@@ -54,6 +57,18 @@
 
 **Откройте сайт:** [https://theflipper-spec.github.io/livesky/](https://theflipper-spec.github.io/livesky/)
 
+## 📱 Android
+
+### [⬇️ Скачать LiveSky Android Beta](https://github.com/TheFlipper-spec/livesky/releases/tag/v2.0.0-android-beta.1)
+
+- Android 7.0+ (API 24), Application ID `io.github.theflipperspec.livesky`
+- нативная геолокация, уведомления и обработка кнопки «Назад»
+- фирменные adaptive icons и splash screen
+
+> Beta APK подписан отладочным ключом и предназначен для тестирования. Перед установкой
+> новой beta-версии может потребоваться удалить предыдущую сборку. Для стабильных
+> обновлений и Google Play нужен постоянный release-keystore.
+
 ## 🚀 Запуск локально
 
 Проект полностью статический — достаточно открыть `docs/index.html`. Для работы
@@ -71,14 +86,10 @@ python3 -m http.server 8000 --directory docs
 - **iOS Safari** — «Поделиться» → «На экран “Домой”»
 - Офлайн показывается последний загруженный прогноз
 
-### Android APK (Capacitor)
+### Сборка Android APK (Capacitor)
 
-В репозитории есть нативный Android-проект на **Capacitor 8** с постоянным Application ID
-`io.github.theflipperspec.livesky`. Минимальная версия — Android 7.0 (API 24), целевая — API 36.
-В Android-обёртке подключены системная геолокация, локальные погодные уведомления и
-корректная обработка кнопки «Назад».
-
-Требования для локальной сборки: Node.js 22+, JDK 21+ и Android SDK 36.
+Нативный проект находится в `android/`. Требования для локальной сборки:
+Node.js 22+, JDK 21+ и Android SDK 36.
 
 ```bash
 npm ci
@@ -92,6 +103,15 @@ Debug APK появится в `android/app/build/outputs/apk/debug/app-debug.apk
 локальный keystore — файлы `*.jks`, `*.keystore` и `android/key.properties` исключены из Git.
 Иконки и splash-экраны можно повторно создать командой
 `./scripts/generate-android-assets.sh` (нужен ImageMagick).
+
+#### Производительность Android
+
+APK отображает тот же интерфейс внутри **Android System WebView**, а сайт — непосредственно
+в Chrome. Версии движка, GPU-композитинг и оптимизация `backdrop-filter`/Canvas на устройстве
+могут отличаться, поэтому debug APK иногда работает тяжелее сайта. На слабых телефонах
+выберите в меню **Производительность → Эконом**: приложение отключит погодный Canvas,
+движущиеся фоновые пятна и снизит размытие карточек. Режим **Авто** также переключается на
+облегчённый профиль, если FPS устойчиво падает.
 
 ---
 
