@@ -27,10 +27,10 @@ const el = {
   rainStatus: $('rain-status'), rainStatusText: $('rain-status-text'), moonChip: $('moon-chip'), mPressTrend: $('m-press-trend'),
   toastWrap: $('toast-wrap'),
   searchForm: $('search-form'), input: $('city-input'), autoList: $('autocomplete-list'),
-  favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'), searchClear: $('search-clear'),
-  menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'),
+  favBtn: $('fav-btn'), favIcon: $('fav-icon'), searchClear: $('search-clear'),
+  menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'), geoItem: $('geo-item'),
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
-  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn')
+  logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -595,13 +595,26 @@ function updateMetrics() {
   const uv = getVal(h, 'uv_index', i);
   el.mUv.textContent = uv != null ? (Math.round(uv * 10) / 10).toLocaleString(loc()) : '--';
   el.mUvLabel.textContent = uvLabel(uv);
-  /* max precipitation probability over next 24h */
+  /* precipitation: "today" (rest of the local day), falling back to 24h near midnight */
+  const now = tzNow(state.tz);
+  const hoursLeftToday = 24 - now.hour;
+  let maxToday = null;
+  for (let k = i; k < h.time.length && h.time[k].slice(0, 10) === now.date; k++) {
+    const p = getVal(h, 'precipitation_probability', k);
+    if (p != null && (maxToday == null || p > maxToday)) maxToday = p;
+  }
   let maxP = null;
   for (let k = i; k < i + 24 && k < h.time.length; k++) {
     const p = getVal(h, 'precipitation_probability', k);
     if (p != null && (maxP == null || p > maxP)) maxP = p;
   }
-  el.mPrecip.textContent = maxP != null ? Math.round(maxP) + '%' : '--';
+  if (hoursLeftToday >= 6 && maxToday != null) {
+    if (el.mPrecipLabel) el.mPrecipLabel.textContent = t('rain_today');
+    el.mPrecip.textContent = Math.round(maxToday) + '%';
+  } else {
+    if (el.mPrecipLabel) el.mPrecipLabel.textContent = t('rain_24h');
+    el.mPrecip.textContent = maxP != null ? Math.round(maxP) + '%' : '--';
+  }
 }
 
 /* wind tile: full direction word + gusts, no cryptic abbreviations */
@@ -1241,6 +1254,7 @@ function selectCity(c, isFav) {
 function closeAutocomplete() {
   el.autoList.classList.add('hidden');
   acIndex = -1;
+  acSeq++; /* invalidate any in-flight autocomplete response */
 }
 /* keyboard navigation inside autocomplete list */
 let acIndex = -1;
@@ -1308,6 +1322,7 @@ function renderFavoritesList() {
   el.autoList.classList.remove('hidden');
 }
 
+let acSeq = 0; /* autocomplete generation: stale responses are dropped */
 async function handleInput() {
   clearTimeout(searchTimer);
   const q = el.input.value.trim();
@@ -1319,14 +1334,18 @@ async function handleInput() {
   if (q.length < 3) {
     el.autoList.innerHTML = '';
     el.autoList.classList.add('hidden');
-      return;
+    return;
   }
+  const seq = ++acSeq;
+  /* hide stale suggestions immediately — never show results for an old query */
+  el.autoList.innerHTML = '';
+  el.autoList.classList.add('hidden');
   searchTimer = setTimeout(async () => {
     if (el.input.value.trim() !== q) return; /* query changed while waiting */
     try {
       const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=${state.lang}&format=json`, 8000);
       const d = await r.json();
-      if (el.input.value.trim() !== q) return; /* stale response */
+      if (seq !== acSeq || el.input.value.trim() !== q) return; /* stale response */
       const results = d.results || [];
       acIndex = -1;
       el.autoList.innerHTML = '';
@@ -1741,70 +1760,35 @@ function showLifeSkySlot(index, type) {
   $('life-back').addEventListener('click', () => showLifestyle(type));
 }
 
-/* ---------------- maps (MapLibre GL) ---------------- */
-let mapInst = null, mapMarkEl = null;
-let fullMapInst = null, fullMarkEl = null, fullPopup = null;
+/* ---------------- maps (MapLibre GL, reliable raster tiles) ---------------- */
+let mapInst = null, mapMarkEl = null, smallMapFallback = false;
+let fullMapInst = null, fullMarkEl = null, fullPopup = null, fullMapFallback = false;
 let tempLat = null, tempLon = null;
 
-/* Vector styles themed per app theme (no API keys, © OpenStreetMap / OpenMapTiles) */
-const MAP_STYLES = {
-  dark: {
-    version: 8,
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-    sources: {
-      demotiles: { type: 'vector', url: 'https://demotiles.maplibre.org/tiles/tiles.json', attribution: '© OpenStreetMap contributors' }
-    },
-    layers: [
-      { id: 'bg', type: 'background', paint: { 'background-color': '#0a1322' } },
-      { id: 'water', type: 'fill', source: 'demotiles', 'source-layer': 'water', paint: { 'fill-color': '#0d2034' } },
-      { id: 'landuse-res', type: 'fill', source: 'demotiles', 'source-layer': 'landuse', filter: ['==', ['get', 'class'], 'residential'], paint: { 'fill-color': '#101c30', 'fill-opacity': 0.6 } },
-      { id: 'park', type: 'fill', source: 'demotiles', 'source-layer': 'park', paint: { 'fill-color': '#0e241c', 'fill-opacity': 0.55 } },
-      { id: 'waterway', type: 'line', source: 'demotiles', 'source-layer': 'waterway', paint: { 'line-color': '#0d2034', 'line-width': 1 } },
-      { id: 'road-casing', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#05090f', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.2, 14, 7] } },
-      { id: 'road-major', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#2b3d5c', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.8, 14, 5] } },
-      { id: 'road-minor', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['secondary', 'tertiary']]], paint: { 'line-color': '#1d2c44', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 14, 3] } },
-      { id: 'road-path', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['path', 'track']]], paint: { 'line-color': '#16223a', 'line-width': 0.8, 'line-dasharray': [1, 1.5] } },
-      { id: 'building', type: 'fill', source: 'demotiles', 'source-layer': 'building', paint: { 'fill-color': '#152238', 'fill-opacity': 0.7 } },
-      { id: 'place', type: 'symbol', source: 'demotiles', 'source-layer': 'place', filter: ['==', ['geometry-type'], 'Point'], layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 10, 15], 'text-anchor': 'top', 'text-offset': [0, 0.4], 'text-optional': true }, paint: { 'text-color': '#8fa6c0', 'text-halo-color': 'rgba(8,14,28,0.9)', 'text-halo-width': 1.2 } }
-    ]
-  },
-  light: {
-    version: 8,
-    glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-    sources: {
-      demotiles: { type: 'vector', url: 'https://demotiles.maplibre.org/tiles/tiles.json', attribution: '© OpenStreetMap contributors' }
-    },
-    layers: [
-      { id: 'bg', type: 'background', paint: { 'background-color': '#eef3f8' } },
-      { id: 'water', type: 'fill', source: 'demotiles', 'source-layer': 'water', paint: { 'fill-color': '#c4d9ef' } },
-      { id: 'landuse-res', type: 'fill', source: 'demotiles', 'source-layer': 'landuse', filter: ['==', ['get', 'class'], 'residential'], paint: { 'fill-color': '#e2e9f2', 'fill-opacity': 0.8 } },
-      { id: 'park', type: 'fill', source: 'demotiles', 'source-layer': 'park', paint: { 'fill-color': '#dcebdd', 'fill-opacity': 0.9 } },
-      { id: 'waterway', type: 'line', source: 'demotiles', 'source-layer': 'waterway', paint: { 'line-color': '#c4d9ef', 'line-width': 1.2 } },
-      { id: 'road-casing', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#c6d2e0', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.4, 14, 7.5] } },
-      { id: 'road-major', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['motorway', 'trunk', 'primary']]], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.9, 14, 5.5] } },
-      { id: 'road-minor', type: 'line', source: 'demotiles', 'source-layer': 'transportation', filter: ['in', ['get', 'class'], ['literal', ['secondary', 'tertiary']]], paint: { 'line-color': '#ffffff', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.5, 14, 3.2] } },
-      { id: 'building', type: 'fill', source: 'demotiles', 'source-layer': 'building', paint: { 'fill-color': '#e2e9f2', 'fill-opacity': 0.9 } },
-      { id: 'place', type: 'symbol', source: 'demotiles', 'source-layer': 'place', filter: ['==', ['geometry-type'], 'Point'], layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']], 'text-font': ['Noto Sans Regular'], 'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 10, 15], 'text-anchor': 'top', 'text-offset': [0, 0.4], 'text-optional': true }, paint: { 'text-color': '#3d4f66', 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.2 } }
-    ]
-  },
-  /* raster fallbacks (kept for reliability) */
-  fallbackDark: {
-    version: 8,
-    sources: { raster: { type: 'raster', tiles: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'], subdomains: ['a', 'b', 'c', 'd'], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' } },
-    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
-  },
-  fallbackLight: {
-    version: 8,
-    sources: { raster: { type: 'raster', tiles: ['https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'], subdomains: ['a', 'b', 'c', 'd'], tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' } },
-    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
-  }
-};
-
-function mapStyle() {
-  return state.theme === 'light' ? MAP_STYLES.light : MAP_STYLES.dark;
+/* Raster tiles proven to load reliably (CARTO). Four explicit subdomains
+   because MapLibre does not expand the {s} token itself. */
+function cartoTiles(theme) {
+  const variant = theme === 'light' ? 'light_all' : 'dark_all';
+  return ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`);
 }
-function mapFallbackStyle() {
-  return state.theme === 'light' ? MAP_STYLES.fallbackLight : MAP_STYLES.fallbackDark;
+function mapStyle() {
+  return {
+    version: 8,
+    sources: {
+      raster: { type: 'raster', tiles: cartoTiles(state.theme), tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' }
+    },
+    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
+  };
+}
+/* last-resort fallback: OSM standard tiles */
+function osmStyle() {
+  return {
+    version: 8,
+    sources: {
+      raster: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' }
+    },
+    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
+  };
 }
 function makePinEl() {
   const d = document.createElement('div');
@@ -1834,8 +1818,11 @@ function initMap() {
       boxZoom: false,
       doubleClickZoom: false
     });
-    mapInst.once('error', () => { try { mapInst.setStyle(mapFallbackStyle()); } catch (e) { /* ignore */ } });
+    mapInst.on('error', () => {
+      if (!smallMapFallback) { smallMapFallback = true; try { mapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
+    });
     mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
+    setTimeout(() => { if (mapInst) mapInst.resize(); }, 300);
   } catch (e) { console.warn('LiveSky: map init failed', e); }
 }
 function updateMap() {
@@ -1846,6 +1833,7 @@ function updateMap() {
 }
 function updateMapTiles() {
   if (!window.maplibregl) return;
+  smallMapFallback = false; fullMapFallback = false;
   if (mapInst) mapInst.setStyle(mapStyle());
   if (fullMapInst) fullMapInst.setStyle(mapStyle());
 }
@@ -1867,19 +1855,24 @@ function openFullMap() {
           zoom: 10,
           attributionControl: { compact: true }
         });
-        fullMapInst.once('error', () => { try { fullMapInst.setStyle(mapFallbackStyle()); } catch (e) { /* ignore */ } });
         fullMapInst.addControl(new maplibregl.NavigationControl({ showCompass: true, showZoom: true }), 'bottom-right');
         fullMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(fullMapInst);
         fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
           .setLngLat([state.lon, state.lat])
           .setHTML('<b>' + escHtml(state.locationName) + '</b>')
           .addTo(fullMapInst);
-        fullMapInst.on('click', (e) => {
-          tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
-          if (fullMarkEl) fullMarkEl.setLngLat([tempLon, tempLat]);
-          if (fullPopup) { fullPopup.remove(); fullPopup = null; }
-          el.mapInstr.style.display = 'none';
-          el.mapApply.classList.remove('hidden');
+        /* picking a spot works only once the map actually rendered */
+        fullMapInst.on('load', () => {
+          fullMapInst.on('click', (e) => {
+            tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
+            if (fullMarkEl) fullMarkEl.setLngLat([tempLon, tempLat]);
+            if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+            el.mapInstr.style.display = 'none';
+            el.mapApply.classList.remove('hidden');
+          });
+        });
+        fullMapInst.on('error', () => {
+          if (!fullMapFallback) { fullMapFallback = true; try { fullMapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
         });
         fullMapInst.resize();
       } catch (e) { console.warn('LiveSky: full map init failed', e); }
@@ -2025,9 +2018,8 @@ function bindEvents() {
     renderFavoritesList();
   });
   on(el.favBtn, 'click', (e) => { e.preventDefault(); toggleFavorite(); });
-  on(el.locateBtn, 'click', (e) => { e.preventDefault(); getUserLocation(true); });
 
-  /* unified menu: language, theme, units, model, fullscreen, refresh */
+  /* unified menu: language, theme, units, model, geolocation, fullscreen, refresh */
   on(el.menuBtn, 'click', (e) => {
     e.stopPropagation();
     setMenuOpen(!el.mainMenu.classList.contains('open'));
@@ -2052,6 +2044,7 @@ function bindEvents() {
   });
   on(el.fsItem, 'click', () => { setMenuOpen(false); toggleFullscreen(); });
   on(el.refreshItem, 'click', () => { setMenuOpen(false); fetchWeather(true); });
+  on(el.geoItem, 'click', () => { setMenuOpen(false); getUserLocation(true); });
 
   on(el.adviceBtn, 'click', showAdvice);
   on(el.historyBtn, 'click', () => showMonthly('history'));

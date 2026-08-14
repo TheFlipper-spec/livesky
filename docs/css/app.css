@@ -601,6 +601,19 @@ body.no-scroll { overflow: hidden; }
 .side-col .card:nth-child(3) { animation-delay: 0.28s; }
 
 .map-card { position: relative; z-index: 0; padding: 8px; display: flex; flex-direction: column; }
+.map-placeholder {
+  position: absolute; inset: 8px; z-index: 0;
+  border-radius: 20px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  background:
+    radial-gradient(80% 60% at 50% 0%, var(--blob-1), transparent 70%),
+    linear-gradient(180deg, #0b1626 0%, #0a1322 100%);
+  color: var(--text-3);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  pointer-events: none;
+}
+.map-placeholder i { font-size: 34px; color: var(--accent); opacity: 0.8; }
+[data-theme="light"] .map-placeholder { background: linear-gradient(180deg, #e9f0f7 0%, #eef3f8 100%); }
 #map { height: 208px; border-radius: 20px; z-index: 1; cursor: pointer; }
 .map-open-hint {
   position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(6px);

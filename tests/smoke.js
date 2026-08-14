@@ -148,7 +148,12 @@ setTimeout(() => {
     assert(q('m-feels') !== null, 'feels-like metric kept in grid');
     assert(q('condition').textContent.length > 1, 'condition label rendered: ' + q('condition').textContent);
     assert(!q('rain-status').classList.contains('hidden'), 'rain status visible next to temperature');
-    assert(q('m-precip').closest('.metric').querySelector('.metric-label').textContent.trim() === 'Макс. дождь за 24ч', 'rain tile label is short and clear');
+    {
+      const pl = q('m-precip-label').textContent.trim();
+      assert(pl === 'Дождь сегодня' || pl === 'Дождь за 24 часа', 'rain tile label is clear: ' + pl);
+    }
+    assert(q('map-card').querySelector('.map-placeholder') !== null, 'map placeholder exists behind tiles');
+    assert(q('geo-item') !== null, 'geolocation moved into the unified menu');
     assert(q('loader') !== null && q('loader').querySelector('.loader-orb') !== null, 'premium loader orb exists');
     assert(q('loader').querySelector('.loader-bar') !== null, 'loader progress bar exists');
     {
