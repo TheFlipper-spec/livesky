@@ -146,6 +146,12 @@ setTimeout(() => {
     assert(!q('feels-line'), 'feels-like line removed (no duplication)');
     assert(q('m-feels') !== null, 'feels-like metric kept in grid');
     assert(q('condition').textContent.length > 1, 'condition label rendered: ' + q('condition').textContent);
+    assert(!q('rain-status').classList.contains('hidden'), 'rain status visible next to temperature');
+    {
+      const rs = q('rain-status-text').textContent;
+      assert(/Вероятность дождя|Дождь закончится|Снег закончится|Дождь весь день/.test(rs), 'rain status is smart (prob or end time): ' + rs);
+      if (/закончится/.test(rs)) assert(/ещё \d+ч/.test(rs), 'rain status shows remaining duration: ' + rs);
+    }
     assert(q('location').textContent === 'Москва', 'default location: ' + q('location').textContent);
     assert(q('hourly-strip').children.length === 24, 'hourly strip has 24 items');
     assert(q('daily-strip').children.length === 8, 'daily strip has 7 days + more button');
