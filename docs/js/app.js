@@ -72,7 +72,7 @@ const state = {
   favorites: store.get('livesky:favorites', []),
   recent: store.get('livesky:recent', []),
   elevation: null, lastFetchTs: Date.now(),
-  loading: 0, slowTimer: null,
+  loading: 0, slowTimer: null, uiLockUntil: 0, favOpenTimer: null,
   lastTemp: null, currentIcon: null,
   fxKind: null, stormTimer: null,
   accent: '#38bdf8', accent2: '#818cf8'
@@ -287,6 +287,8 @@ let phraseTimer = null;
 let loaderWatchdog = null;
 const WATCHDOG_MS = window.LIVE_WATCHDOG_MS || 15000;
 const FETCH_MS = window.LIVE_FETCH_TIMEOUT_MS || 15000;
+const UI_LOCK_MS = window.LIVE_UI_LOCK_MS || 800;          /* UI quiet period after closing overlays */
+const FAV_LIST_DELAY_MS = window.LIVE_FAV_DELAY_MS != null ? window.LIVE_FAV_DELAY_MS : 350; /* debounce before auto-opening favorites */
 
 /* fetch that can never hang forever */
 async function fetchWithTimeout(url, ms) {
@@ -1255,6 +1257,7 @@ function closeAutocomplete() {
   el.autoList.classList.add('hidden');
   acIndex = -1;
   acSeq++; /* invalidate any in-flight autocomplete response */
+  clearTimeout(state.favOpenTimer);
 }
 /* keyboard navigation inside autocomplete list */
 let acIndex = -1;
@@ -1413,6 +1416,8 @@ function openModal(title, subtitle, bodyHtml) {
 function closeModal() {
   el.modal.classList.remove('open');
   document.body.classList.remove('no-scroll');
+  state.uiLockUntil = Date.now() + UI_LOCK_MS;
+  clearTimeout(state.favOpenTimer);
 }
 
 function showModalHourly(h, i) {
@@ -1885,17 +1890,24 @@ function openFullMap() {
       .setLngLat([state.lon, state.lat])
       .setHTML('<b>' + escHtml(state.locationName) + '</b>')
       .addTo(fullMapInst);
-    setTimeout(() => fullMapInst.resize(), 120);
+    setTimeout(() => { fullMapInst.resize(); if (fullMapInst.triggerRepaint) fullMapInst.triggerRepaint(); }, 120);
   }
 }
 function closeFullMap() {
   el.mapModal.classList.remove('open');
   document.body.classList.remove('no-scroll');
+  /* quiet period: the just-closed overlay must not leak clicks/cursor into the page */
+  state.uiLockUntil = Date.now() + UI_LOCK_MS;
+  clearTimeout(state.favOpenTimer);
+  if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+  if (fullMapInst) { try { fullMapInst.stop(); } catch (e) { /* ignore */ } }
 }
 async function applyMapLocation() {
   if (tempLat == null || tempLon == null) return;
+  const lat = tempLat, lon = tempLon;
+  tempLat = null; tempLon = null;
   closeFullMap();
-  state.lat = tempLat; state.lon = tempLon;
+  state.lat = lat; state.lon = lon;
   showLoader();
   await reverseGeo(state.lat, state.lon);
   toast(t('toast_loc_set'), 'success');
@@ -1998,7 +2010,19 @@ function updateFsIcon() {
 function bindEvents() {
   on(el.searchForm, 'submit', handleSearch);
   on(el.input, 'input', handleInput);
-  on(el.input, 'focus', () => { if (!el.input.value.trim()) renderFavoritesList(); });
+  on(el.input, 'focus', () => {
+    if (el.input.value.trim()) return;
+    clearTimeout(state.favOpenTimer);
+    if (Date.now() < state.uiLockUntil) return; /* just closed an overlay — don't pop the list under the pointer */
+    if (FAV_LIST_DELAY_MS === 0) { renderFavoritesList(); return; }
+    state.favOpenTimer = setTimeout(() => {
+      if (Date.now() < state.uiLockUntil) return;
+      if (document.activeElement !== el.input) return;
+      if (el.input.value.trim()) return;
+      renderFavoritesList();
+    }, FAV_LIST_DELAY_MS);
+  });
+  on(el.input, 'blur', () => clearTimeout(state.favOpenTimer));
   on(el.input, 'keydown', (e) => {
     if (e.key === 'Escape') { closeAutocomplete(); el.input.blur(); return; }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
