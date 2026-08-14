@@ -1199,6 +1199,11 @@ body.no-scroll { overflow: hidden; }
 .radar-toggle.on i { color: #fff; }
 .radar-toggle.loading i { animation: radarPulse 1s ease-in-out infinite; }
 @keyframes radarPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+/* On small screens the panel spans almost the whole width and would cover the
+   toggle button, so hide the toggle while the panel is open (it has a close btn). */
+@media (max-width: 720px) {
+  .radar-toggle.on { display: none; }
+}
 
 .radar-panel {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);

@@ -996,8 +996,9 @@ function airSpark(values, color, max) {
   if (!clean.length) return '';
   const W = 120, H = 34, P = 3;
   const vmax = Math.max(1, max || Math.max(...clean));
+  const denom = Math.max(1, clean.length - 1); /* avoid division by zero for a single point */
   const pts = clean.map((v, i) => {
-    const x = P + (i / (clean.length - 1)) * (W - 2 * P);
+    const x = P + (i / denom) * (W - 2 * P);
     const y = H - P - 1 - (Math.min(v, vmax) / vmax) * (H - 2 * P - 2);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
@@ -1011,7 +1012,7 @@ function airSpark(values, color, max) {
 /* big 24h AQI trend with gradient area, animated draw and level-colored dots */
 function airTrendSVG(series) {
   const W = 620, H = 150, P = 28;
-  const n = series.length;
+  const n = Math.max(2, series.length); /* avoid division by zero for a single point */
   const X = k => P + (k / (n - 1)) * (W - 2 * P);
   const Y = v => H - P - (Math.min(Math.max(v, 0), 120) / 120) * (H - 2 * P);
   let line = '', area = '';
@@ -2237,8 +2238,11 @@ function bindEvents() {
     state.effects = el.effectsSelect.value;
     store.set('livesky:effects', state.effects);
     setMenuOpen(false);
+    if (state.effects === 'full') state._perfLow = false;
     applyEffects();
-    if (state.effects === 'full') { state._perfLow = false; applyEffects(); }
+    /* if the FPS detector hadn't been started yet (e.g. the app booted in
+       "Maximum"), start it now that the user is back on Auto */
+    if (state.effects === 'auto') PERF.start();
   });
   on(el.installItem, 'click', promptInstall);
 
@@ -2311,7 +2315,7 @@ function bindEvents() {
   setInterval(() => {
     if (!document.hidden && Date.now() - state.lastFetchTs > 15 * 60 * 1000) fetchWeather(true);
   }, 60 * 1000);
-  window.addEventListener('offline', () => toast(t('toast_network'), 'error'));
+  /* offline state is surfaced by the offline banner (see initConnectivity) */
 }
 
 /* ---------------- reveal on scroll ---------------- */
@@ -2380,9 +2384,10 @@ function initConnectivity() {
 
 /* ---------------- Adaptive performance (FPS detector) --------------- */
 const PERF = {
-  raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0,
+  raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0, started: false,
   start() {
-    if (motionReduce) return;
+    if (motionReduce || this.started) return;
+    this.started = true;
     this.windowStart = performance.now();
     const tick = (t) => {
       this.windowFrames++;
@@ -2469,20 +2474,26 @@ const RADAR = {
   /* RainViewer radar tiles exist only up to zoom 7 — cap the source so MapLibre
      upscales the finest available tiles instead of requesting zoom-10 tiles (404). */
   tileUrl() { return `${this.frames[this.idx].url}/${(window.devicePixelRatio >= 2 ? 512 : 256)}/{z}/{x}/{y}/2/1_1.png`; },
+  /* Source and layer are added independently so a retry can always complete:
+     even if addSource succeeded but addLayer was interrupted, the next call
+     adds the missing layer instead of just re-pointing tiles. */
   ensureLayer() {
-    if (!fullMapInst || !this.frames[this.idx]) return;
+    if (!fullMapInst || !this.frames[this.idx]) return false;
     try {
       if (!fullMapInst.getSource('radar')) {
         fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: 256, minzoom: 0, maxzoom: 7 });
+      } else {
+        fullMapInst.getSource('radar').setTiles([this.tileUrl()]);
+      }
+      if (!fullMapInst.getLayer('radar')) {
         fullMapInst.addLayer({
           id: 'radar', type: 'raster', source: 'radar',
           paint: { 'raster-opacity': 0.78, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
         });
-      } else {
-        fullMapInst.getSource('radar').setTiles([this.tileUrl()]);
       }
       this.layerReady = true;
-    } catch (e) { /* map not ready yet */ }
+      return true;
+    } catch (e) { return false; }
   },
   renderFrame() {
     if (!this.frames.length || this.idx < 0) return;
