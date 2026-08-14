@@ -24,7 +24,7 @@ const el = {
   alertBox: $('alert-box'), alertMsg: $('alert-msg'), alertTitle: $('alert-title'),
   modal: $('modal'), modalTitle: $('modal-title'), modalSubtitle: $('modal-subtitle'), modalBody: $('modal-body'), modalClose: $('modal-close'),
   mapModal: $('map-modal'), fullMap: $('full-map'), mapClose: $('map-close'), mapInstr: $('map-instr'), mapApply: $('map-apply-btn'), mapSmall: $('map'),
-  rainSoon: $('rain-soon-chip'), moonChip: $('moon-chip'), mPressTrend: $('m-press-trend'),
+  rainStatus: $('rain-status'), rainStatusText: $('rain-status-text'), moonChip: $('moon-chip'), mPressTrend: $('m-press-trend'),
   toastWrap: $('toast-wrap'),
   searchForm: $('search-form'), input: $('city-input'), autoList: $('autocomplete-list'),
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), locateBtn: $('locate-btn'), searchClear: $('search-clear'),
@@ -184,6 +184,55 @@ function rainSoonNow() {
     if (p >= 40 || (raining.includes(c) && p >= 25)) return true;
   }
   return false;
+}
+
+const RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+const SNOW_CODES = [71, 73, 75, 77, 85, 86];
+
+/* smart rain status shown right next to the temperature:
+   - no rain now → "Вероятность дождя N%"
+   - raining now  → "Дождь закончится в 18:00 · ещё 2ч 15м" (scanned from hourly forecast) */
+function updateRainStatus() {
+  if (!state.weather) { el.rainStatus.classList.add('hidden'); return; }
+  const h = state.weather.hourly, i = state.nowIdx;
+  const code = getVal(h, 'weathercode', i);
+  const snowNow = SNOW_CODES.includes(code);
+  const rainingNow = snowNow || RAIN_CODES.includes(code);
+
+  if (!rainingNow) {
+    const p = getVal(h, 'precipitation_probability', i) || 0;
+    el.rainStatus.classList.remove('hidden', 'snow');
+    el.rainStatus.querySelector('i').className = 'ph-fill ph-cloud-rain';
+    el.rainStatusText.textContent = t('rain_prob').replace('{p}', Math.round(p));
+    return;
+  }
+
+  /* find the first dry hour ahead */
+  let endIdx = -1;
+  for (let k = i + 1; k < Math.min(i + 13, h.time.length); k++) {
+    const c = getVal(h, 'weathercode', k);
+    const p = getVal(h, 'precipitation_probability', k) || 0;
+    if (!RAIN_CODES.includes(c) && !SNOW_CODES.includes(c) && p < 30) { endIdx = k; break; }
+  }
+
+  el.rainStatus.classList.remove('hidden');
+  el.rainStatus.classList.toggle('snow', snowNow);
+  el.rainStatus.querySelector('i').className = 'ph-fill ' + (snowNow ? 'ph-snowflake' : 'ph-cloud-rain');
+
+  let text;
+  if (endIdx === -1) {
+    text = snowNow ? t('snow_all_day') : t('rain_all_day');
+  } else {
+    const endHH = h.time[endIdx].slice(11, 16);
+    const today = tzNow(state.tz).date;
+    const endDate = h.time[endIdx].slice(0, 10);
+    const durMin = Math.max(0, Math.round((parseLocal(h.time[endIdx]) - parseLocal(h.time[i])) / 60000));
+    const dur = fmtDur(durMin, true);
+    const endsKey = snowNow ? 'snow_ends' : 'rain_ends';
+    const when = t(endsKey).replace('{t}', endHH) + (endDate !== today ? ` (${t('tomorrow_word')})` : '');
+    text = `${when} · ${t('rain_till').replace('{d}', dur)}`;
+  }
+  el.rainStatusText.textContent = text;
 }
 
 /* ---------------- data helpers ---------------- */
@@ -518,7 +567,7 @@ function updateHero() {
   else animateNumber(el.temp, Math.round(convTemp(temp)));
   el.cond.textContent = wmoLabel(code);
   setBigIcon(wmoIcon(code, night));
-  el.rainSoon.classList.toggle('hidden', !rainSoonNow());
+  updateRainStatus();
 
   const now = tzNow(state.tz);
   el.updatedAt.textContent = `${String(now.hour).padStart(2, '0')}:${String(now.minute).padStart(2, '0')}`;

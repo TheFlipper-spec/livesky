@@ -16,7 +16,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=8" />
+  <link rel="stylesheet" href="css/app.css?v=9" />
 </head>
 
 <body data-theme="adaptive">
@@ -144,7 +144,6 @@
             <div class="hero-meta">
               <span class="chip"><i class="ph ph-clock"></i><span id="realtime-clock" style="font-variant-numeric:tabular-nums">--:--</span><i class="dot"></i></span>
               <span class="chip hidden" id="updated-chip"><i class="ph ph-arrow-clockwise"></i><span data-translate="updated">Обновлено</span> <span id="updated-at">--:--</span></span>
-              <span class="chip warn hidden" id="rain-soon-chip"><i class="ph ph-cloud-rain"></i><span data-translate="rain_soon">Дождь в ближайший час</span></span>
             </div>
           </div>
 
@@ -154,6 +153,7 @@
                 <span class="temp-num" id="temperature">--</span>
               </div>
               <p class="condition" id="condition">—</p>
+              <div class="rain-status hidden" id="rain-status"><i class="ph-fill ph-cloud-rain"></i><span id="rain-status-text"></span></div>
             </div>
             <div class="hero-icon" id="weather-icon-big"><i class="ph-duotone ph-cloud-sun"></i></div>
           </div>
@@ -369,7 +369,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=8"></script>
-  <script src="js/app.js?v=8"></script>
+  <script src="js/i18n.js?v=9"></script>
+  <script src="js/app.js?v=9"></script>
 </body>
 </html>

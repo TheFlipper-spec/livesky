@@ -471,7 +471,34 @@ body.no-scroll { overflow: hidden; }
 .temp-mild   { background-image: linear-gradient(180deg, var(--text-1) 0%, var(--text-2) 100%); }
 .temp-warm   { background-image: linear-gradient(180deg, #fde68a 0%, #f59e0b 100%); }
 .temp-hot    { background-image: linear-gradient(180deg, #fecdd3 0%, #f87171 100%); }
+/* light theme: darker, high-contrast variants (light blues wash out on white) */
+[data-theme="light"] .temp-frigid { background-image: linear-gradient(180deg, #0284c7 0%, #075985 100%); }
+[data-theme="light"] .temp-cold   { background-image: linear-gradient(180deg, #2563eb 0%, #1e40af 100%); }
+[data-theme="light"] .temp-mild   { background-image: linear-gradient(180deg, #0f172a 0%, #334155 100%); }
+[data-theme="light"] .temp-warm   { background-image: linear-gradient(180deg, #b45309 0%, #92400e 100%); }
+[data-theme="light"] .temp-hot    { background-image: linear-gradient(180deg, #dc2626 0%, #991b1b 100%); }
 .condition { font-size: 19px; font-weight: 600; color: var(--text-1); margin-top: 10px; }
+
+/* rain status right under the temperature */
+.rain-status {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 10px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(96, 165, 250, 0.13);
+  border: 1px solid rgba(96, 165, 250, 0.32);
+  color: #bfdbfe;
+  font-size: 13px; font-weight: 700;
+  animation: popIn 0.3s ease-out;
+}
+.rain-status i { color: #60a5fa; font-size: 15px; }
+.rain-status.snow { background: rgba(125, 211, 252, 0.13); border-color: rgba(125, 211, 252, 0.32); color: #e0f2fe; }
+.rain-status.snow i { color: #7dd3fc; }
+[data-theme="light"] .rain-status { background: rgba(37, 99, 235, 0.08); border-color: rgba(37, 99, 235, 0.28); color: #1e40af; }
+[data-theme="light"] .rain-status i { color: #2563eb; }
+[data-theme="light"] .rain-status.snow { background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.28); color: #075985; }
+[data-theme="light"] .rain-status.snow i { color: #0284c7; }
+
 .hero-icon { flex: none; width: clamp(96px, 13vw, 140px); height: clamp(96px, 13vw, 140px); display: grid; place-items: center; }
 .hero-icon i {
   font-size: clamp(88px, 12vw, 126px);
