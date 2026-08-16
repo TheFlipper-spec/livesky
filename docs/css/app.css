@@ -127,7 +127,7 @@ h1, h2, h3, h4, p { margin: 0; }
 a { color: inherit; text-decoration: none; }
 ::selection { background: var(--accent); color: var(--accent-contrast); }
 
-body.no-scroll { overflow: hidden; }
+body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
@@ -195,6 +195,7 @@ body.no-scroll { overflow: hidden; }
   padding: 20px 22px 56px;
   position: relative;
   z-index: 1;
+  isolation: isolate;
 }
 .stack > * + * { margin-top: 22px; }
 .section-head {
@@ -219,6 +220,7 @@ body.no-scroll { overflow: hidden; }
 /* ---------- Cards ---------- */
 .card {
   position: relative;
+  z-index: 1;
   background: var(--surface);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -363,6 +365,7 @@ body.no-scroll { overflow: hidden; }
   min-width: 260px; max-width: min(330px, calc(100vw - 28px));
   max-height: min(76vh, 560px); overflow-y: auto;
   background: var(--menu-bg);
+  color: var(--text-2);
   backdrop-filter: blur(24px) saturate(170%);
   -webkit-backdrop-filter: blur(24px) saturate(170%);
   border: 1px solid var(--stroke-strong);
@@ -385,11 +388,15 @@ body.no-scroll { overflow: hidden; }
   font-size: 14px; font-weight: 600; color: var(--text-2);
   transition: background 0.15s, color 0.15s, transform 0.15s;
 }
+/* Ensure text inside dd-item is always the correct color
+   (Phosphor icon font can sometimes affect text rendering) */
+.dd-item > span { color: inherit; }
 .dd-item:hover { background: var(--accent-soft); color: var(--text-1); transform: translateX(2px); }
 .dd-item i { font-size: 17px; color: var(--accent); }
-.dd-item .dd-check { margin-left: auto; color: var(--accent); opacity: 0; font-size: 16px; }
-.dd-item.selected { color: var(--text-1); background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
-.dd-item.selected .dd-check { opacity: 1; }
+.dd-item .dd-check { margin-left: auto; color: var(--accent); opacity: 0; font-size: 16px; transform: scale(0.5); transition: opacity 0.25s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.dd-item.selected .dd-check { opacity: 1; transform: scale(1); }
+.dd-item.selected { color: var(--text-1) !important; background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+.dd-item.selected > span { color: var(--text-1) !important; }
 .dd-group-label {
   display: flex; align-items: center; gap: 8px;
   font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
@@ -417,6 +424,8 @@ body.no-scroll { overflow: hidden; }
 .dd-select:hover, .dd-select:focus { border-color: var(--stroke-strong); outline: none; }
 .dd-select option { background: #0d1528; color: #f4f7fb; }
 [data-theme="light"] .dd-select option { background: #ffffff; color: #16202f; }
+[data-theme="light"] .dropdown { color: var(--text-2); }
+[data-theme="light"] .dd-group-label { color: var(--accent); }
 
 /* ---------- Hero ---------- */
 .hero-grid { display: grid; grid-template-columns: 1.85fr 1fr; gap: 22px; align-items: stretch; }
@@ -1513,6 +1522,95 @@ body.no-scroll { overflow: hidden; }
 #progress.on { opacity: 1; }
 @keyframes progressSlide { from { background-position: 0% 0; } to { background-position: 200% 0; } }
 
+/* ---------- Smart Visibility System ---------- */
+/*
+  content-visibility: auto — the browser skips rendering, layout, and painting
+  for off-screen sections, giving a massive performance boost on all devices.
+  contain-intrinsic-size keeps the scrollbar sized correctly.
+  Users on Firefox/Safari simply see all content (no breakage).
+*/
+.section-root {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 360px;
+  contain: layout style;
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Each section type gets a specific contain-intrinsic-size for accurate scroll height */
+[data-section="hero"] { contain-intrinsic-size: auto 820px; }
+[data-section="chart"] { contain-intrinsic-size: auto 440px; }
+[data-section="hourly"] { contain-intrinsic-size: auto 310px; }
+[data-section="daily"] { contain-intrinsic-size: auto 320px; }
+[data-section="lifestyle"] { contain-intrinsic-size: auto 260px; }
+
+/* Section enter animation — smooth cascade */
+.section-root.section-enter {
+  opacity: 0;
+  transform: translateY(28px) scale(0.98);
+}
+.section-root.section-enter-active {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Staggered delays for sidebar children when hero section appears */
+.section-root[data-section="hero"].section-enter-active .side-col .card:nth-child(1) { transition-delay: 0.08s; }
+.section-root[data-section="hero"].section-enter-active .side-col .card:nth-child(2) { transition-delay: 0.14s; }
+.section-root[data-section="hero"].section-enter-active .side-col .card:nth-child(3) { transition-delay: 0.2s; }
+
+/* Skeleton placeholder — shown while section is off-screen and content is unloaded */
+.section-root.section-skeleton {
+  position: relative;
+  overflow: hidden;
+}
+.section-root.section-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, transparent, var(--surface-2), transparent);
+  animation: skeletonShimmer 1.8s ease-in-out infinite;
+  pointer-events: none;
+  border-radius: var(--radius-lg);
+}
+@keyframes skeletonShimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Each section card inside a root keeps its own card styling */
+.section-root .card {
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+/* When section is not visible, reduce GPU/CPU load further */
+.section-root[data-section-state="inactive"] .card {
+  backdrop-filter: blur(6px) saturate(110%);
+  -webkit-backdrop-filter: blur(6px) saturate(110%);
+}
+.section-root[data-section-state="unloaded"] .card {
+  backdrop-filter: blur(4px) saturate(105%);
+  -webkit-backdrop-filter: blur(4px) saturate(105%);
+}
+
+/* In low-performance mode, skip fancy section transitions */
+[data-perf="low"] .section-root.section-enter,
+[data-perf="eco"] .section-root.section-enter {
+  opacity: 1 !important;
+  transform: none !important;
+  filter: none !important;
+}
+[data-perf="low"] .section-root.section-enter-active,
+[data-perf="eco"] .section-root.section-enter-active {
+  transition: none !important;
+}
+[data-perf="low"] .section-root.section-skeleton::after,
+[data-perf="eco"] .section-root.section-skeleton::after {
+  animation: none !important;
+}
+
 /* ---------- Reveal on scroll ---------- */
 .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.16, 1, 0.3, 1); transition-delay: var(--rd, 0ms); }
 .reveal.in { opacity: 1; transform: none; }
@@ -1609,7 +1707,9 @@ body.no-scroll { overflow: hidden; }
   .search-wrap { min-width: 0; flex-basis: 100%; }
   .search-form { height: 48px; padding-left: 14px; }
   .autocomplete { max-height: min(52vh, 340px); }
-  .dropdown { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 14px; width: min(330px, calc(100vw - 28px)); max-height: calc(100dvh - 28px - env(safe-area-inset-top)); }
+  .dropdown { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 14px; width: min(330px, calc(100vw - 28px)); max-height: calc(100dvh - 28px - env(safe-area-inset-top)); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  .dd-item { min-height: 48px; padding: 12px 14px; }
+  .dd-select { min-height: 48px; }
 
   .side-col { grid-template-columns: 1fr; gap: 16px; }
   .side-col .map-card { grid-column: auto; }
@@ -1673,6 +1773,11 @@ body.no-scroll { overflow: hidden; }
 }
 
 @media (max-width: 390px) {
+  .rain-status { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hero-temp-col { min-width: 0; flex: 1; }
+  .temp-num { font-size: 64px; }
+  .dd-item { font-size: 13px; }
+  .dd-group-label { font-size: 8.5px; padding: 10px 12px 5px; }
   .shell { padding-left: 10px; padding-right: 10px; }
   .hero { padding: 18px 15px 16px; }
   .hero-icon { width: 78px; height: 78px; }
@@ -1689,4 +1794,11 @@ body.no-scroll { overflow: hidden; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
   .reveal { opacity: 1; transform: none; }
   .hero, .side-col .card { animation: none; }
+  .section-root { opacity: 1 !important; transform: none !important; filter: none !important; }
+  .section-root.section-enter { opacity: 1 !important; transform: none !important; filter: none !important; }
+  .section-root.section-enter-active { opacity: 1 !important; transform: none !important; filter: none !important; }
+  .section-root.section-skeleton::after { animation: none !important; }
 }
+
+/* Theme label in dropdown header - ensure readability across all themes */
+#theme-label { color: var(--text-2); font-weight: 600; letter-spacing: normal; text-transform: none; }
