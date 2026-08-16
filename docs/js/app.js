@@ -3191,12 +3191,22 @@ const SECTION_MANAGER = {
     });
   },
 
+  /* Runs a heavy renderer. Returns true only if the render actually happened.
+     On a real device the IntersectionObserver fires immediately for the
+     sections that are in the viewport (chart/hourly/daily) — BEFORE the first
+     fetch has delivered a forecast. At that moment state.weather === null and
+     renderChart()/renderHourly()/renderDaily() would crash on
+     `state.weather.hourly`. So: no data → no render → return false, and the
+     caller must keep the section dirty so renderAll() paints it as soon as
+     the data arrives. */
   runRenderer(name) {
     const r = this.renderers[name];
-    if (!r) return;
+    if (!r) return false;
+    if (!state.weather) return false; /* first fetch still in flight */
     r();
     const s = this.sections.get(name);
     if (s) s.rendered = true;
+    return true;
   },
 
   /* Route a heavy render through the manager. Unloaded sections skip the work
@@ -3209,8 +3219,9 @@ const SECTION_MANAGER = {
       s.dirty = true; /* rebuild later, when the user scrolls back */
       return;
     }
-    this.runRenderer(name);
-    s.dirty = false;
+    /* Only clear the dirty flag if the render really happened (there may be
+       no data yet) — otherwise the section must stay dirty to be re-tried. */
+    s.dirty = !this.runRenderer(name);
   },
 
   activate(name, el, immediate) {
@@ -3222,10 +3233,11 @@ const SECTION_MANAGER = {
     el.dataset.sectionState = 'active';
 
     /* If we just came back from being unloaded, rebuild (only if the data
-       changed while away) and re-insert the cached card. */
+       changed while away) and re-insert the cached card. Keep the section
+       dirty when the render was skipped (no forecast yet): renderAll() will
+       repaint it as soon as the first fetch resolves. */
     if (wasUnloaded || section.dirty) {
-      this.runRenderer(name);
-      section.dirty = false;
+      if (this.runRenderer(name)) section.dirty = false;
     }
     this.mount(name);
     el.classList.remove('section-skeleton');

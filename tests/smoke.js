@@ -443,9 +443,69 @@ function phase4() {
     try {
       assert(q4('loader').classList.contains('done'), 'phase4: loader hidden on boot failure');
       assert(!q4('boot-error').classList.contains('hidden'), 'phase4: boot-error panel shown');
-      finish();
-    } catch (e) { errors.push('phase4 crashed: ' + e.message); finish(); }
+      phase5();
+    } catch (e) { errors.push('phase4 crashed: ' + e.message); phase5(); }
   }, 800);
+}
+
+/* phase 5 (regression, Smart Visibility v2): on a real device the browser's
+   IntersectionObserver fires immediately for visible sections and calls
+   SECTION_MANAGER.activate('chart'/'hourly'/'daily') BEFORE the first fetch
+   has resolved (state.weather === null). This used to crash with
+   "Cannot read properties of null (reading 'hourly')". The manager must:
+     1) not throw,
+     2) keep those sections dirty (render skipped — no data yet),
+     3) render them and clear dirty as soon as the slow fetch resolves. */
+function phase5() {
+  const { w, doc } = makeWorld();
+  let releaseFetch;
+  const gate = new Promise((res) => { releaseFetch = res; });
+  const stub = makeFetchStub();
+  w.fetch = (url) => gate.then(() => stub(url)); /* slow network: nothing resolves until we say so */
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+
+  /* SECTION_MANAGER / state are top-level consts inside the page, not window
+     globals — poke them from an injected inline script, like a devtools call. */
+  const probe = doc.createElement('script');
+  probe.textContent = `
+    try {
+      const names = ['chart', 'hourly', 'daily'];
+      const res = { threw: null, weatherNull: state.weather === null, dirtyBefore: {}, dirtyAfter: {} };
+      names.forEach((n) => { res.dirtyBefore[n] = SECTION_MANAGER.sections.get(n).dirty; });
+      names.forEach((n) => { const s = SECTION_MANAGER.sections.get(n); SECTION_MANAGER.activate(n, s.el); });
+      names.forEach((n) => { res.dirtyAfter[n] = SECTION_MANAGER.sections.get(n).dirty; });
+      window.__sectionProbe = res;
+    } catch (e) { window.__sectionProbe = { threw: e.message }; }
+  `;
+  doc.body.appendChild(probe);
+  const p = w.__sectionProbe || { threw: 'probe did not run' };
+  assert(p.threw == null, 'phase5: activate() before first fetch does not throw (' + (p.threw || 'ok') + ')');
+  assert(p.weatherNull === true, 'phase5: probe ran while state.weather was still null');
+  assert(p.dirtyBefore && p.dirtyBefore.chart === true, 'phase5: sections start dirty (nothing rendered yet)');
+  assert(p.dirtyAfter && p.dirtyAfter.chart === true && p.dirtyAfter.hourly === true && p.dirtyAfter.daily === true,
+    'phase5: sections stay dirty when render is skipped (no data yet)');
+
+  releaseFetch(); /* the slow network finally answers */
+  setTimeout(() => {
+    try {
+      const q5 = (id) => doc.getElementById(id);
+      assert(q5('hourly-strip').children.length > 0, 'phase5: hourly section renders once the slow fetch resolves');
+      const probe2 = doc.createElement('script');
+      probe2.textContent = `
+        window.__sectionProbe2 = {
+          chart: SECTION_MANAGER.sections.get('chart').dirty,
+          hourly: SECTION_MANAGER.sections.get('hourly').dirty,
+          daily: SECTION_MANAGER.sections.get('daily').dirty
+        };
+      `;
+      doc.body.appendChild(probe2);
+      const p2 = w.__sectionProbe2 || {};
+      assert(p2.chart === false && p2.hourly === false && p2.daily === false,
+        'phase5: dirty flags cleared after the sections actually rendered');
+      finish();
+    } catch (e) { errors.push('phase5 crashed: ' + e.message); finish(); }
+  }, 900);
 }
 
 function finish() {
