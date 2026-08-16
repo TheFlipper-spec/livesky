@@ -307,6 +307,30 @@ function getVal(obj, key, i) {
   }
   return null;
 }
+/* Regional model preference for Auto mode. Open-Meteo's `best_match` is already
+   the skill-ranked model, but nudging the baseline toward the model that performs
+   best in a region gives a small, honest accuracy edge for the headline numbers:
+   ECMWF (IFS) is the strongest over Europe, GFS over North America. */
+function regionModel() {
+  const lat = state.lat, lon = state.lon;
+  if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return null;
+  /* North America */
+  if (lat >= 15 && lat <= 72 && lon >= -170 && lon <= -50) return 'gfs_seamless';
+  /* Europe incl. European part of Russia */
+  if (lat >= 30 && lat <= 72 && lon >= -25 && lon <= 55) return 'ecmwf_ifs04';
+  return null; /* fall back to pure best_match everywhere else */
+}
+/* Smooth "right now" value between two hourly slices, so the current temperature
+   isn't stuck at the whole-hour reading but tracks the minute. Falls back to the
+   hour value when interpolation isn't possible. */
+function interpHour(h, key, i) {
+  const a = getVal(h, key, i);
+  if (a == null || isNaN(a)) return a;
+  const b = getVal(h, key, i + 1);
+  if (b == null || isNaN(b)) return a;
+  const frac = Math.min(0.999, (tzNow(state.tz).minute) / 60);
+  return a + (b - a) * frac;
+}
 function currentWeatherCode() {
   if (!state.weather) return null;
   return getVal(state.weather.hourly, 'weathercode', state.nowIdx);
@@ -539,7 +563,16 @@ async function fetchWeather(silent) {
       daily: 'weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,precipitation_sum,uv_index_max,windspeed_10m_max,winddirection_10m_dominant',
       timezone: 'auto', forecast_days: 16, past_days: 16
     });
+    /* Accuracy: ask Open-Meteo for the skill-ranked "best_match" model. In Auto
+       mode we also nudge the baseline toward the region's strongest model
+       (ECMWF over Europe, GFS over N.America); in manual modes we blend the
+       chosen model with best_match (getVal prefers the chosen model first).
+       getVal reads the plain key (= first requested model) then _best_match. */
     if (state.model && state.model !== 'auto') params.append('models', `${state.model},best_match`);
+    else {
+      const rm = regionModel();
+      params.append('models', rm ? `${rm},best_match` : 'best_match');
+    }
 
     const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${params}`, FETCH_MS);
     if (!res.ok) throw new Error('API ' + res.status);
@@ -660,9 +693,12 @@ function renderAll() {
   updateHero();
   updateMetrics();
   renderSunArc();
-  renderChart();
-  renderHourly();
-  renderDaily();
+  /* The heavy chart/hourly/daily renderers are routed through the Section
+     Manager so off-screen sections are skipped (and re-rendered lazily when
+     they scroll back into view) instead of always rebuilding their DOM. */
+  SECTION_MANAGER.renderSection('chart');
+  SECTION_MANAGER.renderSection('hourly');
+  SECTION_MANAGER.renderSection('daily');
   renderAlerts();
   updateFavIcon();
   document.title = `${state.locationName} · LiveSky`;
@@ -735,9 +771,9 @@ function updateHero() {
   el.locationAdmin.classList.toggle('hidden', !adminLine);
 
   const h = state.weather.hourly, i = state.nowIdx;
-  const temp = getVal(h, 'temperature_2m', i);
+  const temp = interpHour(h, 'temperature_2m', i); /* interpolated "now" */
   const code = getVal(h, 'weathercode', i);
-  const feels = getVal(h, 'apparent_temperature', i);
+  const feels = interpHour(h, 'apparent_temperature', i);
   const night = hourIsNight(i);
 
   el.temp.className = 'temp-num' + (tempClass(temp) ? ' ' + tempClass(temp) : '');
@@ -755,7 +791,7 @@ function updateHero() {
 
 function updateMetrics() {
   const h = state.weather.hourly, i = state.nowIdx;
-  el.mFeels.textContent = fmtTempDeg(getVal(h, 'apparent_temperature', i));
+  el.mFeels.textContent = fmtTempDeg(interpHour(h, 'apparent_temperature', i));
   updateWindTile();
   el.mHum.textContent = getVal(h, 'relativehumidity_2m', i) != null ? Math.round(getVal(h, 'relativehumidity_2m', i)) + '%' : '--';
   el.mVis.textContent = fmtVis(getVal(h, 'visibility', i));
@@ -807,7 +843,14 @@ function updateWindTile() {
   if (dirFull) parts.push(dirFull);
   if (gust != null && gust > 0.1) parts.push(t('wind_gusts') + ' ' + fmtWind(gust));
   el.mWindDir.textContent = parts.join(' · ');
+  /* The arrow points the direction the wind comes FROM — the same convention as
+     the adjacent text label (e.g. "N wind" → arrow points north), so arrow and
+     text can never contradict each other. */
   el.mWindArrow.style.transform = `rotate(${(dir || 45) - 45}deg)`;
+  if (el.mWindArrow) {
+    el.mWindArrow.title = (dirFull ? dirFull : t('wind')) + ' · ' + t('wind_dir_hint');
+    el.mWindArrow.setAttribute('aria-label', (dirFull ? dirFull : t('wind')) + ' · ' + t('wind_dir_hint'));
+  }
 }
 
 /* ---------- sun arc ---------- */
@@ -917,7 +960,17 @@ function renderChart() {
     if (pv > pmax) pmax = pv;
   }
   const m = temps.length;
-  if (!m || !isFinite(tmin)) return;
+  if (!m || !isFinite(tmin)) {
+    /* No usable data — drop any stale hover state / columns from a previous render
+       so the chart never shows phantom points after a bad payload. */
+    chartData = [];
+    if (el.chartCols) el.chartCols.innerHTML = '';
+    if (el.chartSvg) el.chartSvg.innerHTML = '';
+    if (el.chartAxis) el.chartAxis.innerHTML = '';
+    if (el.chartDetail) el.chartDetail.innerHTML = '';
+    hideChartGuide();
+    return;
+  }
   if (tmax - tmin < 2) { tmax += 1; tmin -= 1; }
   const pad = (tmax - tmin) * 0.18;
   tmin -= pad; tmax += pad;
@@ -1755,7 +1808,9 @@ async function handleSearch(e) {
     el.input.blur();
     fetchWeather();
   } catch (e) {
-    toast(t('toast_network'), 'error', t('toast_retry'), () => handleSearch(e));
+    /* Note: handleSearch expects an Event (uses e.preventDefault() on the first line),
+       so the retry callback must not forward the error object. */
+    toast(t('toast_network'), 'error', t('toast_retry'), () => handleSearch());
   }
 }
 
@@ -1764,6 +1819,48 @@ function escHtml(s) {
 }
 
 /* ---------------- modals ---------------- */
+/* Accessible overlays: trap the Tab key inside the dialog, make the background
+   inert, focus the dialog on open and restore focus to the opener on close. */
+let lastFocused = null;
+function modalFocusables(container) {
+  return [...container.querySelectorAll(
+    'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+  )].filter(n => n.getClientRects().length > 0);
+}
+function onTrapKey(e) {
+  if (e.key !== 'Tab') return;
+  const container = (el.modal && el.modal.classList.contains('open')) ? el.modal
+    : (el.mapModal && el.mapModal.classList.contains('open')) ? el.mapModal : null;
+  if (!container) return;
+  const f = modalFocusables(container);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+function trapFocus(container) {
+  if (!container) return;
+  if (lastFocused == null) lastFocused = document.activeElement;
+  /* make everything outside the dialog inert so tabbing / AT stay inside it */
+  [...document.body.children].forEach(n => {
+    if (n === container || n.contains(container)) return;
+    if (!n.hasAttribute('inert')) { n._liveskyInert = true; n.setAttribute('inert', ''); }
+  });
+  container.addEventListener('keydown', onTrapKey);
+  setTimeout(() => {
+    const f = modalFocusables(container);
+    if (f.length) f[0].focus(); else if (container.focus) container.focus();
+  }, 20);
+}
+function releaseFocus(container) {
+  if (container) container.removeEventListener('keydown', onTrapKey);
+  [...document.body.children].forEach(n => {
+    if (n._liveskyInert) { n.removeAttribute('inert'); delete n._liveskyInert; }
+  });
+  if (lastFocused && lastFocused.focus) { try { lastFocused.focus(); } catch (e) { /* ignore */ } }
+  lastFocused = null;
+}
+
 function openModal(title, subtitle, bodyHtml) {
   el.modalTitle.textContent = title;
   el.modalSubtitle.textContent = subtitle || '';
@@ -1771,10 +1868,12 @@ function openModal(title, subtitle, bodyHtml) {
   el.modalBody.scrollTop = 0;
   el.modal.classList.add('open');
   document.body.classList.add('no-scroll');
+  trapFocus(el.modal);
 }
 function closeModal() {
   el.modal.classList.remove('open');
   document.body.classList.remove('no-scroll');
+  releaseFocus(el.modal);
   state.uiLockUntil = Date.now() + UI_LOCK_MS;
   clearTimeout(state.favOpenTimer);
 }
@@ -2525,6 +2624,7 @@ function openFullMap() {
   if (!window.maplibregl) return;
   el.mapModal.classList.add('open');
   document.body.classList.add('no-scroll');
+  trapFocus(el.mapModal);
   tempLat = null; tempLon = null;
   el.mapInstr.style.display = '';
   el.mapApply.classList.add('hidden');
@@ -2553,7 +2653,15 @@ function openFullMap() {
             el.mapInstr.style.display = 'none';
             el.mapApply.classList.remove('hidden');
           });
-          if (RADAR.active) { RADAR.ensureLayer(); RADAR.renderFrame(); }
+          if (RADAR.active) {
+            RADAR.ensureLayer();
+            RADAR.renderFrame();
+            /* Radar is active but was enabled before the map existed: bring the
+               zoom back to a level where the radar data is visible. */
+            if (fullMapInst.getZoom() > 7) {
+              try { fullMapInst.easeTo({ zoom: 7, duration: 800 }); } catch (e) { /* ignore */ }
+            }
+          }
         });
         fullMapInst.on('error', () => {
           if (!fullMapFallback) { fullMapFallback = true; try { fullMapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
@@ -2575,6 +2683,7 @@ function openFullMap() {
 function closeFullMap() {
   el.mapModal.classList.remove('open');
   document.body.classList.remove('no-scroll');
+  releaseFocus(el.mapModal);
   /* quiet period: the just-closed overlay must not leak clicks/cursor into the page */
   state.uiLockUntil = Date.now() + UI_LOCK_MS;
   clearTimeout(state.favOpenTimer);
@@ -2630,7 +2739,7 @@ function setMenuOpen(open) {
 function syncMenuChecks() {
   if (!el.mainMenu) return;
   el.mainMenu.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('selected', b.dataset.lang === state.lang));
-  el.mainMenu.querySelectorAll('[data-theme]').forEach(b => b.classList.toggle('selected', b.dataset.theme === state.theme));
+  el.mainMenu.querySelectorAll('[data-theme-pick]').forEach(b => b.classList.toggle('selected', b.dataset.themePick === state.theme));
   if (el.modelSelect) el.modelSelect.value = state.model;
   if (el.unitsSelect) el.unitsSelect.value = state.units;
 }
@@ -2733,8 +2842,8 @@ function bindEvents() {
   on(el.mainMenu, 'click', (e) => {
     const langBtn = e.target.closest('[data-lang]');
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
-    const themeBtn = e.target.closest('[data-theme]');
-    if (themeBtn) { setTheme(themeBtn.dataset.theme); setMenuOpen(false); return; }
+    const themeBtn = e.target.closest('[data-theme-pick]');
+    if (themeBtn) { setTheme(themeBtn.dataset.themePick); setMenuOpen(false); return; }
     /* All other clicks inside menu just close it after a short delay */
     const isSelect = e.target.closest('.dd-select');
     if (!isSelect) {
@@ -2766,9 +2875,10 @@ function bindEvents() {
     setMenuOpen(false);
     if (state.effects === 'full') state._perfLow = false;
     applyEffects();
-    /* if the FPS detector hadn't been started yet (e.g. the app booted in
-       "Maximum"), start it now that the user is back on Auto */
+    /* start the FPS watchdog only on Auto; stop it otherwise so it never
+       keeps an rAF loop running in the background on Maximum/Eco */
     if (state.effects === 'auto') PERF.start();
+    else PERF.stop();
   });
   on(el.installItem, 'click', promptInstall);
   on(el.notifItem, 'click', () => { setMenuOpen(false); toggleNotifications(); });
@@ -2842,10 +2952,14 @@ function bindEvents() {
     if (!document.hidden) {
       clockTick();
       FX.resume();
+      if (state.effects === 'auto') PERF.start();
       if (Date.now() - state.lastFetchTs > 15 * 60 * 1000) fetchWeather(true);
-    } else if (FX.running) {
-      cancelAnimationFrame(FX.raf);
-      FX.running = false;
+    } else {
+      if (FX.running) {
+        cancelAnimationFrame(FX.raf);
+        FX.running = false;
+      }
+      PERF.stop();
     }
   });
   /* silent auto-refresh every 15 minutes + periodic weather-alert check */
@@ -2933,7 +3047,9 @@ function initConnectivity() {
 const PERF = {
   raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0, started: false,
   start() {
-    if (motionReduce || this.started) return;
+    /* only run the FPS watchdog while the user is on Auto mode; it is pointless
+       (and burns the battery) when Maximum/Eco is explicitly selected */
+    if (motionReduce || this.started || state.effects !== 'auto') return;
     this.started = true;
     this.windowStart = performance.now();
     const tick = (t) => {
@@ -2948,6 +3064,14 @@ const PERF = {
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);
+  },
+  /* Stop the rAF watchdog entirely. Called when the tab is hidden or the user
+     switches off Auto so the loop never keeps the compositor alive in the background. */
+  stop() {
+    if (!this.started) return;
+    this.started = false;
+    cancelAnimationFrame(this.raf);
+    this.windowFrames = 0; this.lowStreak = 0; this.normalStreak = 0;
   },
   evaluate() {
     if (state.effects !== 'auto') return;
@@ -2965,18 +3089,42 @@ const PERF = {
 
 /* ---------- Section Lifecycle Manager (Smart Visibility) ---------- */
 /*
-   Manages which content sections are rendered based on viewport proximity.
-   Three states per section:
-     - 'active':   section is in/near viewport — fully rendered
-     - 'inactive':  section is far off-screen — content preserved but GPU load reduced
-     - 'unloaded':  section is way off-screen — heavy DOM removed, skeleton shown
-   Uses debounced unloading to avoid thrashing during fast scroll.
+   Genuine "heavy DOM removed" optimization. Each section lives in one of three
+   states:
+
+     - 'active':   in/near the viewport — content mounted and rendered.
+     - 'inactive': off-screen but not far — content stays mounted (cheap CSS
+                   backdrop reduction) so it appears instantly when scrolled to.
+     - 'unloaded': way off-screen — the heavy card is DETACHED from the DOM and
+                   swapped for a lightweight, height-preserving skeleton. The
+                   detached card is cached so it can be re-inserted instantly
+                   on scroll-back without a re-render when data is still fresh.
+
+   To avoid thrashing during fast scroll, unloads are debounced (adaptive: far
+   faster in Eco/low-perf mode). Heavy renderers (chart/hourly/daily) are routed
+   through renderSection(), which SKIPS building DOM for unloaded sections and
+   only rebuilds lazily when the section returns to view and its data changed.
 */
 const SECTION_MANAGER = {
   io: null,
   ioUnload: null,
   sections: new Map(),
   priorities: ['hero', 'chart', 'hourly', 'daily', 'lifestyle'],
+
+  /* Heavy per-section renderers. Hero + sidebar content is always rendered
+     eagerly (it's the first thing the user sees), so only these are deferred. */
+  renderers: {
+    chart: () => renderChart(),
+    hourly: () => renderHourly(),
+    daily: () => renderDaily()
+  },
+
+  /* Adaptive unload debounce: on weak devices / Eco we drop off-screen DOM
+     almost immediately; otherwise wait to avoid flicker during fast scroll. */
+  unloadDelay() {
+    if (state.effects === 'eco' || (state.effects === 'auto' && state._perfLow)) return 1000;
+    return 4000;
+  },
 
   init() {
     if (motionReduce) {
@@ -3021,7 +3169,11 @@ const SECTION_MANAGER = {
     /* Observe all section roots */
     document.querySelectorAll('.section-root').forEach(el => {
       const name = el.dataset.section;
-      this.sections.set(name, { el, state: 'inactive', unloadTimer: null, rendered: false });
+      this.sections.set(name, {
+        el, state: 'inactive', unloadTimer: null, rendered: false,
+        dirty: true, /* nothing rendered yet */
+        card: null, skeleton: null
+      });
       this.io.observe(el);
       this.ioUnload.observe(el);
       /* Start with enter animation class */
@@ -3039,13 +3191,43 @@ const SECTION_MANAGER = {
     });
   },
 
+  runRenderer(name) {
+    const r = this.renderers[name];
+    if (!r) return;
+    r();
+    const s = this.sections.get(name);
+    if (s) s.rendered = true;
+  },
+
+  /* Route a heavy render through the manager. Unloaded sections skip the work
+     entirely (their DOM is detached anyway) and are marked dirty so they'll be
+     rebuilt lazily on their next activation. */
+  renderSection(name) {
+    const s = this.sections.get(name);
+    if (!s || !this.renderers[name]) return;
+    if (s.state === 'unloaded') {
+      s.dirty = true; /* rebuild later, when the user scrolls back */
+      return;
+    }
+    this.runRenderer(name);
+    s.dirty = false;
+  },
+
   activate(name, el, immediate) {
     const section = this.sections.get(name);
     if (!section) return;
-
+    const wasUnloaded = section.state === 'unloaded';
     section.state = 'active';
     this.cancelUnload(name);
     el.dataset.sectionState = 'active';
+
+    /* If we just came back from being unloaded, rebuild (only if the data
+       changed while away) and re-insert the cached card. */
+    if (wasUnloaded || section.dirty) {
+      this.runRenderer(name);
+      section.dirty = false;
+    }
+    this.mount(name);
     el.classList.remove('section-skeleton');
 
     if (immediate) {
@@ -3053,7 +3235,14 @@ const SECTION_MANAGER = {
       el.classList.remove('section-enter', 'section-enter-active');
       void el.offsetWidth;
       el.classList.add('section-enter-active');
-      if (!section.rendered) { section.rendered = true; }
+      return;
+    }
+
+    if (wasUnloaded) {
+      /* Restoring already-seen content: keep it fully visible (opacity stays 1),
+         never re-run the enter transition (would flash from opacity 0). */
+      el.classList.remove('section-enter');
+      el.classList.add('section-enter-active');
       return;
     }
 
@@ -3068,8 +3257,6 @@ const SECTION_MANAGER = {
       el.classList.remove('section-enter');
       section._enterTimer = null;
     }, 900);
-
-    if (!section.rendered) { section.rendered = true; }
   },
 
   deactivate(name, el) {
@@ -3077,62 +3264,69 @@ const SECTION_MANAGER = {
     if (!section) return;
     section.state = 'inactive';
     el.dataset.sectionState = 'inactive';
-    /* Keep the content but reduce GPU load via CSS */
+    /* Content stays mounted; CSS reduces backdrop cost until it's far away. */
   },
 
   scheduleUnload(name, el) {
     const section = this.sections.get(name);
-    if (!section) return;
-    /* Only unload non-priority sections that have been inactive for a while */
-    if (name === 'hero') return; /* Never unload hero */
+    if (!section || name === 'hero') return; /* never unload hero */
 
-    /* Debounce: wait 4s before unloading to avoid flicker on fast scroll */
     if (section.unloadTimer) return;
     section.unloadTimer = setTimeout(() => {
+      section.unloadTimer = null;
       if (section.state === 'inactive' || section.state === 'unloaded') {
         this.unload(name, el);
       }
-      section.unloadTimer = null;
-    }, 4000);
+    }, this.unloadDelay());
   },
 
   cancelUnload(name) {
     const section = this.sections.get(name);
-    if (!section) return;
-    if (section.unloadTimer) {
-      clearTimeout(section.unloadTimer);
-      section.unloadTimer = null;
-    }
+    if (!section || !section.unloadTimer) return;
+    clearTimeout(section.unloadTimer);
+    section.unloadTimer = null;
   },
 
+  /* The real "heavy DOM removed": detach the section's card and drop in a
+     height-preserving skeleton so scroll position is unchanged. The detached
+     card is cached so scrolling back re-inserts it without a re-render. */
   unload(name, el) {
     const section = this.sections.get(name);
     if (!section) return;
     section.state = 'unloaded';
     el.dataset.sectionState = 'unloaded';
 
-    /* For non-critical sections, replace content with lightweight skeleton */
-    if (name === 'lifestyle' || name === 'daily') {
-      /* These sections are cheap enough to keep their static HTML.
-         Just mark them as skeleton to reduce paint cost. */
-      el.classList.add('section-skeleton');
+    const card = section.card || el.firstElementChild;
+    if (card) {
+      const h = card.offsetHeight || 0;
+      const sk = document.createElement('div');
+      sk.className = 'section-skeleton-box';
+      if (h > 0) sk.style.minHeight = h + 'px';
+      section.el.replaceChild(sk, card);
+      section.skeleton = sk;
+      section.card = card;
     }
+    el.classList.add('section-skeleton');
 
     /* Pause any running timers related to this section */
-    if (name === 'chart') {
-      /* Chart hover detail can be hidden when off-screen */
-      hideChartGuide();
+    if (name === 'chart') hideChartGuide();
+  },
+
+  /* Re-insert the cached card (if it was unloaded) — instant, no re-render. */
+  mount(name) {
+    const section = this.sections.get(name);
+    if (!section) return;
+    if (section.skeleton && section.card) {
+      section.el.replaceChild(section.card, section.skeleton);
+      section.skeleton = null;
+      section.card = null;
     }
   },
 
   /* Called when data is refreshed — re-renders sections that are visible */
   refreshVisible() {
     this.sections.forEach((section, name) => {
-      if (section.state === 'active') {
-        /* Already visible and animated in — don't replay animation,
-           that would cause a visual flash (opacity 0 → 1). */
-        return;
-      }
+      if (section.state === 'active' || section.state === 'unloaded') return;
       if (section.state === 'inactive') {
         /* Inactive sections might become active soon. Reset them to
            enter state so they animate smoothly when scrolled into view. */
@@ -3143,12 +3337,13 @@ const SECTION_MANAGER = {
     });
   },
 
-  /* Destroy observers (cleanup) */
+  /* Destroy observers + restore any unloaded content (cleanup) */
   destroy() {
     if (this.io) this.io.disconnect();
     if (this.ioUnload) this.ioUnload.disconnect();
     this.sections.forEach(section => {
       if (section.unloadTimer) clearTimeout(section.unloadTimer);
+      if (section.skeleton && section.card) this.mount(section);
     });
     this.sections.clear();
   }
@@ -3195,7 +3390,8 @@ const RADAR = {
     let tries = 0;
     const t = setInterval(() => {
       if (!this.active) { clearInterval(t); return; }
-      if (this.layerReady || tries > 5) { clearInterval(t); return; }
+      if (this.layerReady) { clearInterval(t); return; }
+      if (tries > 30) { clearInterval(t); return; } /* ~15s cap, then give up */
       tries++;
       this.ensureLayer();
       if (this.layerReady) this.renderFrame();
@@ -3209,29 +3405,39 @@ const RADAR = {
     if (el.radarSlider) { el.radarSlider.max = String(this.frames.length - 1); el.radarSlider.value = String(this.idx); }
     this.updateTime();
   },
-  /* RainViewer radar tiles exist only up to zoom 7 — cap the source so MapLibre
-     upscales the finest available tiles instead of requesting zoom-10 tiles (404). */
-  tileUrl() { return `${this.frames[this.idx].url}/${(window.devicePixelRatio >= 2 ? 512 : 256)}/{z}/{x}/{y}/2/1_1.png`; },
+  /* RainViewer offers tiles in 256px or 512px. We pick the larger on hi-DPI
+     screens, and MUST declare the SAME size as the source tileSize — a mismatch
+     (e.g. serving 512px tiles while the source says 256) makes MapLibre mis-scale
+     the overlay so the rain pattern looks like a broken, offset smear. */
+  tileSize() { return window.devicePixelRatio >= 2 ? 512 : 256; },
+  /* RainViewer radar tiles only go up to zoom 7, so cap the source maxzoom and
+     let MapLibre upscale instead of requesting zoom-10 tiles (404). */
+  tileUrl() { return `${this.frames[this.idx].url}/${this.tileSize()}/{z}/{x}/{y}/2/1_1.png`; },
   /* Source and layer are added independently so a retry can always complete:
      even if addSource succeeded but addLayer was interrupted, the next call
-     adds the missing layer instead of just re-pointing tiles. */
+     adds the missing layer instead of just re-pointing tiles. Layers can only
+     be added after the map's style is ready — if not yet loaded we return false
+     and the caller retries. */
   ensureLayer() {
     if (!fullMapInst || !this.frames[this.idx]) return false;
     try {
-      if (!fullMapInst.getSource('radar')) {
-        fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: 256, minzoom: 0, maxzoom: 7 });
-      } else {
-        fullMapInst.getSource('radar').setTiles([this.tileUrl()]);
+      if (!fullMapInst.isStyleLoaded || fullMapInst.isStyleLoaded()) {
+        if (!fullMapInst.getSource('radar')) {
+          fullMapInst.addSource('radar', { type: 'raster', tiles: [this.tileUrl()], tileSize: this.tileSize(), minzoom: 0, maxzoom: 7 });
+        } else {
+          fullMapInst.getSource('radar').setTiles([this.tileUrl()]);
+        }
+        if (!fullMapInst.getLayer('radar')) {
+          fullMapInst.addLayer({
+            id: 'radar', type: 'raster', source: 'radar',
+            paint: { 'raster-opacity': 0.78, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
+          });
+        }
+        this.layerReady = true;
+        return true;
       }
-      if (!fullMapInst.getLayer('radar')) {
-        fullMapInst.addLayer({
-          id: 'radar', type: 'raster', source: 'radar',
-          paint: { 'raster-opacity': 0.78, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
-        });
-      }
-      this.layerReady = true;
-      return true;
-    } catch (e) { return false; }
+    } catch (e) { /* style not ready or other transient error — caller retries */ }
+    return false;
   },
   renderFrame() {
     if (!this.frames.length || this.idx < 0) return;
@@ -3269,6 +3475,12 @@ const RADAR = {
     this.active = true;
     if (el.radarPanel) el.radarPanel.classList.remove('hidden');
     if (el.radarToggle) { el.radarToggle.classList.add('on'); el.radarToggle.setAttribute('aria-pressed', 'true'); }
+    /* RainViewer data only exists up to zoom 7. If the user is zoomed in past
+       that (default open zoom is 10), the radar would be a barely-visible smear —
+       so ease back to a zoom where the precipitation is actually readable. */
+    if (fullMapInst && fullMapInst.getZoom() > 7) {
+      try { fullMapInst.easeTo({ center: [state.lon, state.lat], zoom: 7, duration: 800 }); } catch (e) { /* ignore */ }
+    }
     this.ensureLayer();
     this.load();
   },
@@ -3506,7 +3718,7 @@ function init() {
   initInstallPrompt();
   updateInstallItem();
   initConnectivity();
-  if (state.effects !== 'full') PERF.start();
+  if (state.effects === 'auto') PERF.start();
 
   const last = store.get('livesky:last_city', null);
   if (last && last.lat != null) {

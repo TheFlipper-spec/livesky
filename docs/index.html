@@ -23,7 +23,7 @@
 
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2"></script>
 
   <link rel="stylesheet" href="css/app.css?v=25" />
 </head>
@@ -109,9 +109,9 @@
             <button class="dd-item" data-lang="es"><img class="lang-flag" src="https://flagcdn.com/20x15/es.png" alt=""><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
 
             <div class="dd-group-label"><span data-translate="theme_group">Тема</span> · <span id="theme-label"></span></div>
-            <button class="dd-item" data-theme="adaptive"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-theme="dark"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-theme="light"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-theme-pick="adaptive"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-theme-pick="dark"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-theme-pick="light"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check dd-check"></i></button>
 
             <div class="dd-group-label" data-translate="units">Единицы</div>
             <select class="dd-select" id="units-select">

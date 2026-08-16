@@ -1559,7 +1559,15 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .section-root[data-section="hero"].section-enter-active .side-col .card:nth-child(2) { transition-delay: 0.14s; }
 .section-root[data-section="hero"].section-enter-active .side-col .card:nth-child(3) { transition-delay: 0.2s; }
 
-/* Skeleton placeholder — shown while section is off-screen and content is unloaded */
+/* Skeleton placeholder — shown while section is off-screen and content is unloaded.
+   The heavy card is detached and replaced by .section-skeleton-box (height-preserving),
+   while .section-root.section-skeleton adds a shimmer overlay via ::after. */
+.section-skeleton-box {
+  pointer-events: none;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.005));
+  box-shadow: inset 0 0 0 1px var(--stroke);
+}
 .section-root.section-skeleton {
   position: relative;
   overflow: hidden;

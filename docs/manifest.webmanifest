@@ -6,7 +6,7 @@
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#05070f",
   "theme_color": "#38bdf8",
   "categories": ["weather", "utilities", "productivity"],
