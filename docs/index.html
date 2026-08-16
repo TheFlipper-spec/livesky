@@ -25,7 +25,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=21" />
+  <link rel="stylesheet" href="css/app.css?v=25" />
 </head>
 
 <body data-theme="adaptive">
@@ -157,6 +157,7 @@
       </div>
 
       <!-- ==== Hero + Sidebar ==== -->
+      <div data-section="hero" data-section-priority="1" class="section-root">
       <div class="hero-grid">
         <section class="card hero" id="hero-card" aria-label="Текущая погода">
           <div class="hero-top">
@@ -299,8 +300,10 @@
           </div>
         </aside>
       </div>
+      </div>
 
       <!-- ==== Chart 24h ==== -->
+      <div data-section="chart" data-section-priority="2" class="section-root">
       <section class="card chart-card reveal">
         <div class="section-head" style="margin-bottom:6px">
           <div class="section-title"><span class="tint"><i class="ph ph-chart-line"></i></span><span id="chart-title" data-translate="chart_title">Температура · 24 часа</span></div>
@@ -325,8 +328,10 @@
         </div>
         <div class="chart-detail" id="chart-detail"></div>
       </section>
+      </div>
 
       <!-- ==== Hourly ==== -->
+      <div data-section="hourly" data-section-priority="3" class="section-root">
       <section class="card hourly-card reveal" style="--rd:60ms">
         <div class="section-head">
           <div class="section-title"><span class="tint"><i class="ph ph-clock-afternoon"></i></span><span data-translate="hourly">Следующие 24 часа</span></div>
@@ -337,8 +342,10 @@
           <button class="strip-nav right" id="hourly-right" aria-label="Вперёд"><i class="ph-bold ph-caret-right"></i></button>
         </div>
       </section>
+      </div>
 
       <!-- ==== Daily ==== -->
+      <div data-section="daily" data-section-priority="4" class="section-root">
       <section class="card card-pad reveal" style="--rd:120ms">
         <div class="section-head">
           <div class="section-title"><span class="tint"><i class="ph ph-calendar-check"></i></span><span data-translate="daily">Прогноз на неделю</span></div>
@@ -346,8 +353,10 @@
         </div>
         <div class="daily-grid" id="daily-strip"></div>
       </section>
+      </div>
 
       <!-- ==== Lifestyle ==== -->
+      <div data-section="lifestyle" data-section-priority="5" class="section-root">
       <section class="card card-pad reveal" style="--rd:180ms">
         <div class="section-head">
           <div class="section-title"><span class="tint"><i class="ph ph-heartbeat"></i></span><span data-translate="lifestyle_title">LifeSky · Активности</span></div>
@@ -370,6 +379,7 @@
           </div>
         </div>
       </section>
+      </div>
     </main>
 
     <!-- ==== Footer ==== -->
@@ -440,7 +450,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=20"></script>
-  <script src="js/app.js?v=22"></script>
+  <script src="js/i18n.js?v=21"></script>
+  <script src="js/app.js?v=24"></script>
 </body>
 </html>
