@@ -3,9 +3,32 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v12';
+const VERSION = 'livesky-v13';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
+
+/* index.html loads the shell with cache-buster query strings (?v=25, ?v=21…).
+   We store every same-origin asset under a query-free key so all versions of a
+   URL resolve to one cached copy — this keeps the cache bounded and, crucially,
+   makes offline cold-start work right after the first install (previously the
+   versioned requests weren't in the cache, so the page came up unstyled/broken
+   when going offline before a second visit). */
+function trimCacheUrl(url) {
+  const u = new URL(url.href);
+  u.search = '';
+  u.hash = '';
+  return u.href;
+}
+/* Keep the forecast mirror bounded — each city/model is a different URL. */
+async function trimForecastCache(maxEntries) {
+  try {
+    const cache = await caches.open(FORECAST_CACHE);
+    const keys = await cache.keys();
+    if (keys.length > maxEntries) {
+      await Promise.all(keys.slice(0, keys.length - maxEntries).map(k => cache.delete(k)));
+    }
+  } catch (e) { /* non-critical */ }
+}
 
 /* App shell — everything needed to boot the page offline. */
 const SHELL_ASSETS = [
@@ -65,7 +88,8 @@ self.addEventListener('fetch', (event) => {
         .then((res) => {
           if (res && res.ok && isForecastApi(url)) {
             const clone = res.clone();
-            caches.open(FORECAST_CACHE).then((cache) => cache.put(req, clone));
+            caches.open(FORECAST_CACHE)
+              .then((cache) => cache.put(req, clone).then(() => trimForecastCache(25)));
           }
           return res;
         })
@@ -76,20 +100,22 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  /* Same-origin app requests (navigation + static). */
+  /* Same-origin app requests (navigation + static). Network-first; on failure
+     fall back to the query-stripped cache key. */
   if (url.origin === self.location.origin) {
     const reqMode = req.mode;
+    const cacheKey = (url.search || url.hash) ? trimCacheUrl(url) : url.href;
     event.respondWith(
       fetch(req)
         .then((res) => {
           if (res && res.ok) {
             const clone = res.clone();
-            caches.open(SHELL_CACHE).then((cache) => cache.put(req, clone));
+            caches.open(SHELL_CACHE).then((cache) => cache.put(cacheKey, clone));
           }
           return res;
         })
         .catch(() =>
-          caches.match(req).then((hit) => {
+          caches.match(cacheKey).then((hit) => {
             if (hit) return hit;
             if (reqMode === 'navigate') return caches.match('./index.html');
             return Response.error();

@@ -86,6 +86,16 @@ function genForecast() {
       hourly.is_day.push(h > 5 && h < 20 ? 1 : 0);
     }
   }
+  /* The app now requests models=best_match, so Open-Meteo returns *_best_match
+     columns. Mirror each key so getVal() resolves in Auto mode too. */
+  [hourly, daily].forEach(obj => {
+    const mirror = {};
+    for (const k in obj) {
+      if (k === 'time') { mirror[k] = obj[k]; continue; }
+      mirror[k + '_best_match'] = obj[k];
+    }
+    Object.assign(obj, mirror);
+  });
   return { timezone: 'Europe/Moscow', timezone_abbreviation: 'GMT+3', elevation: 140, hourly, daily };
 }
 
@@ -239,7 +249,7 @@ setTimeout(() => {
     q('menu-btn').click();
     assert(q('main-menu').classList.contains('open'), 'unified menu opens');
     assert(q('menu-btn').getAttribute('aria-expanded') === 'true', 'menu aria-expanded');
-    assert(q('main-menu').querySelector('[data-lang]') && q('main-menu').querySelector('[data-theme]'), 'menu has lang + theme items');
+    assert(q('main-menu').querySelector('[data-lang]') && q('main-menu').querySelector('[data-theme-pick]'), 'menu has lang + theme items');
     assert(q('fs-item') !== null && q('refresh-item') !== null, 'menu has fullscreen + refresh actions');
     q('main-menu').querySelector('[data-lang="en"]').click();
     assert(q('theme-label').textContent === 'Adaptive', 'lang pick via menu (theme label en)');
@@ -247,7 +257,7 @@ setTimeout(() => {
     assert(!q('main-menu').classList.contains('open'), 'menu closes after language pick');
     window.setLang('ru');
     q('menu-btn').click();
-    q('main-menu').querySelector('[data-theme="light"]').click();
+    q('main-menu').querySelector('[data-theme-pick="light"]').click();
     assert(document.documentElement.dataset.theme === 'light', 'theme pick via menu works');
     assert(!q('main-menu').classList.contains('open'), 'menu closes after theme pick');
     window.setTheme('adaptive');
