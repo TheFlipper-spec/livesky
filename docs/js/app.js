@@ -138,6 +138,16 @@ function fmtDur(totalMin, short) {
   if (short) return state.lang === 'en' ? `${h}h ${m}m` : state.lang === 'es' ? `${h}h ${m}m` : `${h}ч ${m}м`;
   return state.lang === 'en' ? `${h}h ${m}m` : state.lang === 'es' ? `${h} h ${m} min` : `${h} ч ${m} мин`;
 }
+/* Smart human-friendly duration: rounds to nearest .5h, no "0м" clutter */
+function fmtDurSmart(totalMin) {
+  if (totalMin <= 5) return state.lang === 'en' ? 'just now' : 'сейчас';
+  if (totalMin < 60) return state.lang === 'en' ? Math.round(totalMin) + 'min' : Math.round(totalMin) + 'мин';
+  const h = totalMin / 60;
+  let r = Math.round(h * 2) / 2;
+  if (r < 1) r = 1;
+  const s = r % 1 === 0 ? String(r) : r.toFixed(1).replace('.', ',');
+  return state.lang === 'en' ? s + 'h' : s + 'ч';
+}
 
 /* ---------------- unit formatting ---------------- */
 function convTemp(c) { return state.units === 'imperial' ? c * 9 / 5 + 32 : c; }
@@ -209,25 +219,51 @@ function rainSoonNow() {
 const RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
 const SNOW_CODES = [71, 73, 75, 77, 85, 86];
 
-/* smart rain status shown right next to the temperature:
-   - no rain now → "Вероятность дождя N%"
-   - raining now  → "Дождь закончится в 18:00 · ещё 2ч 15м" (scanned from hourly forecast) */
+/* smart rain status: proactive + precise timing
+   - raining now → "Закончится в HH:MM · осталось Nч" (time from REAL current minute)
+   - not raining, rain expected ≤6h → "Дождь начнётся в HH:MM (вер. P%)"
+   - no rain at all → "Вероятность сейчас P%"
+   BUG FIX: remaining time from actual current time (not forecast hour). */
 function updateRainStatus() {
   if (!state.weather) { el.rainStatus.classList.add('hidden'); return; }
   const h = state.weather.hourly, i = state.nowIdx;
   const code = getVal(h, 'weathercode', i);
   const snowNow = SNOW_CODES.includes(code);
   const rainingNow = snowNow || RAIN_CODES.includes(code);
+  const now = tzNow(state.tz);
+  const nowMin = now.hour * 60 + now.minute;
 
   if (!rainingNow) {
+    /* Proactive: check if rain is coming within 6 hours */
     const p = getVal(h, 'precipitation_probability', i) || 0;
+    let firstRain = null;
+    for (let k = i + 1; k < Math.min(i + 7, h.time.length); k++) {
+      const c = getVal(h, 'weathercode', k);
+      const pr = getVal(h, 'precipitation_probability', k) || 0;
+      if ((RAIN_CODES.includes(c) || SNOW_CODES.includes(c)) && pr >= 30) {
+        firstRain = { idx: k, prob: pr }; break;
+      }
+    }
+    if (firstRain) {
+      const rainStart = minOfDay(h.time[firstRain.idx]);
+      let minsToRain = rainStart - nowMin;
+      const rd = parseInt(h.time[firstRain.idx].slice(8,10), 10);
+      const td = parseInt(now.date.slice(8,10), 10);
+      if (rd > td) minsToRain += 1440;
+      if (minsToRain > 0 && minsToRain <= 360) {
+        el.rainStatus.classList.remove('hidden', 'snow');
+        el.rainStatus.querySelector('i').className = 'ph-fill ' + (firstRain.prob >= 50 ? 'ph-cloud-rain' : 'ph-cloud');
+        el.rainStatusText.textContent = t('rain_upcoming').replace('{t}', h.time[firstRain.idx].slice(11,16)).replace('{p}', Math.round(firstRain.prob));
+        return;
+      }
+    }
     el.rainStatus.classList.remove('hidden', 'snow');
     el.rainStatus.querySelector('i').className = 'ph-fill ph-cloud-rain';
     el.rainStatusText.textContent = t('rain_prob').replace('{p}', Math.round(p));
     return;
   }
 
-  /* find the first dry hour ahead */
+  /* It IS raining — find first dry slot */
   let endIdx = -1;
   for (let k = i + 1; k < Math.min(i + 13, h.time.length); k++) {
     const c = getVal(h, 'weathercode', k);
@@ -239,20 +275,24 @@ function updateRainStatus() {
   el.rainStatus.classList.toggle('snow', snowNow);
   el.rainStatus.querySelector('i').className = 'ph-fill ' + (snowNow ? 'ph-snowflake' : 'ph-cloud-rain');
 
-  let text;
   if (endIdx === -1) {
-    text = snowNow ? t('snow_all_day') : t('rain_all_day');
-  } else {
-    const endHH = h.time[endIdx].slice(11, 16);
-    const today = tzNow(state.tz).date;
-    const endDate = h.time[endIdx].slice(0, 10);
-    const durMin = Math.max(0, Math.round((parseLocal(h.time[endIdx]) - parseLocal(h.time[i])) / 60000));
-    const dur = fmtDur(durMin, true);
-    const endsKey = snowNow ? 'snow_ends' : 'rain_ends';
-    const when = t(endsKey).replace('{t}', endHH) + (endDate !== today ? ` (${t('tomorrow_word')})` : '');
-    text = `${when} · ${t('rain_till').replace('{d}', dur)}`;
+    el.rainStatusText.textContent = snowNow ? t('snow_all_day') : t('rain_all_day');
+    return;
   }
-  el.rainStatusText.textContent = text;
+
+  /* BUG FIX: calculate remaining time from ACTUAL current minute, not forecast hour */
+  const endHH = h.time[endIdx].slice(11, 16);
+  const endDate = h.time[endIdx].slice(0, 10);
+  let remainingMin = minOfDay(h.time[endIdx]) - nowMin;
+  const endDay = parseInt(h.time[endIdx].slice(8, 10), 10);
+  const currDay = parseInt(now.date.slice(8, 10), 10);
+  if (endDay > currDay) remainingMin += 1440;
+  remainingMin = Math.max(1, Math.round(remainingMin));
+
+  const dur = fmtDurSmart(remainingMin);
+  const endsKey = snowNow ? 'snow_ends' : 'rain_ends';
+  const when = t(endsKey).replace('{t}', endHH) + (endDate !== now.date ? ' (' + t('tomorrow_word') + ')' : '');
+  el.rainStatusText.textContent = when + ' · ' + dur;
 }
 
 /* ---------------- data helpers ---------------- */
@@ -626,6 +666,58 @@ function renderAll() {
   renderAlerts();
   updateFavIcon();
   document.title = `${state.locationName} · LiveSky`;
+
+  /* Update FX intensity based on actual weather data */
+  updateFXIntensity();
+
+  /* Notify Section Manager — trigger re-entry animations for visible sections */
+  if (SECTION_MANAGER && SECTION_MANAGER.refreshVisible) {
+    SECTION_MANAGER.refreshVisible();
+  }
+}
+
+/* Calculate and apply rain/snow intensity from actual weather data (0-1 scale).
+   Maps precipitation data to particle count, speed, and opacity. */
+function updateFXIntensity() {
+  if (!state.weather) return;
+  const h = state.weather.hourly, i = state.nowIdx;
+  const code = getVal(h, 'weathercode', i);
+  const precip = getVal(h, 'precipitation', i) || 0;
+  const precipProb = getVal(h, 'precipitation_probability', i) || 0;
+  const gust = getVal(h, 'windgusts_10m', i) || 0;
+  const wind = getVal(h, 'windspeed_10m', i) || 0;
+
+  const rainCodes = [51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99];
+  const snowCodes = [71,73,75,77,85,86];
+
+  let intensity = 0.5; /* default moderate */
+
+  if (FX.kind === 'rain') {
+    /* Heavy rain codes: 65 (heavy rain), 82 (violent showers) */
+    if ([65, 82, 96, 99].includes(code)) intensity = 0.9;
+    else if ([63, 66, 67, 95].includes(code)) intensity = 0.75;
+    else if ([53, 55, 57, 80, 81].includes(code)) intensity = 0.55;
+    else if ([51, 61].includes(code)) intensity = 0.35;
+    else if (precipProb > 60) intensity = 0.4;
+    else if (precipProb > 30) intensity = 0.3;
+    else intensity = 0.2;
+
+    /* Wind boosts intensity (wind drives rain sideways) */
+    if (wind > 15 || gust > 20) intensity = Math.min(1, intensity + 0.15);
+
+    /* Precipitation amount scales intensity */
+    if (precip > 5) intensity = Math.min(1, intensity + 0.15);
+    else if (precip > 2) intensity = Math.min(1, intensity + 0.1);
+  } else if (FX.kind === 'snow') {
+    /* Heavy snow: 75, 86 */
+    if ([75, 86].includes(code)) intensity = 0.85;
+    else if ([73, 85].includes(code)) intensity = 0.65;
+    else if ([71, 77].includes(code)) intensity = 0.4;
+    else if (precipProb > 50) intensity = 0.35;
+    else intensity = 0.25;
+  }
+
+  FX.setIntensity(intensity);
 }
 
 function updateHero() {
@@ -1328,7 +1420,7 @@ function startStorm() {
 
 /* ---------- FX canvas ---------- */
 const FX = {
-  parts: [], kind: null, raf: 0, last: 0, w: 0, h: 0, dpr: 1, shoot: null,
+  parts: [], kind: null, raf: 0, last: 0, w: 0, h: 0, dpr: 1, shoot: null, intensity: 0.5,
   resize() {
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.w = window.innerWidth; this.h = window.innerHeight;
@@ -1342,15 +1434,34 @@ const FX = {
   },
   build() {
     this.parts = [];
-    const n = { rain: 110, snow: 85, stars: 110, clouds: 5, fog: 6 }[this.kind] || 0;
+    /* Base particle counts scaled by intensity (0-1) */
+    const base = { rain: 110, snow: 85, stars: 110, clouds: 5, fog: 6 }[this.kind] || 0;
+    const n = Math.max(1, Math.round(base * this.intensity));
     for (let i = 0; i < n; i++) {
-      if (this.kind === 'rain') this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, len: 14 + Math.random() * 18, sp: 780 + Math.random() * 420, a: 0.18 + Math.random() * 0.25 });
-      else if (this.kind === 'snow') this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, r: 1 + Math.random() * 2.4, sp: 26 + Math.random() * 34, ph: Math.random() * Math.PI * 2, sw: 18 + Math.random() * 22, a: 0.5 + Math.random() * 0.4 });
-      else if (this.kind === 'stars') this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h * 0.72, r: Math.random() * 1.5 + 0.4, tw: 0.6 + Math.random() * 2.2, ph: Math.random() * Math.PI * 2 });
+      if (this.kind === 'rain') {
+        /* More intense = faster, thicker, more opaque drops */
+        const len = 14 + Math.random() * (18 + this.intensity * 12);
+        const sp = 780 + Math.random() * (420 + this.intensity * 200);
+        const a = 0.12 + this.intensity * (0.15 + Math.random() * 0.18);
+        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, len, sp, a });
+      } else if (this.kind === 'snow') {
+        const r = 1 + Math.random() * (2.4 + this.intensity * 1.5);
+        const sp = 26 + Math.random() * (34 + this.intensity * 20);
+        const a = 0.3 + this.intensity * (0.3 + Math.random() * 0.3);
+        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, r, sp, ph: Math.random() * Math.PI * 2, sw: 18 + Math.random() * 22, a });
+      } else if (this.kind === 'stars') this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h * 0.72, r: Math.random() * 1.5 + 0.4, tw: 0.6 + Math.random() * 2.2, ph: Math.random() * Math.PI * 2 });
       else if (this.kind === 'clouds') this.parts.push({ x: Math.random() * this.w, y: 20 + Math.random() * this.h * 0.5, w: 220 + Math.random() * 320, sp: 8 + Math.random() * 16, a: 0.05 + Math.random() * 0.07 });
       else if (this.kind === 'fog') this.parts.push({ x: Math.random() * this.w, y: this.h * (0.3 + Math.random() * 0.6), w: this.w * (0.7 + Math.random() * 0.6), sp: 10 + Math.random() * 22, a: 0.05 + Math.random() * 0.05 });
     }
     this.shoot = null;
+  },
+  /* Update intensity in real-time (0-1 scale, 0=light rain, 1=downpour) */
+  setIntensity(val) {
+    this.intensity = Math.max(0, Math.min(1, val || 0.5));
+    /* If running, rebuild with new intensity */
+    if (this.running && (this.kind === 'rain' || this.kind === 'snow')) {
+      this.build();
+    }
   },
   start(kind) {
     if (kind === this.kind) return;
@@ -1859,36 +1970,104 @@ function showSunDetails() {
 function showAdvice() {
   if (!state.weather) return;
   const h = state.weather.hourly, i = state.nowIdx;
+  const d = state.weather.daily;
+  const now = tzNow(state.tz);
   const temp = getVal(h, 'temperature_2m', i);
   const feels = getVal(h, 'apparent_temperature', i);
   const code = getVal(h, 'weathercode', i);
   const wind = getVal(h, 'windspeed_10m', i);
+  const gust = getVal(h, 'windgusts_10m', i);
   const vis = getVal(h, 'visibility', i);
   const uv = getVal(h, 'uv_index', i);
+  const hum = getVal(h, 'relativehumidity_2m', i);
+  const press = getVal(h, 'surface_pressure', i);
+  const dew = getVal(h, 'dewpoint_2m', i);
+  const precipProb = getVal(h, 'precipitation_probability', i) || 0;
+  const precip = getVal(h, 'precipitation', i) || 0;
   const type = wmo(code).type;
-  const raining = type === 'rain' || type === 'storm';
-  const snowing = type === 'snow';
+  const night = hourIsNight(i);
+  const raining = RAIN_CODES.includes(code);
+  const snowing = SNOW_CODES.includes(code);
+  const tempDiff = feels != null && temp != null ? Math.round(feels - temp) : 0;
+
+  /* Pressure trend */
+  const pPrev = i - 3 >= 0 ? getVal(h, 'surface_pressure', i - 3) : null;
+  let pressTrend = '';
+  if (press != null && pPrev != null) {
+    const diff = press - pPrev;
+    pressTrend = diff > 0.5 ? t('press_rising') : diff < -0.5 ? t('press_falling') : '';
+  }
+
+  /* Upcoming rain */
+  const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+  let upcomingRain = false, rainIn = 0;
+  for (let k = i + 1; k < Math.min(i + 6, h.time.length); k++) {
+    if (rainCodes.includes(getVal(h, 'weathercode', k)) && (getVal(h, 'precipitation_probability', k) || 0) >= 30) {
+      upcomingRain = true; rainIn = k - i; break;
+    }
+  }
+
+  /* Dew point comfort */
+  let dewFeel = '';
+  if (dew != null) {
+    if (dew > 18) dewFeel = t('dew_uncomfortable');
+    else if (dew > 13) dewFeel = t('dew_sticky');
+    else if (dew > 8) dewFeel = t('dew_pleasant');
+  }
 
   const items = [];
-  if (feels < -10) items.push(['ph-snowflake', 'text:#93c5fd', t('advice_freezing')]);
-  else if (feels < 5) items.push(['ph-coat-hanger', 'text:#38bdf8', t('advice_cold')]);
-  else if (feels > 28) items.push(['ph-thermometer-hot', 'text:#f87171', t('advice_hot')]);
-  else items.push(['ph-smiley', 'text:#34d399', t('advice_warm')]);
 
-  if (snowing) items.push(['ph-snowflake', 'text:#e2e8f0', t('advice_snow_now')]);
+  /* 1. Temperature experience */
+  if (tempDiff <= -3) items.push(['ph-thermometer-cold', 'text:#38bdf8', t('advice_colder') + ' ' + Math.abs(tempDiff) + '°']);
+  else if (tempDiff >= 3) items.push(['ph-thermometer-hot', 'text:#f87171', t('advice_hotter') + ' ' + tempDiff + '°']);
+  else items.push(['ph-thermometer', 'text:#34d399', t('feels_like') + ': ' + fmtTempDeg(feels)]);
+
+  /* 2. Precipitation */
+  if (snowing) items.push(['ph-snowflake', 'text:#e2e8f0', t('advice_snow_now') + (precip > 0 ? ' (' + fmtPrecip(precip) + ')' : '')]);
   else if (type === 'storm') items.push(['ph-cloud-lightning', 'text:#c084fc', t('advice_storm')]);
-  else if (raining) items.push(['ph-umbrella', 'text:#60a5fa', t('advice_rain_now')]);
-  else if (vis != null && vis < 1500) items.push(['ph-cloud-fog', 'text:#94a3b8', t('advice_fog')]);
+  else if (raining) items.push(['ph-umbrella', 'text:#60a5fa', t('advice_rain_now') + (precip > 0 ? ' (' + fmtPrecip(precip) + ')' : '')]);
+  else if (upcomingRain) items.push(['ph-umbrella', 'text:#60a5fa', t('advice_rain_soon').replace('{h}', String(rainIn))]);
+
+  /* 3. Wind */
+  if (gust != null && gust >= 20) items.push(['ph-wind', 'text:#f87171', t('advice_windy') + ' (' + t('wind_gusts') + ' ' + fmtWind(gust) + ')']);
   else if (wind > 15) items.push(['ph-wind', 'text:#cbd5e1', t('advice_windy')]);
-  else items.push(['ph-sun', 'text:#fbbf24', t('advice_clear')]);
 
-  if (uv != null && uv >= 6) items.push(['ph-sun-dim', 'text:#fbbf24', `${t('uv_index')}: ${(Math.round(uv * 10) / 10).toLocaleString(loc())} (${uvLabel(uv)})`]);
+  /* 4. UV */
+  if (uv != null && !night) {
+    if (uv >= 8) items.push(['ph-sun-dim', 'text:#f87171', t('uv_index') + ': ' + uvLabel(uv) + ' — ' + t('advice_uv_extreme')]);
+    else if (uv >= 6) items.push(['ph-sun-dim', 'text:#fbbf24', t('uv_index') + ': ' + uvLabel(uv) + ' — ' + t('advice_uv_high')]);
+    else if (uv >= 3) items.push(['ph-sun-dim', 'text:#fbbf24', t('uv_index') + ': ' + uvLabel(uv) + ' — ' + t('advice_uv_moderate')]);
+  }
 
-  let wear;
-  if (feels < 0) wear = t('wear_cold');
-  else if (feels < 12) wear = t('wear_cool');
-  else if (feels < 22) wear = t('wear_mild');
-  else wear = t('wear_warm');
+  /* 5. Visibility */
+  if (vis != null && vis < 200) items.push(['ph-cloud-fog', 'text:#94a3b8', t('advice_fog_dense')]);
+  else if (vis != null && vis < 1000) items.push(['ph-cloud-fog', 'text:#94a3b8', t('advice_fog')]);
+
+  /* 6. Dew point */
+  if (dewFeel) items.push(['ph-drop-half', 'text:#818cf8', dewFeel]);
+
+  /* 7. Pressure trend */
+  if (pressTrend) items.push(['ph-trend-up', 'text:#a78bfa', t('pressure') + ' ' + Math.round(press) + ' ' + t('unit_hpa') + ' · ' + pressTrend]);
+
+  /* 8. Golden hour */
+  const srIso = getVal(d, 'sunrise', state.todayIdx);
+  const ssIso = getVal(d, 'sunset', state.todayIdx);
+  if (srIso && ssIso && !night) {
+    const nMin = now.hour * 60 + now.minute;
+    const sr = minOfDay(srIso), ss = minOfDay(ssIso);
+    if (nMin >= sr && nMin <= sr + 60) items.push(['ph-camera', 'text:#fbbf24', t('golden_morning')]);
+    else if (nMin >= ss - 60 && nMin <= ss) items.push(['ph-camera', 'text:#fb923c', t('golden_evening')]);
+  }
+
+  /* Clothing */
+  let wear = '';
+  if (snowing || (feels != null && feels < -5)) wear = t('wear_arctic');
+  else if (feels != null && feels < 5) wear = t('wear_cold');
+  else if (feels != null && feels < 12) wear = t('wear_cool');
+  else if (feels != null && feels < 22) wear = t('wear_mild');
+  else if (feels != null && feels < 28) wear = t('wear_warm');
+  else wear = t('wear_hot');
+  if (raining || upcomingRain) wear += ' · ' + t('wear_rain_gear');
 
   const list = items.map(it => `
     <div class="m-list-row" style="cursor:default">
@@ -1899,43 +2078,262 @@ function showAdvice() {
   const body = `
     <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">${list}</div>
     <div class="m-note"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${wear}</p></div>`;
-  openModal(state.locationName, `${t('analysis_title')} · ${fmtTempDeg(temp)} · ${wmoLabel(code)}`, body);
+  openModal(state.locationName, t('analysis_title') + ' · ' + fmtTempDeg(temp) + ' · ' + wmoLabel(code), body);
 }
 
 /* ---------------- lifestyle ---------------- */
+/* ---------- Lifestyle: smart multi-signal analysis ---------- */
+/* Check precipitation probability for next N hours starting from index i */
+function futurePrecipMax(h, startIdx, hours) {
+  let maxP = 0;
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const p = getVal(h, 'precipitation_probability', k) || 0;
+    if (p > maxP) maxP = p;
+  }
+  return maxP;
+}
+/* Check weather codes for rain/storm/snow in next N hours */
+function futureHasRain(h, startIdx, hours) {
+  const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+  const snowCodes = [71, 73, 75, 77, 85, 86];
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const c = getVal(h, 'weathercode', k);
+    const p = getVal(h, 'precipitation_probability', k) || 0;
+    if (rainCodes.includes(c) && p >= 30) return true;
+    if (snowCodes.includes(c) && p >= 30) return true;
+  }
+  return false;
+}
+/* Get max wind gusts for next N hours */
+function futureMaxWind(h, startIdx, hours) {
+  let maxW = 0;
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const w = getVal(h, 'windspeed_10m', k) || 0;
+    const g = getVal(h, 'windgusts_10m', k) || 0;
+    if (g > maxW) maxW = g;
+    if (w > maxW) maxW = w;
+  }
+  return maxW;
+}
+/* Check for fog (visibility < 1km) in next N hours */
+function futureHasFog(h, startIdx, hours) {
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const v = getVal(h, 'visibility', k);
+    if (v != null && v < 1000) return true;
+  }
+  return false;
+}
+/* Check for storm/lightning in next N hours */
+function futureHasStorm(h, startIdx, hours) {
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const c = getVal(h, 'weathercode', k);
+    if ([95, 96, 99].includes(c)) return true;
+  }
+  return false;
+}
+/* Get min temp for next N hours */
+function futureMinTemp(h, startIdx, hours) {
+  let min = Infinity;
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const t = getVal(h, 'temperature_2m', k);
+    if (t != null && t < min) min = t;
+  }
+  return min;
+}
+/* Get max UV for next N hours */
+function futureMaxUV(h, startIdx, hours) {
+  let max = 0;
+  for (let k = startIdx; k < Math.min(startIdx + hours, h.time.length); k++) {
+    const u = getVal(h, 'uv_index', k);
+    if (u != null && u > max) max = u;
+  }
+  return max;
+}
+/* Format a score 0-100 into a human label */
+function scoreLabel(score) {
+  if (score >= 90) return t('life_score_excellent');
+  if (score >= 70) return t('life_score_good');
+  if (score >= 50) return t('life_score_fair');
+  if (score >= 30) return t('life_score_poor');
+  return t('life_score_bad');
+}
+/* Score a slot for running — 0-100 */
+function scoreRun(h, i) {
+  const temp = getVal(h, 'temperature_2m', i) || 15;
+  const wind = futureMaxWind(h, i, 2);
+  const code = getVal(h, 'weathercode', i);
+  const rainProb = futurePrecipMax(h, i, 12);
+  const uv = getVal(h, 'uv_index', i) || 0;
+  const vis = getVal(h, 'visibility', i) || 20000;
+  const hr = parseInt(h.time[i].slice(11, 13), 10);
+  let s = 100;
+
+  // Rain check
+  if (futureHasRain(h, i, 12)) s -= 45;
+  else if (rainProb > 40) s -= 25;
+
+  // Storm
+  if (futureHasStorm(h, i, 6)) s -= 50;
+
+  // Wind
+  if (wind > 30) s -= 35;
+  else if (wind > 20) s -= 15;
+
+  // Temperature comfort (ideal: 8-18°C)
+  const tempComfort = temp >= 8 && temp <= 18;
+  if (temp < 0) s -= 30;
+  else if (temp < 5) s -= 15;
+  else if (temp > 28) s -= 20;
+  else if (!tempComfort) s -= 5;
+
+  // UV exposure
+  if (uv >= 8) s -= 20;
+  else if (uv >= 6) s -= 10;
+
+  // Visibility
+  if (vis < 1000) s -= 30;
+  else if (vis < 3000) s -= 10;
+
+  // Time of day
+  if (hr < 6 || hr > 21) s -= 20;
+  else if (hr < 7 || hr > 20) s -= 5;
+
+  // Snow
+  const snowCodes = [71, 73, 75, 77, 85, 86];
+  if (snowCodes.includes(code)) s -= 30;
+
+  return Math.max(0, Math.min(100, s));
+}
+/* Score a slot for car wash — 0-100 (higher = better day to wash) */
+function scoreCarWash(h, i) {
+  const wind = futureMaxWind(h, i, 24);
+  const rainProb = futurePrecipMax(h, i, 24);
+  const code = getVal(h, 'weathercode', i);
+  const temp = getVal(h, 'temperature_2m', i) || 15;
+  const hr = parseInt(h.time[i].slice(11, 13), 10);
+  let s = 100;
+
+  // CRITICAL: rain within 24h destroys wash quality
+  if (futureHasRain(h, i, 24)) s -= 60;
+  else if (rainProb >= 40) s -= 40;
+  else if (rainProb >= 20) s -= 15;
+
+  // Drying wind: 5-15 km/h is ideal, too much wind = dust/dirt
+  if (wind > 35) s -= 25;  // Very strong wind = blowing dirt
+  else if (wind > 25) s -= 15;
+  else if (wind < 3) s -= 10;  // No wind = slow drying
+
+  // Temperature for drying: < 0 means water freezes, > 35 means water spots
+  if (temp < 0) s -= 40;  // Water freezes on car!
+  if (temp > 35) s -= 15;
+  else if (temp < 5) s -= 5;
+
+  // Time of day: early morning (before sun heats the car) or evening are best
+  if (hr >= 8 && hr <= 10) s += 5;  // Sweet spot
+  else if (hr >= 11 && hr <= 14) s -= 10;  // Sun heats car, causes water spots
+  else if (hr >= 19 || hr < 6) s += 5;
+
+  // Snow or ice
+  const snowCodes = [71, 73, 75, 77, 85, 86];
+  if (snowCodes.includes(code)) s -= 40;
+
+  return Math.max(0, Math.min(100, s));
+}
+/* Score a slot for walking — 0-100 */
+function scoreWalk(h, i) {
+  const temp = getVal(h, 'temperature_2m', i) || 15;
+  const wind = futureMaxWind(h, i, 6);
+  const code = getVal(h, 'weathercode', i);
+  const rainProb = futurePrecipMax(h, i, 12);
+  const uv = getVal(h, 'uv_index', i) || 0;
+  const vis = getVal(h, 'visibility', i) || 20000;
+  const hum = getVal(h, 'relativehumidity_2m', i) || 50;
+  const hr = parseInt(h.time[i].slice(11, 13), 10);
+  let s = 100;
+
+  // Weather conditions
+  if (futureHasStorm(h, i, 6)) s -= 50;
+  if (futureHasRain(h, i, 12)) s -= 30;
+  else if (rainProb > 40) s -= 20;
+  else if (rainProb > 20) s -= 8;
+
+  // Wind
+  if (wind > 40) s -= 30;
+  else if (wind > 25) s -= 15;
+  else if (wind > 15) s -= 5;
+
+  // Temperature comfort (ideal: 15-25°C)
+  if (temp < -10) s -= 40;
+  else if (temp < 0) s -= 20;
+  else if (temp < 10) s -= 10;
+  else if (temp > 35) s -= 25;
+  else if (temp > 30) s -= 10;
+
+  // Visibility
+  if (vis < 500) s -= 40;
+  else if (vis < 1000) s -= 25;
+  else if (vis < 3000) s -= 10;
+
+  // UV
+  if (uv >= 8) s -= 15;
+  else if (uv >= 6) s -= 8;
+
+  // Humidity: too high = sticky
+  if (hum > 85) s -= 10;
+
+  // Fog
+  if (futureHasFog(h, i, 6)) s -= 15;
+
+  // Time of day
+  if (hr < 7 || hr > 21) s -= 10;
+
+  // Snow (walking in snow can be beautiful, but slippery)
+  const snowCodes = [71, 73, 75, 77, 85, 86];
+  if (snowCodes.includes(code)) s -= 15;
+
+  return Math.max(0, Math.min(100, s));
+}
+
 function showLifestyle(type) {
   if (!state.weather) return;
   const h = state.weather.hourly;
   const titles = { run: t('life_run_title'), car: t('life_car_title'), walk: t('life_walk_title') };
-  const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+  const scoreFn = { run: scoreRun, car: scoreCarWash, walk: scoreWalk }[type];
 
+  /* Scan next 7 days for the best slots */
   const slots = [];
   const start = state.nowIdx;
   const end = Math.min(start + 168, h.time.length);
   for (let i = start; i < end; i++) {
-    const temp = getVal(h, 'temperature_2m', i);
-    const rain = getVal(h, 'precipitation_probability', i) || 0;
-    const wind = getVal(h, 'windspeed_10m', i);
-    const code = getVal(h, 'weathercode', i);
-    const isRaining = rainCodes.includes(code);
     const hr = parseInt(h.time[i].slice(11, 13), 10);
-    let good = false;
-    if (type === 'run') good = !isRaining && temp >= 5 && temp <= 22 && wind < 20 && hr >= 6 && hr <= 22;
-    else if (type === 'car') good = !isRaining && rain < 10 && hr >= 8 && hr <= 20;
-    else good = !isRaining && temp >= -5 && temp <= 30 && wind < 25 && hr >= 8 && hr <= 23;
-    if (good) slots.push({ i, temp, rain, wind });
+    const score = scoreFn(h, i);
+    /* Only show slots where the score is reasonable (>20) and at a normal time */
+    if (score > 20 && hr >= 5 && hr <= 23) {
+      const temp = getVal(h, 'temperature_2m', i);
+      const wind = futureMaxWind(h, i, 3);
+      const rain = futurePrecipMax(h, i, 6);
+      const code = getVal(h, 'weathercode', i);
+      slots.push({ i, score, temp, wind, rain, code });
+    }
     if (slots.length >= 8) break;
   }
 
+  /* Sort by score descending, then by time ascending */
+  slots.sort((a, b) => b.score - a.score || a.i - b.i);
+  /* Take only top 8 unique time slots */
+  const shown = slots.slice(0, 8);
+
   let rows = '';
-  if (slots.length) {
-    slots.forEach(s => {
+  if (shown.length) {
+    shown.forEach(s => {
       const dt = parseLocal(h.time[s.i]);
+      const color = s.score >= 70 ? '#34d399' : s.score >= 40 ? '#fbbf24' : '#f87171';
+      const icon = s.score >= 70 ? 'ph-check-circle' : s.score >= 40 ? 'ph-minus-circle' : 'ph-x-circle';
       rows += `
         <div class="m-list-row" data-slot="${s.i}">
-          <span class="row-ico" style="background:rgba(52,211,153,.14)"><i class="ph-fill ph-check-circle" style="color:#34d399"></i></span>
+          <span class="row-ico" style="background:${color}14"><i class="ph-fill ${icon}" style="color:${color}"></i></span>
           <span class="row-main"><b>${dt.toLocaleDateString(loc(), { weekday: 'short' }).replace('.', '')} · ${h.time[s.i].slice(11, 16)}</b><span>${dt.toLocaleDateString(loc(), { day: 'numeric', month: 'short' })}</span></span>
-          <span class="row-side">${fmtTemp(s.temp)}°<small>${fmtWind(s.wind)}</small></span>
+          <span class="row-side">${scoreLabel(s.score)}<small>${fmtTemp(s.temp)}° · ${fmtWind(s.wind)}</small></span>
           <i class="ph-bold ph-caret-right" style="color:var(--text-4)"></i>
         </div>`;
     });
@@ -1957,10 +2355,18 @@ function showLifeSkySlot(index, type) {
   const h = state.weather.hourly;
   const temp = getVal(h, 'temperature_2m', index);
   const wind = getVal(h, 'windspeed_10m', index);
+  const gust = getVal(h, 'windgusts_10m', index);
   const hum = getVal(h, 'relativehumidity_2m', index);
   const uv = getVal(h, 'uv_index', index);
+  const vis = getVal(h, 'visibility', index);
+  const dew = getVal(h, 'dewpoint_2m', index);
+  const press = getVal(h, 'surface_pressure', index);
+  const rain = futurePrecipMax(h, index, 12);
+  const scoreFn = { run: scoreRun, car: scoreCarWash, walk: scoreWalk }[type];
+  const score = scoreFn(h, index);
   const dt = parseLocal(h.time[index]);
   const timeStr = dt.toLocaleDateString(loc(), { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+  const titles = { run: t('life_run_title'), car: t('life_car_title'), walk: t('life_walk_title') };
 
   let advice = '';
   if (type === 'run') {
@@ -1969,39 +2375,61 @@ function showLifeSkySlot(index, type) {
     else if (temp < 12) wear = t('wear_cool');
     else if (temp < 20) wear = t('wear_mild');
     else wear = t('wear_warm');
-    const windMsg = wind > 10 ? t('wind_windy') : t('wind_calm');
     advice = `
+      <div class="m-note" style="margin-top:0;margin-bottom:12px;border-color:${score >= 50 ? 'rgba(52,211,153,.4)' : 'rgba(248,113,113,.4)'}">
+        <i class="ph-fill ${score >= 50 ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${score >= 50 ? '#34d399' : '#f87171'}"></i>
+        <p><b>${t('life_score')} ${score}/100</b> · ${scoreLabel(score)}</p>
+      </div>
       <div class="m-note" style="margin-top:0;margin-bottom:12px"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${wear}</p></div>
       <div class="m-grid">
-        ${mTile('ph-wind', t('wind'), fmtWind(wind) + ' · ' + windMsg)}
+        ${mTile('ph-wind', t('wind'), fmtWind(wind) + (gust && gust > wind ? ' · ' + t('wind_gusts') + ' ' + fmtWind(gust) : ''))}
+        ${mTile('ph-sun', t('uv_index'), uv != null ? (Math.round(uv * 10) / 10).toLocaleString(loc()) + ' · ' + uvLabel(uv) : '--')}
+        ${mTile('ph-eye', t('visibility'), fmtVis(vis))}
+        ${mTile('ph-cloud-rain', t('rain_chance'), Math.round(rain) + '%')}
         ${mTile('ph-drop', t('humidity'), hum != null ? Math.round(hum) + '%' : '--')}
+        ${mTile('ph-drop-half', t('dew_point'), fmtTempDeg(dew))}
       </div>`;
   } else if (type === 'car') {
-    let risk = 0;
-    const end = Math.min(index + 24, h.time.length);
-    for (let k = index + 1; k < end; k++) {
-      const p = getVal(h, 'precipitation_probability', k) || 0;
-      if (p > risk) risk = p;
-    }
+    const risk = rain;
+    let riskAdvice;
+    if (score >= 70) riskAdvice = t('car_advice_great');
+    else if (score >= 40) riskAdvice = t('car_advice_ok');
+    else riskAdvice = t('car_advice_bad');
+
     advice = `
-      <div class="m-note" style="margin-top:0;margin-bottom:12px;border-color:${risk > 30 ? 'rgba(248,113,113,.4)' : 'rgba(52,211,153,.4)'}">
-        <i class="ph-fill ph-cloud-rain" style="color:${risk > 30 ? '#f87171' : '#34d399'}"></i>
-        <p><b>${t('rain_risk_label')}</b> <b style="color:${risk > 30 ? '#f87171' : '#34d399'}">${Math.round(risk)}%</b><br>${risk > 30 ? t('car_dirty') : t('car_clean')}</p>
+      <div class="m-note" style="margin-top:0;margin-bottom:12px;border-color:${score >= 50 ? 'rgba(52,211,153,.4)' : 'rgba(248,113,113,.4)'}">
+        <i class="ph-fill ${score >= 50 ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${score >= 50 ? '#34d399' : '#f87171'}"></i>
+        <p><b>${t('life_score')} ${score}/100</b> · ${scoreLabel(score)}<br>${riskAdvice}</p>
+      </div>
+      <div class="m-grid">
+        ${mTile('ph-cloud-rain', t('rain_risk_title') + ' · 24ч', Math.round(risk) + '%')}
+        ${mTile('ph-wind', t('wind'), fmtWind(wind) + (gust && gust > wind ? ' · ' + t('wind_gusts') + ' ' + fmtWind(gust) : ''))}
+        ${mTile('ph-thermometer', t('temp'), fmtTempDeg(temp))}
+        ${mTile('ph-eye', t('visibility'), fmtVis(vis))}
       </div>`;
   } else {
     let comfort = t('comfort_good');
-    if (temp < 0) comfort = t('comfort_cold');
-    if (temp > 25) comfort = t('comfort_hot');
-    const windDesc = wind > 8 ? t('wind_light') : t('wind_none');
+    if (temp < -10) comfort = t('comfort_cold');
+    else if (temp < 5) comfort = t('comfort_cool');
+    else if (temp > 30) comfort = t('comfort_hot');
+    else if (temp > 25) comfort = t('comfort_warm');
+    const windDesc = wind > 15 ? t('wind_windy') : wind > 8 ? t('wind_light') : t('wind_none');
     advice = `
+      <div class="m-note" style="margin-top:0;margin-bottom:12px;border-color:${score >= 50 ? 'rgba(52,211,153,.4)' : 'rgba(248,113,113,.4)'}">
+        <i class="ph-fill ${score >= 50 ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${score >= 50 ? '#34d399' : '#f87171'}"></i>
+        <p><b>${t('life_score')} ${score}/100</b> · ${scoreLabel(score)}</p>
+      </div>
       <div class="m-note" style="margin-top:0;margin-bottom:12px"><i class="ph-fill ph-smiley"></i><p><b>${t('comfort_title')}:</b> ${comfort}. ${windDesc}</p></div>
       <div class="m-grid">
+        ${mTile('ph-wind', t('wind'), fmtWind(wind) + (gust && gust > wind ? ' · ' + t('wind_gusts') + ' ' + fmtWind(gust) : ''))}
         ${mTile('ph-sun', t('uv_index'), uv != null ? (Math.round(uv * 10) / 10).toLocaleString(loc()) + ' · ' + uvLabel(uv) : '--')}
         ${mTile('ph-drop', t('humidity'), hum != null ? Math.round(hum) + '%' : '--')}
+        ${mTile('ph-drop-half', t('dew_point'), fmtTempDeg(dew))}
+        ${mTile('ph-cloud-rain', t('rain_chance'), Math.round(rain) + '%')}
+        ${mTile('ph-eye', t('visibility'), fmtVis(vis))}
       </div>`;
   }
 
-  const titles = { run: t('life_run_title'), car: t('life_car_title'), walk: t('life_walk_title') };
   const body = `
     <button class="m-back" id="life-back"><i class="ph-bold ph-arrow-left"></i>${titles[type]} · ${t('life_analysis_7days')}</button>
     <div class="m-detail-hero" style="padding-top:0">
@@ -2012,6 +2440,8 @@ function showLifeSkySlot(index, type) {
   openModal(titles[type], state.locationName, body);
   $('life-back').addEventListener('click', () => showLifestyle(type));
 }
+
+
 
 /* ---------------- maps (MapLibre GL, reliable raster tiles) ---------------- */
 let mapInst = null, mapMarkEl = null, smallMapFallback = false;
@@ -2193,6 +2623,9 @@ function setTheme(theme) {
 function setMenuOpen(open) {
   if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
   if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
+  /* Prevent scrolling behind the menu on mobile */
+  if (open) document.body.classList.add('menu-scroll-lock');
+  else document.body.classList.remove('menu-scroll-lock');
 }
 function syncMenuChecks() {
   if (!el.mainMenu) return;
@@ -2302,6 +2735,13 @@ function bindEvents() {
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
     const themeBtn = e.target.closest('[data-theme]');
     if (themeBtn) { setTheme(themeBtn.dataset.theme); setMenuOpen(false); return; }
+    /* All other clicks inside menu just close it after a short delay */
+    const isSelect = e.target.closest('.dd-select');
+    if (!isSelect) {
+      /* Only close on non-select clicks (selects need to stay open for interaction) */
+      clearTimeout(state._menuCloseTimer);
+      state._menuCloseTimer = setTimeout(() => setMenuOpen(false), 800);
+    }
   });
   on(el.modelSelect, 'change', () => {
     state.model = el.modelSelect.value;
@@ -2418,16 +2858,22 @@ function bindEvents() {
 
 /* ---------------- reveal on scroll ---------------- */
 function initReveal() {
+  /* SECTION_MANAGER handles the outer .section-root containers.
+     Only observe standalone .reveal elements not inside a managed section. */
   const items = document.querySelectorAll('.reveal');
+  if (!items.length) return;
   if (!('IntersectionObserver' in window) || motionReduce) {
     items.forEach(n => n.classList.add('in'));
     return;
   }
   const io = new IntersectionObserver((entries) => {
     entries.forEach(en => {
-      if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); }
+      if (en.isIntersecting) {
+        en.target.classList.add('in');
+        io.unobserve(en.target);
+      }
     });
-  }, { threshold: 0.08 });
+  }, { threshold: 0.06 });
   items.forEach(n => io.observe(n));
 }
 
@@ -2456,15 +2902,17 @@ function initInstallPrompt() {
     e.preventDefault();
     deferredInstallPrompt = e;
     updateInstallItem();
-    if (!state._installToastShown) {
-      state._installToastShown = true;
-      setTimeout(() => toast(t('toast_install_ready'), 'info', t('install_app'), promptInstall), 2500);
-    }
   });
   window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
     updateInstallItem();
   });
+  /* Show install button even without beforeinstallprompt as a hint */
+  if (!deferredInstallPrompt && !isNativeApp()) {
+    setTimeout(() => {
+      if (el.installItem) el.installItem.classList.remove('hidden');
+    }, 3000);
+  }
 }
 
 /* ---------------- Offline / online banner --------------- */
@@ -2512,6 +2960,197 @@ const PERF = {
       applyEffects();
       toast(t('toast_perf_restored'), 'success');
     }
+  }
+};
+
+/* ---------- Section Lifecycle Manager (Smart Visibility) ---------- */
+/*
+   Manages which content sections are rendered based on viewport proximity.
+   Three states per section:
+     - 'active':   section is in/near viewport — fully rendered
+     - 'inactive':  section is far off-screen — content preserved but GPU load reduced
+     - 'unloaded':  section is way off-screen — heavy DOM removed, skeleton shown
+   Uses debounced unloading to avoid thrashing during fast scroll.
+*/
+const SECTION_MANAGER = {
+  io: null,
+  ioUnload: null,
+  sections: new Map(),
+  priorities: ['hero', 'chart', 'hourly', 'daily', 'lifestyle'],
+
+  init() {
+    if (motionReduce) {
+      /* If user prefers reduced motion, just mark all sections as active without animation */
+      document.querySelectorAll('.section-root').forEach(el => {
+        el.dataset.sectionState = 'active';
+        el.classList.add('section-enter-active');
+      });
+      return;
+    }
+
+    /* Main IntersectionObserver: marks sections near viewport */
+    this.io = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const name = entry.target.dataset.section;
+        if (entry.isIntersecting) {
+          this.activate(name, entry.target);
+        } else {
+          this.deactivate(name, entry.target);
+        }
+      });
+    }, {
+      rootMargin: '400px 0px 400px 0px', /* 400px buffer before/after viewport */
+      threshold: 0.01
+    });
+
+    /* Secondary observer: fully unload sections that are very far */
+    this.ioUnload = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        const name = entry.target.dataset.section;
+        if (!entry.isIntersecting) {
+          this.scheduleUnload(name, entry.target);
+        } else {
+          this.cancelUnload(name);
+        }
+      });
+    }, {
+      rootMargin: '-25% 0px -25% 0px', /* only consider sections outside middle 50% */
+      threshold: 0
+    });
+
+    /* Observe all section roots */
+    document.querySelectorAll('.section-root').forEach(el => {
+      const name = el.dataset.section;
+      this.sections.set(name, { el, state: 'inactive', unloadTimer: null, rendered: false });
+      this.io.observe(el);
+      this.ioUnload.observe(el);
+      /* Start with enter animation class */
+      el.classList.add('section-enter');
+    });
+
+    /* Priority-based initial rendering: render hero immediately */
+    this.priorities.forEach((name, idx) => {
+      const section = this.sections.get(name);
+      if (!section) return;
+      if (idx === 0) {
+        /* Hero: render immediately, no observer needed */
+        this.activate(name, section.el, true);
+      }
+    });
+  },
+
+  activate(name, el, immediate) {
+    const section = this.sections.get(name);
+    if (!section) return;
+
+    section.state = 'active';
+    this.cancelUnload(name);
+    el.dataset.sectionState = 'active';
+    el.classList.remove('section-skeleton');
+
+    if (immediate) {
+      /* Hero on first load: go directly to visible — no flash, no animation */
+      el.classList.remove('section-enter', 'section-enter-active');
+      void el.offsetWidth;
+      el.classList.add('section-enter-active');
+      if (!section.rendered) { section.rendered = true; }
+      return;
+    }
+
+    /* Normal sections: animate entry from .section-enter → .section-enter-active
+       Both classes must be present simultaneously for the CSS transition to fire. */
+    void el.offsetWidth; /* force reflow so transition starts from current computed styles */
+    el.classList.add('section-enter-active');
+
+    /* Clean up .section-enter after animation completes */
+    if (section._enterTimer) clearTimeout(section._enterTimer);
+    section._enterTimer = setTimeout(() => {
+      el.classList.remove('section-enter');
+      section._enterTimer = null;
+    }, 900);
+
+    if (!section.rendered) { section.rendered = true; }
+  },
+
+  deactivate(name, el) {
+    const section = this.sections.get(name);
+    if (!section) return;
+    section.state = 'inactive';
+    el.dataset.sectionState = 'inactive';
+    /* Keep the content but reduce GPU load via CSS */
+  },
+
+  scheduleUnload(name, el) {
+    const section = this.sections.get(name);
+    if (!section) return;
+    /* Only unload non-priority sections that have been inactive for a while */
+    if (name === 'hero') return; /* Never unload hero */
+
+    /* Debounce: wait 4s before unloading to avoid flicker on fast scroll */
+    if (section.unloadTimer) return;
+    section.unloadTimer = setTimeout(() => {
+      if (section.state === 'inactive' || section.state === 'unloaded') {
+        this.unload(name, el);
+      }
+      section.unloadTimer = null;
+    }, 4000);
+  },
+
+  cancelUnload(name) {
+    const section = this.sections.get(name);
+    if (!section) return;
+    if (section.unloadTimer) {
+      clearTimeout(section.unloadTimer);
+      section.unloadTimer = null;
+    }
+  },
+
+  unload(name, el) {
+    const section = this.sections.get(name);
+    if (!section) return;
+    section.state = 'unloaded';
+    el.dataset.sectionState = 'unloaded';
+
+    /* For non-critical sections, replace content with lightweight skeleton */
+    if (name === 'lifestyle' || name === 'daily') {
+      /* These sections are cheap enough to keep their static HTML.
+         Just mark them as skeleton to reduce paint cost. */
+      el.classList.add('section-skeleton');
+    }
+
+    /* Pause any running timers related to this section */
+    if (name === 'chart') {
+      /* Chart hover detail can be hidden when off-screen */
+      hideChartGuide();
+    }
+  },
+
+  /* Called when data is refreshed — re-renders sections that are visible */
+  refreshVisible() {
+    this.sections.forEach((section, name) => {
+      if (section.state === 'active') {
+        /* Already visible and animated in — don't replay animation,
+           that would cause a visual flash (opacity 0 → 1). */
+        return;
+      }
+      if (section.state === 'inactive') {
+        /* Inactive sections might become active soon. Reset them to
+           enter state so they animate smoothly when scrolled into view. */
+        const el = section.el;
+        el.classList.remove('section-enter-active');
+        el.classList.add('section-enter');
+      }
+    });
+  },
+
+  /* Destroy observers (cleanup) */
+  destroy() {
+    if (this.io) this.io.disconnect();
+    if (this.ioUnload) this.ioUnload.disconnect();
+    this.sections.forEach(section => {
+      if (section.unloadTimer) clearTimeout(section.unloadTimer);
+    });
+    this.sections.clear();
   }
 };
 
@@ -2858,6 +3497,7 @@ function init() {
   initNativeBridge();
   initReveal();
   applyEffects();
+  SECTION_MANAGER.init();
   showLoader();
   initMap();
 
