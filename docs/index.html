@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LiveSky — Погода, которая впечатляет</title>
-  <meta name="description" content="LiveSky Weather Pro — точный прогноз погоды с анимациями, графиками, качеством воздуха, радаром осадков и офлайн-доступом." />
+  <meta name="description" content="LiveSky Weather Pro — поминутный прогноз, живые обновления, карта осадков, графики, качество воздуха и офлайн-доступ." />
   <meta name="theme-color" content="#05070f" />
   <meta name="msapplication-TileColor" content="#38bdf8" />
   <link rel="icon" href="favicon.ico" sizes="any" />
@@ -25,7 +25,7 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=25" />
+  <link rel="stylesheet" href="css/app.css?v=34" />
 </head>
 
 <body data-theme="adaptive">
@@ -256,6 +256,9 @@
           <div class="card map-card hover-lift" id="map-card">
             <div class="map-placeholder"><i class="ph ph-globe-hemisphere-west"></i><span data-translate="map_loading">Загружаем карту...</span></div>
             <div id="map" aria-label="Карта"></div>
+            <button type="button" class="map-radar-badge" id="map-radar-badge" title="Карта осадков">
+              <i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_btn">Радар</span>
+            </button>
             <div class="map-open-hint"><i class="ph ph-arrows-out-simple"></i><span data-translate="map_hint">Открыть карту</span></div>
           </div>
 
@@ -287,15 +290,15 @@
                 <div class="aqi-center"><b id="aqi-value">--</b><span id="aqi-label">—</span></div>
               </div>
               <div class="aqi-poll">
-                <div class="poll"><span>PM2.5</span><b id="aqi-pm25">--</b></div>
-                <div class="poll"><span>PM10</span><b id="aqi-pm10">--</b></div>
-                <div class="poll"><span>O₃</span><b id="aqi-o3">--</b></div>
-                <div class="poll"><span>NO₂</span><b id="aqi-no2">--</b></div>
+                <div class="poll"><span data-translate="air_dust_fine">Мелкая пыль</span><b id="aqi-pm25">--</b></div>
+                <div class="poll"><span data-translate="air_dust_coarse">Крупная пыль</span><b id="aqi-pm10">--</b></div>
+                <div class="poll"><span data-translate="air_ozone">Озон</span><b id="aqi-o3">--</b></div>
+                <div class="poll"><span data-translate="air_traffic">Выхлопы</span><b id="aqi-no2">--</b></div>
               </div>
             </div>
             <div class="aqi-foot">
-              <div class="aqi-note"><i class="ph ph-info"></i><span data-translate="aqi_note">Европейский индекс качества воздуха</span></div>
-              <span class="aqi-more"><i class="ph ph-chart-line"></i><span data-translate="air_more">Подробности и графики</span><i class="ph-bold ph-caret-right"></i></span>
+              <div class="aqi-note"><i class="ph ph-info"></i><span data-translate="aqi_note_plain">Чем меньше число — тем чище воздух</span></div>
+              <span class="aqi-more"><i class="ph ph-info"></i><span data-translate="air_more">Что это значит</span><i class="ph-bold ph-caret-right"></i></span>
             </div>
           </div>
         </aside>
@@ -310,21 +313,23 @@
           <div class="chart-legend">
             <span class="lg lg-temp"></span><span data-translate="temp_legend">Температура</span>
             <span class="lg lg-precip" style="margin-left:10px"></span><span data-translate="precip_legend">Осадки</span>
+            <span class="lg lg-rain-zone" style="margin-left:10px"></span><span data-translate="chart_rain_zone">Дождь</span>
           </div>
         </div>
+        <div class="chart-rain-summary" id="chart-rain-summary"></div>
         <div class="chart-scroll" id="chart-scroll" role="region" tabindex="0" aria-labelledby="chart-title" aria-describedby="chart-swipe-hint">
           <div class="chart-track">
             <div class="chart-plot" id="chart-plot">
               <svg id="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-              <div class="chart-cols" id="chart-cols"></div>
+              <div class="chart-scrub" id="chart-scrub" aria-hidden="true"></div>
               <div class="chart-guide" id="chart-guide"><i id="chart-guide-dot"></i></div>
             </div>
             <div class="chart-axis" id="chart-axis"></div>
           </div>
         </div>
         <div class="chart-swipe-hint" id="chart-swipe-hint">
-          <i class="ph ph-arrows-left-right" aria-hidden="true"></i>
-          <span data-translate="chart_swipe">Проведите пальцем по графику влево или вправо</span>
+          <i class="ph ph-hand-pointing" aria-hidden="true"></i>
+          <span data-translate="chart_swipe">Тяните точку по графику — минуты между часами</span>
         </div>
         <div class="chart-detail" id="chart-detail"></div>
       </section>
@@ -413,32 +418,55 @@
       <button class="map-apply hidden" id="map-apply-btn"><i class="ph-bold ph-check"></i><span data-translate="map_apply">Показать погоду здесь</span></button>
     </div>
 
-    <!-- Rain radar (RainViewer) over the fullscreen map with a timeline -->
-    <button class="radar-toggle" id="radar-toggle" aria-pressed="false" title="Радар осадков">
-      <i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_btn">Радар</span>
+    <!-- Precipitation map (RainViewer) — full working radar with timeline -->
+    <button class="radar-toggle" id="radar-toggle" aria-pressed="false" title="Карта осадков">
+      <i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_btn">Осадки</span>
     </button>
 
-    <div class="radar-panel hidden" id="radar-panel" role="region" aria-label="Радар осадков">
+    <div class="radar-panel hidden" id="radar-panel" role="region" aria-label="Карта осадков">
       <div class="radar-head">
-        <span class="radar-title"><i class="ph ph-cloud-rain"></i><span data-translate="radar_title">Радар осадков</span></span>
+        <span class="radar-title"><i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_title">Карта осадков</span></span>
+        <span class="radar-badge" id="radar-badge" data-translate="radar_badge_now">Сейчас</span>
         <span class="radar-time" id="radar-time">--:--</span>
-        <button class="radar-close" id="radar-close" aria-label="Закрыть радар"><i class="ph-bold ph-x"></i></button>
+        <button class="radar-close" id="radar-close" aria-label="Закрыть"><i class="ph-bold ph-x"></i></button>
       </div>
       <div class="radar-timeline">
         <button class="radar-nav" id="radar-back" aria-label="Назад"><i class="ph-bold ph-caret-left"></i></button>
         <div class="radar-range">
+          <div class="radar-ticks" id="radar-ticks" aria-hidden="true"></div>
           <input type="range" id="radar-slider" min="0" max="0" value="0" aria-label="Время кадра радара" />
+          <div class="radar-axis">
+            <span data-translate="radar_past">Прошлое</span>
+            <span data-translate="radar_now_label">Сейчас</span>
+            <span data-translate="radar_forecast">Прогноз</span>
+          </div>
         </div>
         <button class="radar-nav" id="radar-next" aria-label="Вперёд"><i class="ph-bold ph-caret-right"></i></button>
         <button class="radar-play" id="radar-play" aria-label="Воспроизвести"><i class="ph-fill ph-play"></i></button>
+        <button class="radar-live" id="radar-live" aria-label="К текущему кадру" title="Live"><i class="ph-fill ph-broadcast"></i></button>
+      </div>
+      <div class="radar-controls">
+        <label class="radar-ctrl">
+          <span data-translate="radar_opacity">Плотность</span>
+          <input type="range" id="radar-opacity" min="20" max="100" value="78" aria-label="Плотность слоя" />
+        </label>
+        <label class="radar-ctrl">
+          <span data-translate="radar_speed">Скорость</span>
+          <select id="radar-speed" aria-label="Скорость анимации">
+            <option value="1200">0.5×</option>
+            <option value="700" selected>1×</option>
+            <option value="400">2×</option>
+            <option value="220">3×</option>
+          </select>
+        </label>
       </div>
       <div class="radar-legend">
         <span data-translate="radar_legend_weak">Слабо</span>
         <span class="radar-legend-bar"></span>
         <span data-translate="radar_legend_strong">Сильно</span>
       </div>
-      <div class="radar-note"><i class="ph ph-info"></i><span data-translate="radar_note">Данные: RainViewer · кадры каждые 10 минут</span></div>
-      <div class="radar-loading hidden" id="radar-loading"><i class="ph-fill ph-circle-notch"></i><span data-translate="radar_loading">Загружаем радар...</span></div>
+      <div class="radar-note"><i class="ph ph-info"></i><span data-translate="radar_note">RainViewer · кадры ~10 мин · прошлые 2ч + прогноз ~1ч · автообновление</span></div>
+      <div class="radar-loading hidden" id="radar-loading"><i class="ph-fill ph-circle-notch"></i><span data-translate="radar_loading">Загружаем карту осадков...</span></div>
     </div>
   </div>
 
@@ -450,7 +478,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=21"></script>
-  <script src="js/app.js?v=24"></script>
+  <script src="js/i18n.js?v=28"></script>
+  <script src="js/app.js?v=33"></script>
 </body>
 </html>

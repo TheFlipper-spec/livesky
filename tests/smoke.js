@@ -22,7 +22,25 @@ window.requestAnimationFrame = (cb) => setTimeout(() => cb(window.performance.no
 window.cancelAnimationFrame = (id) => clearTimeout(id);
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 window.IntersectionObserver = class { constructor(cb) {} observe() {} unobserve() {} };
-window.HTMLElement.prototype.scrollBy = function () {};
+window.HTMLElement.prototype.scrollBy = function (opts) {
+  if (opts && typeof opts.left === 'number') this.scrollLeft = (this.scrollLeft || 0) + opts.left;
+};
+window.HTMLElement.prototype.scrollTo = function (opts) {
+  if (opts && typeof opts.left === 'number') this.scrollLeft = opts.left;
+};
+/* jsdom has no PointerEvent — minimal stub for scrub tests */
+if (typeof window.PointerEvent !== 'function') {
+  window.PointerEvent = class PointerEvent extends window.MouseEvent {
+    constructor(type, init = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId || 1;
+      this.pointerType = init.pointerType || 'mouse';
+      this.isPrimary = init.isPrimary !== false;
+    }
+  };
+}
+window.HTMLElement.prototype.setPointerCapture = function () {};
+window.HTMLElement.prototype.releasePointerCapture = function () {};
 
 /* canvas stub */
 const gradientStub = { addColorStop() {} };
@@ -38,7 +56,23 @@ const ctxStub = new Proxy({}, {
 window.HTMLCanvasElement.prototype.getContext = () => ctxStub;
 
 /* maplibre gl stub */
-const fakeMap = () => ({ setStyle() {}, addControl() {}, flyTo() {}, resize() {}, getZoom() { return 10; }, on() {}, once() {}, remove() {} });
+const fakeMap = () => {
+  const sources = {};
+  const layers = {};
+  return {
+    setStyle() {}, addControl() {}, flyTo() {}, easeTo() {}, resize() {}, stop() {},
+    getZoom() { return 10; }, on() {}, once() {}, remove() {}, triggerRepaint() {},
+    isStyleLoaded() { return true; },
+    getSource(id) { return sources[id] || null; },
+    getLayer(id) { return layers[id] || null; },
+    addSource(id, spec) { sources[id] = { ...spec, setTiles(t) { this.tiles = t; } }; },
+    addLayer(spec) { layers[spec.id] = spec; },
+    removeLayer(id) { delete layers[id]; },
+    removeSource(id) { delete sources[id]; },
+    setPaintProperty() {},
+    setTiles() {}
+  };
+};
 window.maplibregl = {
   Map: function () { return fakeMap(); },
   Marker: function () { return { setLngLat() { return this; }, addTo() { return this; }, remove() {} }; },
@@ -56,7 +90,7 @@ function genForecast() {
   for (let dI = -16; dI <= 16; dI++) {
     const day = new Date(base.getTime() + dI * 86400000);
     const ds = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
-    const rainy = dI % 3 === 0;
+    const rainy = dI % 3 === 1; /* today (0) clear so minutely nowcast can drive rain-status */
     daily.time.push(ds);
     daily.weathercode.push(rainy ? 61 : 2);
     daily.temperature_2m_max.push(18 + (dI % 5));
@@ -72,9 +106,12 @@ function genForecast() {
       const t = 10 + 8 * Math.sin(((h - 6) / 24) * Math.PI * 2) + dI * 0.1;
       hourly.temperature_2m.push(+t.toFixed(1));
       hourly.apparent_temperature.push(+(t - 1).toFixed(1));
-      hourly.precipitation_probability.push(rainy ? 80 : 5);
-      hourly.precipitation.push(rainy ? 0.8 : 0);
-      hourly.weathercode.push(rainy ? 61 : 2);
+      /* Put a clear rain window on "today" 14:00–17:00 so the 24h chart shows hatched bands. */
+      const todayRain = dI === 0 && h >= 14 && h <= 17;
+      const wetH = rainy || todayRain;
+      hourly.precipitation_probability.push(wetH ? 80 : 5);
+      hourly.precipitation.push(todayRain ? 1.4 : (rainy ? 0.8 : 0));
+      hourly.weathercode.push(todayRain ? 63 : (rainy ? 61 : 2));
       hourly.windspeed_10m.push(7);
       hourly.windgusts_10m.push(11);
       hourly.winddirection_10m.push(270);
@@ -96,7 +133,59 @@ function genForecast() {
     }
     Object.assign(obj, mirror);
   });
-  return { timezone: 'Europe/Moscow', timezone_abbreviation: 'GMT+3', elevation: 140, hourly, daily };
+  /* 15-minute nowcast aligned to Europe/Moscow wall clock (matches forecast tz). */
+  const minutely_15 = { time: [], temperature_2m: [], precipitation: [], weather_code: [], weathercode: [], apparent_temperature: [], windspeed_10m: [], relativehumidity_2m: [], is_day: [] };
+  const mskNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' }));
+  const baseMin = new Date(mskNow.getFullYear(), mskNow.getMonth(), mskNow.getDate(), mskNow.getHours(), Math.floor(mskNow.getMinutes() / 15) * 15, 0, 0);
+  for (let k = 0; k < 24; k++) {
+    const d = new Date(baseMin.getTime() + k * 15 * 60000);
+    const ts = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    minutely_15.time.push(ts);
+    const t = 12 + 3 * Math.sin(k / 6);
+    minutely_15.temperature_2m.push(+t.toFixed(1));
+    minutely_15.apparent_temperature.push(+(t - 1).toFixed(1));
+    /* Slot 0 dry-ish, then rain for a few slots so "starts/ends in N min" works. */
+    const wet = k >= 1 && k <= 5;
+    minutely_15.precipitation.push(wet ? 0.6 : 0);
+    minutely_15.weather_code.push(wet ? 61 : 2);
+    minutely_15.weathercode.push(wet ? 61 : 2);
+    minutely_15.windspeed_10m.push(7);
+    minutely_15.relativehumidity_2m.push(60);
+    minutely_15.is_day.push(d.getHours() > 5 && d.getHours() < 20 ? 1 : 0);
+  }
+  /* Also paint a clear wet stretch 14:00–17:45 on "today" so chart chips refine to minutes. */
+  try {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const ds = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    for (let h = 14; h <= 17; h++) {
+      for (const mm of [0, 15, 30, 45]) {
+        if (h === 17 && mm > 30) break; /* ends 17:45 */
+        const ts = `${ds}T${pad(h)}:${pad(mm)}`;
+        if (!minutely_15.time.includes(ts)) {
+          minutely_15.time.push(ts);
+          minutely_15.temperature_2m.push(14);
+          minutely_15.apparent_temperature.push(13);
+          minutely_15.precipitation.push(0.8);
+          minutely_15.weather_code.push(63);
+          minutely_15.weathercode.push(63);
+          minutely_15.windspeed_10m.push(7);
+          minutely_15.relativehumidity_2m.push(70);
+          minutely_15.is_day.push(1);
+        } else {
+          const ix = minutely_15.time.indexOf(ts);
+          minutely_15.precipitation[ix] = 0.8;
+          minutely_15.weather_code[ix] = 63;
+          minutely_15.weathercode[ix] = 63;
+        }
+      }
+    }
+    /* sort minutely by time */
+    const order = minutely_15.time.map((t,i)=>[t,i]).sort((a,b)=>a[0]<b[0]?-1:1).map(x=>x[1]);
+    for (const key of Object.keys(minutely_15)) {
+      minutely_15[key] = order.map(i => minutely_15[key][i]);
+    }
+  } catch (e) { /* ignore */ }
+  return { timezone: 'Europe/Moscow', timezone_abbreviation: 'GMT+3', elevation: 140, hourly, daily, minutely_15 };
 }
 
 function genAir() {
@@ -125,6 +214,14 @@ function makeFetchStub() {
       json: async () => ({ address: { road: 'Тверская улица', city: 'Москва', country_code: 'ru', state: 'Москва', country: 'Россия' } })
     };
     if (u.includes('bigdatacloud')) return { ok: true, json: async () => ({ city: 'Москва', countryCode: 'RU' }) };
+    if (u.includes('rainviewer.com')) {
+      const now = Math.floor(Date.now() / 1000);
+      const past = [];
+      for (let i = 12; i >= 0; i--) past.push({ time: now - i * 600, path: '/v2/radar/' + (now - i * 600) });
+      const nowcast = [];
+      for (let i = 1; i <= 6; i++) nowcast.push({ time: now + i * 600, path: '/v2/radar/' + (now + i * 600) });
+      return { ok: true, json: async () => ({ host: 'https://tilecache.rainviewer.com', radar: { past, nowcast }, generated: now }) };
+    }
     throw new Error('unhandled url: ' + u);
   };
 }
@@ -216,16 +313,58 @@ setTimeout(() => {
     assert(q('loader').querySelector('.loader-bar') !== null, 'loader progress bar exists');
     {
       const rs = q('rain-status-text').textContent;
-      assert(/Вероятность дождя сейчас|Дождь закончится|Снег закончится|Дождь весь день/.test(rs), 'rain status is smart (prob or end time): ' + rs);
-      if (/закончится/.test(rs)) assert(/ещё \d+ч/.test(rs), 'rain status shows remaining duration: ' + rs);
+      assert(/Вероятность дождя сейчас|Дождь закончится|Снег закончится|Дождь весь день|Дождь через|Снег через|Дождь вот-вот|Снег вот-вот|Идёт|заканчивается/.test(rs), 'rain status is smart (prob or end/start time): ' + rs);
+    }
+    /* Chart has minute-precision scrub surface (no separate minutely block). */
+    assert(q('chart-scrub') !== null, 'chart scrub hit-target exists');
+    assert(q('chart-guide') !== null && q('chart-guide-dot') !== null, 'chart guide handle exists');
+    {
+      const cssSrc2 = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
+      const plot = cssSrc2.match(/\.chart-plot\s*\{[^}]*\}/s);
+      assert(plot && /touch-action:\s*none/.test(plot[0]), 'chart plot owns touch for finger scrubbing');
+      assert(cssSrc2.includes('chart-scrub'), 'chart scrub styles present');
+    }
+    assert(q('map-radar-badge') !== null, 'map radar badge exists');
+    assert(q('radar-opacity') !== null && q('radar-speed') !== null && q('radar-live') !== null, 'radar controls exist');
+    {
+      const probe = document.createElement('script');
+      probe.textContent = `window.__radarProbe = { hasEnsureLayers: typeof RADAR.ensureLayers === 'function', hasRenderFrame: typeof RADAR.renderFrame === 'function', tileSize: RADAR.tileSize() };
+        window.__chartProbe = { hasSample: typeof chartSampleAt === 'function', hasShow: typeof showChartAtFrac === 'function', meta: !!chartMeta, n: chartData.length };`;
+      document.body.appendChild(probe);
+      const rp = window.__radarProbe || {};
+      assert(rp.hasEnsureLayers && rp.hasRenderFrame, 'radar dual-layer API exists');
+      assert(rp.tileSize === 256, 'radar uses stable 256px tiles: ' + rp.tileSize);
+      const cp = window.__chartProbe || {};
+      assert(cp.hasSample && cp.hasShow && cp.meta && cp.n >= 2, 'chart minute-scrub API ready: ' + JSON.stringify(cp));
     }
     assert(q('location').textContent === 'Москва', 'default location: ' + q('location').textContent);
     assert(q('hourly-strip').children.length === 24, 'hourly strip has 24 items');
     assert(q('daily-strip').children.length === 8, 'daily strip has 7 days + more button');
     assert(q('chart-scroll') && q('chart-scroll').contains(q('chart-plot')), 'temperature chart is inside its horizontal scroll viewport');
     assert(q('chart-scroll').getAttribute('tabindex') === '0', 'temperature chart scroller is keyboard focusable');
-    assert(q('chart-swipe-hint').textContent.includes('Проведите пальцем'), 'temperature chart has a touch gesture hint');
+    assert(/Тяните|минут/i.test(q('chart-swipe-hint').textContent), 'temperature chart has a minute-scrub gesture hint: ' + q('chart-swipe-hint').textContent);
     assert(q('chart-svg').querySelectorAll('path').length >= 2, 'chart svg has paths');
+    assert(q('chart-rain-summary') !== null, 'chart rain summary exists');
+    {
+      const svg = q('chart-svg').innerHTML;
+      const hasHatch = /tempUnderClip/.test(svg) && /rainHatch_/.test(svg);
+      const badges = q('chart-plot').querySelectorAll('.crm-badge').length;
+      const sum = q('chart-rain-summary').textContent;
+      assert(hasHatch || /Дождь|Rain|Без осадков|No rain/.test(sum), 'chart shows rain hatching under temp line or dry summary: ' + sum.slice(0, 80));
+      assert(badges >= 1 || /Без осадков|No rain/.test(sum), 'rain badges on temp line (or dry): ' + badges);
+      /* Chips must show HH:MM (minutes), never bare hours like "14–17". */
+      if (!/Без осадков|No rain/.test(sum)) {
+        assert(/\d{2}:\d{2}\s*[–-]\s*\d{2}:\d{2}/.test(sum), 'rain chips use minute precision HH:MM–HH:MM: ' + sum.slice(0, 100));
+      }
+      /* refineBandMinutes + labels exist on chartMeta bands */
+      const probe = document.createElement('script');
+      probe.textContent = `window.__bandProbe = (chartMeta && chartMeta.bands || []).map(b => ({a:b.startLabel,b:b.endLabel,p:!!b.precise}));`;
+      document.body.appendChild(probe);
+      const bp = window.__bandProbe || [];
+      if (bp.length) {
+        assert(bp.every(x => x.a && x.b && /\d{2}:\d{2}/.test(x.a) && /\d{2}:\d{2}/.test(x.b)), 'every band has HH:MM labels: ' + JSON.stringify(bp));
+      }
+    }
     assert(q('sun-arc').querySelectorAll('path').length >= 1, 'sun arc rendered');
     assert(q('chart-axis').children.length === 5, 'chart axis 5 labels');
     assert(q('m-wind').textContent !== '--', 'wind metric: ' + q('m-wind').textContent);
@@ -234,8 +373,52 @@ setTimeout(() => {
     assert(document.querySelectorAll('.metric-ico').length === 8, 'metrics redesigned with icon chips');
     assert(q('m-press').textContent !== '--', 'pressure metric');
     assert(q('aqi-value').textContent !== '--', 'AQI value: ' + q('aqi-value').textContent);
+    assert(/Норма|Чуть|Много|OK|High|—/.test(q('aqi-pm25').textContent), 'AQI PM shows plain level not µg: ' + q('aqi-pm25').textContent);
+    assert(q('aqi-card').textContent.includes('Мелкая пыль') || q('aqi-card').textContent.includes('Fine dust'), 'AQI card uses plain dust label');
     assert(q('m-wind-arrow').style.transform.includes('deg'), 'wind arrow rotated');
     assert(q('alert-box').classList.contains('hidden'), 'no alert in calm weather');
+    /* Hazard engine: minute-aware multi-type alerts */
+    {
+      const probe = document.createElement('script');
+      probe.textContent = `
+        // Inject a storm + wind hour into current weather and re-render alerts
+        const h = state.weather.hourly;
+        const i = state.nowIdx + 2;
+        if (h.weathercode) h.weathercode[i] = 95;
+        if (h.weathercode_best_match) h.weathercode_best_match[i] = 95;
+        if (h.windgusts_10m) h.windgusts_10m[i] = 30;
+        if (h.windgusts_10m_best_match) h.windgusts_10m_best_match[i] = 30;
+        if (h.windspeed_10m) h.windspeed_10m[i] = 22;
+        if (h.windspeed_10m_best_match) h.windspeed_10m_best_match[i] = 22;
+        renderAlerts();
+        const list = collectHazardAlerts(24);
+        window.__alertProbe = {
+          visible: !document.getElementById('alert-box').classList.contains('hidden'),
+          msg: document.getElementById('alert-msg').textContent,
+          types: list.map(a => a.type),
+          hasMin: list.some(a => a.t && /\\d{2}:\\d{2}/.test(a.t.slice(11,16))),
+          sample: list[0] ? { type: list[0].type, t: list[0].t, abs: list[0].abs } : null
+        };
+        // restore calm for later tests
+        if (h.weathercode) h.weathercode[i] = 2;
+        if (h.weathercode_best_match) h.weathercode_best_match[i] = 2;
+        if (h.windgusts_10m) h.windgusts_10m[i] = 11;
+        if (h.windgusts_10m_best_match) h.windgusts_10m_best_match[i] = 11;
+        if (h.windspeed_10m) h.windspeed_10m[i] = 7;
+        if (h.windspeed_10m_best_match) h.windspeed_10m_best_match[i] = 7;
+        renderAlerts();
+      `;
+      document.body.appendChild(probe);
+      const ap = window.__alertProbe || {};
+      assert(ap.visible, 'alert banner shows when hazards injected');
+      assert(/Гроза|Ливень|Ветер|Шторм|Storm|Wind|Gale|Tormenta|Viento/i.test(ap.msg || ''), 'alert message is human: ' + ap.msg);
+      assert(/мин|now|сейчас|через|in |en |\d{2}:\d{2}/i.test(ap.msg || ''), 'alert has minute timing: ' + ap.msg);
+      assert((ap.msg || '').length < 56, 'alert message is short: ' + (ap.msg || '').length + ' chars — ' + ap.msg);
+      assert(/\d{2}:\d{2}/.test(ap.msg || ''), 'alert shows HH:MM minutes: ' + ap.msg);
+      assert(ap.types && ap.types.includes('storm'), 'hazard list includes storm: ' + JSON.stringify(ap.types));
+      assert(ap.types.some(t => t === 'wind' || t === 'wind_extreme'), 'hazard list includes wind: ' + JSON.stringify(ap.types));
+      assert(q('alert-box').classList.contains('hidden'), 'alert hidden again after restore');
+    }
     assert(q('location-admin').textContent.includes('140'), 'elevation shown in admin line');
     assert(/temp-(frigid|cold|mild|warm|hot)/.test(q('temperature').className), 'temperature has colour class');
 
@@ -280,24 +463,52 @@ setTimeout(() => {
     q('search-clear').click();
     assert(q('city-input').value === '' && q('search-clear').classList.contains('hidden'), 'clear button clears input');
 
-    /* chart detail bar (replaced the clipped floating tooltip) */
+    /* chart detail bar + minute scrub */
     assert(q('chart-detail') !== null, 'chart detail bar exists');
-    assert(q('chart-detail').innerHTML.includes('Сейчас'), 'detail bar shows current hour by default');
-    assert(q('chart-detail').innerHTML.includes('Порывы'), 'detail bar shows wind gusts row');
+    assert(q('chart-detail').innerHTML.length > 20, 'detail bar filled by default');
+    assert(/°/.test(q('chart-detail').textContent), 'detail bar shows temperature degrees (not --)');
     {
-      const col = q('chart-cols').children[10];
-      col.dispatchEvent(new window.MouseEvent('mouseenter'));
-      assert(q('chart-detail').innerHTML.includes(':00'), 'detail bar updates on hover (shows hour)');
-      assert(q('chart-guide').style.opacity === '1', 'hover guide line appears');
-      q('chart-cols').onmouseleave();
-      assert(q('chart-guide').style.opacity === '0', 'guide line hides on mouseleave');
+      const probe = document.createElement('script');
+      probe.textContent = `
+        const s0 = chartSampleAt(0);
+        const sHalf = chartSampleAt(0.5);
+        const s1 = chartSampleAt(1);
+        window.__scrubProbe = {
+          t0: s0 && s0.temp, tHalf: sHalf && sHalf.temp, t1: s1 && s1.temp,
+          when0: s0 && s0.when, whenHalf: sHalf && sHalf.when,
+          guide: document.getElementById('chart-guide').style.opacity
+        };
+        showChartAtFrac(2.25);
+        window.__scrubProbe.after = document.getElementById('chart-detail').textContent;
+        window.__scrubProbe.guideAfter = document.getElementById('chart-guide').style.opacity;
+        window.__scrubProbe.whenAfter = chartSampleAt(2.25).when;
+      `;
+      document.body.appendChild(probe);
+      const sp = window.__scrubProbe || {};
+      assert(sp.t0 != null && !isNaN(sp.t0), 'chart sample at 0 has temp: ' + sp.t0);
+      assert(sp.tHalf != null && !isNaN(sp.tHalf), 'chart sample mid-hour has temp (minutes): ' + sp.tHalf);
+      assert(sp.whenHalf && /:/.test(sp.whenHalf) && !/:00$/.test(sp.whenHalf), 'mid-hour label shows minutes: ' + sp.whenHalf);
+      assert(sp.guideAfter === '1', 'guide visible while scrubbing');
+      assert(/°/.test(sp.after), 'detail still shows degrees after scrub');
+      assert(sp.whenAfter && sp.whenAfter.includes(':'), 'scrubbed time label: ' + sp.whenAfter);
+      /* simulate finger drag on scrub surface */
+      const scrub = q('chart-scrub');
+      const rect = { left: 0, width: 400, top: 0, height: 190 };
+      scrub.getBoundingClientRect = () => ({ left: 0, width: 400, top: 0, height: 190, right: 400, bottom: 190, x: 0, y: 0, toJSON(){} });
+      q('chart-plot').getBoundingClientRect = scrub.getBoundingClientRect;
+      scrub.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, clientX: 200, clientY: 40, pointerId: 1, pointerType: 'touch', button: 0 }));
+      scrub.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, clientX: 260, clientY: 40, pointerId: 1, pointerType: 'touch' }));
+      scrub.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, clientX: 260, clientY: 40, pointerId: 1, pointerType: 'touch' }));
+      assert(q('chart-guide').style.opacity === '1', 'guide stays visible after touch scrub');
+      assert(/°/.test(q('chart-detail').textContent), 'detail shows temp after touch scrub');
     }
-    /* air quality detail modal */
+    /* air quality detail modal — plain language, no abstract sparklines */
     q('aqi-card').click();
     assert(q('modal').classList.contains('open'), 'air quality card opens detail modal');
-    assert(q('modal-body').querySelector('.air-trend svg') !== null, 'air modal has AQI trend chart');
-    assert(q('modal-body').querySelectorAll('.air-poll-card svg').length === 4, 'air modal has 4 pollutant sparklines');
-    assert(q('modal-body').innerHTML.includes('Рекомендации'), 'air modal has health recommendations');
+    assert(q('modal-body').querySelector('.air-day-strip') !== null, 'air modal has simple hour strip');
+    assert(q('modal-body').querySelectorAll('.air-poll-card .air-bar').length === 4, 'air modal has 4 level bars');
+    assert(q('modal-body').innerHTML.includes('Совет') || q('modal-body').innerHTML.includes('Tip'), 'air modal has short advice');
+    assert(q('modal-body').textContent.includes('Мелкая пыль') || q('modal-body').textContent.includes('Fine dust'), 'air modal uses plain pollutant names');
     q('modal-close').click();
 
     window.showAdvice();

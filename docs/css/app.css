@@ -490,6 +490,24 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .condition { font-size: 19px; font-weight: 600; color: var(--text-1); margin-top: 10px; }
 
 /* rain status right under the temperature */
+/* map card radar badge */
+.map-radar-badge {
+  position: absolute; left: 12px; top: 12px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px; border-radius: 999px;
+  background: rgba(5, 10, 22, 0.78); backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #e2eefc; font-size: 11.5px; font-weight: 800;
+  box-shadow: 0 8px 22px -10px rgba(0,0,0,0.55);
+  transition: transform 0.18s, background 0.18s, border-color 0.18s;
+  pointer-events: auto; cursor: pointer;
+}
+.map-radar-badge i { color: #7db4f8; font-size: 14px; }
+.map-radar-badge:hover { transform: translateY(-1px); border-color: rgba(56, 189, 248, 0.65); background: rgba(8, 16, 34, 0.9); }
+[data-theme="light"] .map-radar-badge { background: rgba(255,255,255,0.88); color: #1e3a5f; border-color: rgba(37,99,235,0.3); }
+[data-theme="light"] .map-radar-badge i { color: #2563eb; }
+
 .rain-status {
   display: inline-flex; align-items: center; gap: 8px;
   margin-top: 10px;
@@ -709,13 +727,50 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 
 /* ---------- Alert banner ---------- */
 .alert-box {
-  display: flex; align-items: flex-start; gap: 14px;
-  padding: 16px 20px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
   border-radius: var(--radius-md);
   background: linear-gradient(100deg, rgba(248, 113, 113, 0.14), rgba(251, 146, 60, 0.08));
   border: 1px solid rgba(248, 113, 113, 0.28);
   backdrop-filter: blur(14px);
   animation: alertIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.alert-box[data-hazard="storm"],
+.alert-box[data-hazard="hail"] {
+  background: linear-gradient(100deg, rgba(167, 139, 250, 0.16), rgba(99, 102, 241, 0.1));
+  border-color: rgba(167, 139, 250, 0.4);
+}
+.alert-box[data-hazard="storm"] .alert-ico,
+.alert-box[data-hazard="hail"] .alert-ico { background: rgba(167,139,250,0.18); color: #c4b5fd; }
+.alert-box[data-hazard="snow_heavy"],
+.alert-box[data-hazard="blizzard"],
+.alert-box[data-hazard="ice"] {
+  background: linear-gradient(100deg, rgba(125, 211, 252, 0.14), rgba(96, 165, 250, 0.1));
+  border-color: rgba(125, 211, 252, 0.4);
+}
+.alert-box[data-hazard="snow_heavy"] .alert-ico,
+.alert-box[data-hazard="blizzard"] .alert-ico,
+.alert-box[data-hazard="ice"] .alert-ico { background: rgba(125,211,252,0.18); color: #7dd3fc; }
+.alert-box[data-hazard="rain_heavy"] {
+  background: linear-gradient(100deg, rgba(56, 189, 248, 0.14), rgba(37, 99, 235, 0.1));
+  border-color: rgba(56, 189, 248, 0.4);
+}
+.alert-box[data-hazard="rain_heavy"] .alert-ico { background: rgba(56,189,248,0.18); color: #7dd3fc; }
+.alert-box[data-hazard="heat"] {
+  background: linear-gradient(100deg, rgba(251, 146, 60, 0.16), rgba(248, 113, 113, 0.1));
+  border-color: rgba(251, 146, 60, 0.4);
+}
+.alert-box[data-hazard="cold"] {
+  background: linear-gradient(100deg, rgba(147, 197, 253, 0.16), rgba(96, 165, 250, 0.1));
+  border-color: rgba(147, 197, 253, 0.4);
+}
+.alert-box[data-hazard="fog"] {
+  background: linear-gradient(100deg, rgba(148, 163, 184, 0.16), rgba(100, 116, 139, 0.1));
+  border-color: rgba(148, 163, 184, 0.4);
+}
+.alert-box[data-hazard="uv"] {
+  background: linear-gradient(100deg, rgba(251, 191, 36, 0.16), rgba(251, 146, 60, 0.1));
+  border-color: rgba(251, 191, 36, 0.4);
 }
 .alert-ico { width: 42px; height: 42px; border-radius: 13px; flex: none; display: grid; place-items: center; background: rgba(248, 113, 113, 0.16); color: #fca5a5; font-size: 22px; animation: pulseSoft 2.2s ease-in-out infinite; }
 .alert-box h3 { font-size: 13px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: #fecaca; }
@@ -737,9 +792,123 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .lg { width: 16px; height: 4px; border-radius: 99px; display: inline-block; }
 .lg-temp { background: linear-gradient(90deg, var(--accent), var(--accent-2)); height: 5px; }
 .lg-precip { background: #60a5fa; opacity: 0.75; }
-/* The graph keeps every hour comfortably wide instead of squeezing all 24
-   points into a phone screen. Native overflow gives touch devices momentum
-   scrolling while still allowing the page to move on a vertical gesture. */
+.lg-rain-zone {
+  width: 16px; height: 10px; border-radius: 3px;
+  background: repeating-linear-gradient(
+    -32deg,
+    rgba(56,189,248,0.12) 0px,
+    rgba(56,189,248,0.12) 3px,
+    rgba(56,189,248,0.65) 3px,
+    rgba(56,189,248,0.65) 5px
+  );
+  border: 1px solid rgba(56,189,248,0.4);
+}
+.chart-rain-summary {
+  display: flex; flex-wrap: nowrap; gap: 8px;
+  margin: 4px 0 10px;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.chart-rain-summary::-webkit-scrollbar { display: none; }
+.chart-rain-summary .crs-item { flex: none; white-space: nowrap; }
+.chart-rain-summary.hidden { display: none; }
+.chart-rain-summary.dry {
+  align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 700; color: var(--text-3);
+  padding: 8px 12px; border-radius: 12px;
+  background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.22);
+}
+.chart-rain-summary.dry i { color: #34d399; font-size: 16px; }
+.chart-rain-summary .crs-item {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 700;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  color: #bfdbfe;
+}
+.chart-rain-summary .crs-item i { font-size: 14px; color: #60a5fa; }
+.chart-rain-summary .crs-snow {
+  background: rgba(125, 211, 252, 0.12); border-color: rgba(125, 211, 252, 0.35); color: #e0f2fe;
+}
+.chart-rain-summary .crs-snow i { color: #7dd3fc; }
+.chart-rain-summary .crs-storm, .chart-rain-summary .crs-heavy {
+  background: rgba(167, 139, 250, 0.14); border-color: rgba(167, 139, 250, 0.4); color: #ddd6fe;
+}
+.chart-rain-summary .crs-storm i, .chart-rain-summary .crs-heavy i { color: #a78bfa; }
+[data-theme="light"] .chart-rain-summary .crs-item {
+  background: rgba(37, 99, 235, 0.08); border-color: rgba(37, 99, 235, 0.22); color: #1e40af;
+}
+[data-theme="light"] .chart-rain-summary .crs-item i { color: #2563eb; }
+[data-theme="light"] .chart-rain-summary.dry { color: #047857; }
+
+/* Rain badges sit on the temperature line as real HTML — never stretched by the SVG. */
+.chart-rain-markers {
+  position: absolute; inset: 0; z-index: 3;
+  pointer-events: none;
+}
+.crm-badge {
+  position: absolute;
+  width: 26px; height: 26px;
+  margin-left: -13px; margin-top: -30px;
+  border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(8, 16, 34, 0.88);
+  border: 1.5px solid rgba(56, 189, 248, 0.65);
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.55), 0 0 0 3px rgba(56, 189, 248, 0.12);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.crm-badge i {
+  font-size: 14px; line-height: 1;
+  color: #7dd3fc;
+  /* Never let the icon stretch with the parent */
+  width: 14px; height: 14px;
+  display: grid; place-items: center;
+}
+.crm-badge.crm-snow { border-color: rgba(125, 211, 252, 0.7); }
+.crm-badge.crm-snow i { color: #e0f2fe; }
+.crm-badge.crm-storm, .crm-badge.crm-heavy {
+  border-color: rgba(167, 139, 250, 0.7);
+  box-shadow: 0 4px 14px -4px rgba(0, 0, 0, 0.55), 0 0 0 3px rgba(167, 139, 250, 0.14);
+}
+.crm-badge.crm-storm i, .crm-badge.crm-heavy i { color: #c4b5fd; }
+[data-theme="light"] .crm-badge {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: rgba(37, 99, 235, 0.5);
+  box-shadow: 0 4px 12px -4px rgba(37, 99, 235, 0.3);
+}
+[data-theme="light"] .crm-badge i { color: #2563eb; }
+[data-theme="light"] .crm-badge.crm-storm i,
+[data-theme="light"] .crm-badge.crm-heavy i { color: #7c3aed; }
+
+.chart-rain-layer rect {
+  /* Soft edge blend — no jagged diagonal hatch under stretched SVG */
+  opacity: 1;
+}
+.chart-rain-summary {
+  /* allow horizontal scroll of chips on narrow screens instead of wrap explosion */
+}
+.cd-item.cd-rain {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+.cd-item.cd-rain .cd-label, .cd-item.cd-rain .cd-val { color: #7dd3fc; }
+[data-theme="light"] .chart-rain-layer rect {
+  /* Soft edge blend — no jagged diagonal hatch under stretched SVG */
+  opacity: 1;
+}
+.chart-rain-summary {
+  /* allow horizontal scroll of chips on narrow screens instead of wrap explosion */
+}
+.cd-item.cd-rain { background: rgba(37,99,235,0.08); border-color: rgba(37,99,235,0.25); }
+[data-theme="light"] .cd-item.cd-rain .cd-label, [data-theme="light"] .cd-item.cd-rain .cd-val { color: #1d4ed8; }
+/* 24h temperature chart — horizontal scroll + minute-precision scrub on the plot.
+   Scrubbing (mouse/finger on the plot) is separate from scrolling the track. */
 .chart-scroll {
   position: relative;
   width: 100%;
@@ -761,20 +930,30 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .chart-scroll:focus-visible { outline-offset: -2px; }
 .chart-track { width: 100%; min-width: 1120px; }
 .chart-swipe-hint {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin-top: 5px;
+  margin-top: 6px;
   color: var(--text-4);
   font-size: 10.5px;
   font-weight: 700;
 }
 .chart-swipe-hint i { color: var(--accent); font-size: 14px; }
-.chart-plot { position: relative; height: 190px; margin-top: 8px; }
-.chart-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.chart-cols { position: absolute; inset: 0; display: flex; }
-.chart-col { flex: 1; min-width: 0; cursor: crosshair; }
+.chart-plot {
+  position: relative; height: 190px; margin-top: 8px;
+  touch-action: none; /* we own horizontal scrub gestures on the plot */
+  cursor: crosshair;
+  user-select: none; -webkit-user-select: none;
+}
+.chart-plot.is-scrubbing { cursor: grabbing; }
+.chart-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* Full-plot hit target for mouse + finger scrubbing (no per-hour columns). */
+.chart-scrub {
+  position: absolute; inset: 0; z-index: 4;
+  touch-action: none;
+  cursor: crosshair;
+}
 /* detail bar under the chart (never clipped, always pleasant) */
 .chart-detail {
   margin-top: 12px;
@@ -817,21 +996,36 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .cd-item.swap { animation: cdSwap 0.28s ease; }
 @keyframes cdSwap { from { opacity: 0.25; transform: translateY(5px); } to { opacity: 1; transform: none; } }
 
-/* hover guide line + dot on the chart */
+/* scrub guide line + touch-friendly handle on the chart */
 .chart-guide {
-  position: absolute; top: 0; bottom: 0; left: 0; width: 1px;
-  background: linear-gradient(180deg, var(--accent), transparent 85%);
-  opacity: 0; pointer-events: none; z-index: 5;
-  transition: left 0.14s ease-out, opacity 0.25s;
+  position: absolute; top: 0; bottom: 0; left: 0; width: 2px;
+  background: linear-gradient(180deg, var(--accent), transparent 90%);
+  opacity: 0; pointer-events: none; z-index: 6;
+  transition: opacity 0.2s;
+  will-change: left;
+  margin-left: -1px;
 }
+.chart-plot.is-scrubbing .chart-guide { opacity: 1; }
 .chart-guide i {
   position: absolute; top: 50%; left: 50%;
-  width: 10px; height: 10px; border-radius: 50%;
+  width: 18px; height: 18px; border-radius: 50%;
   transform: translate(-50%, -50%);
   background: var(--accent);
-  border: 2px solid var(--bg-1);
-  box-shadow: 0 0 12px var(--glow-accent);
-  transition: top 0.14s ease-out;
+  border: 3px solid var(--bg-1);
+  box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 28%, transparent),
+              0 0 16px var(--glow-accent);
+  transition: none;
+}
+/* Larger invisible hit halo for finger aiming (visual stays 18px). */
+.chart-guide i::after {
+  content: "";
+  position: absolute; inset: -14px;
+  border-radius: 50%;
+}
+.chart-plot.is-scrubbing .chart-guide i {
+  width: 22px; height: 22px;
+  box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 35%, transparent),
+              0 0 20px var(--glow-accent);
 }
 
 .chart-axis { display: flex; justify-content: space-between; padding: 6px 2px 0; font-size: 11px; font-weight: 700; color: var(--text-4); font-variant-numeric: tabular-nums; }
@@ -1050,7 +1244,7 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .m-back:hover { background: var(--surface-3); color: var(--text-1); }
 .m-back i { font-size: 14px; }
 
-/* ---------- Air quality detail modal ---------- */
+/* ---------- Air quality detail modal (plain language) ---------- */
 .air-hero {
   display: flex; align-items: center; gap: 18px;
   background: var(--surface-2);
@@ -1061,28 +1255,61 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 }
 .air-hero .aqi-ring-box { width: 92px; height: 92px; }
 .air-hero-info { flex: 1; min-width: 0; }
-.air-hero-info .ah-title { font-family: var(--font-display); font-size: 15px; font-weight: 600; }
-.air-hero-info .ah-sub { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.5; }
+.air-hero-info .ah-title { font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.air-hero-info .ah-sub { font-size: 12.5px; color: var(--text-3); margin-top: 4px; line-height: 1.45; }
+.air-hero-info .ah-advice {
+  margin-top: 8px; font-size: 13px; font-weight: 600; color: var(--text-2); line-height: 1.45;
+}
+
+.air-tips {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin-bottom: 14px;
+}
+.air-tip {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: var(--surface-2); border: 1px solid var(--stroke);
+  border-radius: 16px; padding: 12px 14px;
+}
+.air-tip i { font-size: 18px; flex: none; margin-top: 1px; }
+.air-tip b { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-4); margin-bottom: 3px; }
+.air-tip span { font-size: 13.5px; font-weight: 700; color: var(--text-1); }
 
 .air-trend {
   background: var(--surface-2);
   border: 1px solid var(--stroke);
   border-radius: 20px;
-  padding: 16px 14px 10px;
+  padding: 16px 14px 12px;
   margin-bottom: 14px;
 }
 .air-trend .at-title {
   display: flex; align-items: center; gap: 7px;
   font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
-  color: var(--text-4); margin-bottom: 8px; padding: 0 4px;
+  color: var(--text-4); margin-bottom: 10px; padding: 0 2px;
 }
 .air-trend .at-title i { color: var(--accent); font-size: 14px; }
-.air-trend svg { width: 100%; height: auto; display: block; }
-.air-trend .at-axis {
+
+.air-day-strip {
+  display: flex; gap: 3px; height: 28px; align-items: stretch;
+}
+.air-day-strip .air-hour {
+  flex: 1; min-width: 0; border-radius: 5px; opacity: 0.92;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.air-day-strip .air-hour.now {
+  outline: 2px solid #fff; outline-offset: 1px; opacity: 1;
+  box-shadow: 0 0 0 3px rgba(56,189,248,0.35);
+}
+.air-day-axis {
   display: flex; justify-content: space-between;
-  padding: 6px 6px 0;
-  font-size: 10.5px; font-weight: 700; color: var(--text-4);
-  font-variant-numeric: tabular-nums;
+  margin-top: 6px; font-size: 10px; font-weight: 700; color: var(--text-4);
+}
+.air-legend {
+  display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 10px;
+  font-size: 11px; font-weight: 700; color: var(--text-3);
+}
+.air-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.air-legend i {
+  width: 10px; height: 10px; border-radius: 3px; display: inline-block;
 }
 
 .air-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 14px; }
@@ -1090,13 +1317,29 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   background: var(--surface-2);
   border: 1px solid var(--stroke);
   border-radius: 16px;
-  padding: 13px 14px 11px;
+  padding: 13px 14px 12px;
 }
-.air-poll-card .ap-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.air-poll-card .ap-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; }
 .air-poll-card .ap-name { font-weight: 800; font-size: 13px; }
-.air-poll-card .ap-val { font-family: var(--font-display); font-size: 15.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.air-poll-card .ap-note { font-size: 10px; color: var(--text-4); margin-top: 6px; }
-.air-poll-card svg { width: 100%; height: 36px; display: block; }
+.air-poll-card .ap-val { font-size: 13px; font-weight: 800; }
+.air-poll-card .ap-note { font-size: 11.5px; color: var(--text-3); margin-top: 8px; line-height: 1.4; }
+
+.air-bar {
+  position: relative; height: 10px; border-radius: 99px;
+  background: var(--surface-3, rgba(148,163,184,0.18));
+  overflow: hidden;
+}
+.air-bar-ok {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: rgba(52, 211, 153, 0.22);
+  border-right: 1px dashed rgba(52, 211, 153, 0.55);
+}
+.air-bar-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  border-radius: 99px;
+  min-width: 4px;
+  transition: width 0.5s cubic-bezier(0.16,1,0.3,1);
+}
 
 .air-health {
   display: flex; gap: 12px; align-items: flex-start;
@@ -1106,8 +1349,13 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   padding: 14px 16px;
 }
 .air-health i { color: var(--accent); font-size: 20px; flex: none; margin-top: 1px; }
-.air-health p { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.air-health p { font-size: 13.5px; color: var(--text-2); line-height: 1.55; }
 .air-health p b { display: block; margin-bottom: 3px; }
+
+@media (max-width: 520px) {
+  .air-tips { grid-template-columns: 1fr; }
+  .air-grid { grid-template-columns: 1fr; }
+}
 
 /* animated line drawing (used by air quality charts) */
 .anim-draw { animation-name: drawLine; animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); animation-fill-mode: forwards; }
@@ -1262,19 +1510,37 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   from { opacity: 0; transform: translateX(-50%) translateY(16px) scale(0.98); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
-.radar-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.radar-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .radar-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; }
 .radar-title i { color: #7db4f8; }
-.radar-time { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 13px; color: #7db4f8; }
+.radar-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 9px; border-radius: 999px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  background: rgba(52, 211, 153, 0.16); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.35);
+}
+.radar-badge.past { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.35); }
+.radar-badge.forecast { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; border-color: rgba(167, 139, 250, 0.4); }
+.radar-time { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px; color: #7db4f8; }
 .radar-close { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; color: var(--text-3); transition: background 0.2s, color 0.2s; }
 .radar-close:hover { background: rgba(248, 113, 113, 0.18); color: #f87171; }
 
 .radar-timeline { display: flex; align-items: center; gap: 10px; }
-.radar-range { position: relative; flex: 1; }
+.radar-range { position: relative; flex: 1; padding-bottom: 16px; }
+.radar-ticks {
+  position: absolute; left: 0; right: 0; top: 1px; height: 6px;
+  pointer-events: none; z-index: 0;
+  background: linear-gradient(90deg,
+    rgba(148,163,184,0.55) 0%,
+    rgba(56,189,248,0.85) var(--radar-now-pct, 70%),
+    rgba(167,139,250,0.85) 100%);
+  border-radius: 99px;
+}
 .radar-range input[type="range"] {
   -webkit-appearance: none; appearance: none;
+  position: relative; z-index: 1;
   width: 100%; height: 6px; border-radius: 99px;
-  background: linear-gradient(90deg, #38bdf8, #6366f1);
+  background: transparent;
   outline: none; cursor: pointer;
 }
 .radar-range input[type="range"]::-webkit-slider-thumb {
@@ -1286,11 +1552,17 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   width: 16px; height: 16px; border-radius: 50%; background: #fff;
   border: 3px solid #38bdf8; cursor: pointer;
 }
+.radar-axis {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: space-between;
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: rgba(203, 213, 225, 0.7); pointer-events: none;
+}
 .radar-nav {
   width: 34px; height: 34px; border-radius: 50%;
   display: grid; place-items: center;
   background: rgba(255, 255, 255, 0.08); color: #fff;
-  transition: background 0.2s, transform 0.2s;
+  transition: background 0.2s, transform 0.2s; flex: none;
 }
 .radar-nav:hover { background: rgba(56, 189, 248, 0.25); transform: scale(1.08); }
 .radar-nav:active { transform: scale(0.94); }
@@ -1299,11 +1571,49 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   display: grid; place-items: center;
   background: linear-gradient(135deg, #38bdf8, #6366f1); color: #fff;
   box-shadow: 0 8px 22px -8px rgba(56, 189, 248, 0.6);
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s; flex: none;
 }
 .radar-play:hover { transform: scale(1.08); }
 .radar-play:active { transform: scale(0.94); }
 .radar-play.playing { animation: radarPulse 1.4s ease-in-out infinite; }
+.radar-live {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: rgba(52, 211, 153, 0.16); color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  transition: background 0.2s, transform 0.2s; flex: none;
+}
+.radar-live:hover { background: rgba(52, 211, 153, 0.3); transform: scale(1.08); }
+.radar-live:active { transform: scale(0.94); }
+
+.radar-controls {
+  display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap;
+}
+.radar-ctrl {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: rgba(203, 213, 225, 0.8); flex: 1; min-width: 140px;
+}
+.radar-ctrl input[type="range"] {
+  -webkit-appearance: none; appearance: none; flex: 1;
+  height: 4px; border-radius: 99px; background: rgba(148,163,184,0.35); outline: none; cursor: pointer;
+}
+.radar-ctrl input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: 2px solid #38bdf8; cursor: pointer;
+}
+.radar-ctrl input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 2px solid #38bdf8; cursor: pointer;
+}
+.radar-ctrl select {
+  appearance: none; -webkit-appearance: none;
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14);
+  color: #fff; border-radius: 8px; padding: 5px 22px 5px 10px; font-size: 12px; font-weight: 700;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23a5b4fc' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+.radar-ctrl select option { background: #0d1528; color: #fff; }
 
 .radar-legend {
   display: flex; align-items: center; gap: 10px; margin-top: 11px;
@@ -1318,8 +1628,24 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   display: flex; align-items: center; justify-content: center; gap: 10px;
   background: rgba(3, 6, 15, 0.55); backdrop-filter: blur(4px); border-radius: 22px;
   color: #c7d8ee; font-weight: 700; font-size: 12.5px; letter-spacing: 0.06em;
+  pointer-events: auto;
 }
+.radar-loading.hidden { display: none !important; pointer-events: none; }
 .radar-loading i { animation: spin 1s linear infinite; }
+/* Bigger touch target on the timeline slider */
+.radar-range input[type="range"] { height: 22px; margin: 0; }
+.radar-range input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 99px; background: transparent;
+}
+.radar-panel { pointer-events: auto; }
+.radar-panel.hidden { display: none !important; }
+
+@media (max-width: 520px) {
+  .radar-controls { gap: 10px; }
+  .radar-ctrl { min-width: 100%; }
+  .radar-live { display: none; }
+  .min-item { flex-basis: 72px; width: 72px; }
+}
 
 /* ---------- Offline banner ---------- */
 .offline-banner {
@@ -1681,6 +2007,11 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
    available on laptops and desktops where the chart also happens to overflow. */
 @media (hover: none) and (pointer: coarse) {
   .chart-swipe-hint { display: flex; }
+  .chart-plot { height: 200px; }
+  .chart-guide i { width: 22px; height: 22px; }
+  .chart-scrub { /* full hit area already */ }
+  .crm-badge { width: 28px; height: 28px; margin-left: -14px; margin-top: -32px; }
+  .crm-badge i { font-size: 14px; width: 14px; height: 14px; }
 }
 
 /* ---------- Responsive ---------- */
@@ -1739,6 +2070,28 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   .hero-actions { margin-bottom: 16px; }
   .hero-actions .btn { width: 100%; min-height: 46px; justify-content: center; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+  .alert-box { padding: 10px 12px; gap: 10px; }
+  .alert-box h3 { font-size: 11px; letter-spacing: 0.04em; }
+  .alert-box p { font-size: 12.5px; margin-top: 2px; line-height: 1.35; }
+  .alert-ico { width: 34px; height: 34px; border-radius: 11px; font-size: 18px; }
+  .chart-rain-summary { margin: 2px 0 8px; gap: 6px; }
+  .chart-rain-summary .crs-item { padding: 6px 10px; font-size: 11px; }
+  .chart-rain-summary .crs-item i { font-size: 12px; }
+  .crm-badge { width: 22px; height: 22px; margin-left: -11px; margin-top: -26px; }
+  .crm-badge i { font-size: 12px; width: 12px; height: 12px; }
+  .chart-plot { height: 168px; }
+  .chart-track { min-width: 980px; }
+  .chart-detail { gap: 6px; padding: 8px; min-height: 58px; }
+  .cd-item { flex: 1 1 100px; padding: 8px 10px; }
+  .cd-item .cd-val { font-size: 13.5px; }
+  .chart-swipe-hint { font-size: 10px; }
+  .radar-panel { width: min(100vw - 16px, 640px); padding: 12px 14px 10px; border-radius: 18px; }
+  .radar-controls { gap: 8px; }
+  .radar-ctrl { min-width: 0; font-size: 9.5px; }
+  .map-radar-badge { padding: 6px 10px; font-size: 11px; left: 10px; top: 10px; }
+  #map { height: 180px; }
+
   .metric { gap: 9px; min-height: 68px; padding: 10px; border-radius: 15px; }
   .metric-ico { width: 34px; height: 34px; border-radius: 10px; font-size: 17px; }
   .metric-label { font-size: 8.5px; line-height: 1.3; }
