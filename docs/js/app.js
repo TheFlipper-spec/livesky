@@ -40,7 +40,8 @@ const el = {
   radarNext: $('radar-next'), radarPlay: $('radar-play'), radarClose: $('radar-close'),
   radarBadge: $('radar-badge'), radarLive: $('radar-live'), radarOpacity: $('radar-opacity'),
   radarSpeed: $('radar-speed'), radarTicks: $('radar-ticks'),
-  mapRadarBadge: $('map-radar-badge')
+  mapRadarBadge: $('map-radar-badge'),
+  consentModal: $('consent-modal'), consentAcceptBtn: $('consent-accept-btn')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -2574,7 +2575,8 @@ function modalFocusables(container) {
 }
 function onTrapKey(e) {
   if (e.key !== 'Tab') return;
-  const container = (el.modal && el.modal.classList.contains('open')) ? el.modal
+  const container = (el.consentModal && !el.consentModal.classList.contains('hidden')) ? el.consentModal
+    : (el.modal && el.modal.classList.contains('open')) ? el.modal
     : (el.mapModal && el.mapModal.classList.contains('open')) ? el.mapModal : null;
   if (!container) return;
   const f = modalFocusables(container);
@@ -2604,6 +2606,27 @@ function releaseFocus(container) {
   });
   if (lastFocused && lastFocused.focus) { try { lastFocused.focus(); } catch (e) { /* ignore */ } }
   lastFocused = null;
+}
+
+function checkLegalConsent() {
+  if (!el.consentModal) return;
+  const accepted = store.get('livesky:legal_accepted', false);
+  if (!accepted) {
+    el.consentModal.classList.remove('hidden');
+    document.body.classList.add('no-scroll');
+    trapFocus(el.consentModal);
+  }
+}
+
+function acceptLegalConsent() {
+  store.set('livesky:legal_accepted', true);
+  if (el.consentModal) {
+    el.consentModal.classList.add('hidden');
+    if (!el.modal || !el.modal.classList.contains('open')) {
+      document.body.classList.remove('no-scroll');
+    }
+    releaseFocus(el.consentModal);
+  }
 }
 
 function openModal(title, subtitle, bodyHtml) {
@@ -3678,6 +3701,10 @@ function bindEvents() {
     });
   });
 
+  if (el.consentAcceptBtn) {
+    on(el.consentAcceptBtn, 'click', acceptLegalConsent);
+  }
+
   on(el.modalClose, 'click', closeModal);
   on(el.modal, 'click', (e) => { if (e.target === el.modal) closeModal(); });
   on(el.mapClose, 'click', closeFullMap);
@@ -3705,6 +3732,7 @@ function bindEvents() {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      if (el.consentModal && !el.consentModal.classList.contains('hidden')) return;
       if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
       if (el.modal.classList.contains('open')) { closeModal(); return; }
       setMenuOpen(false);
@@ -4704,6 +4732,7 @@ function initNativeBridge() {
       /* Capacitor's addListener can return a PluginListenerHandle directly
          instead of a Promise. Promise.resolve supports both API shapes. */
       Promise.resolve(nativeApp.addListener('backButton', () => {
+        if (el.consentModal && !el.consentModal.classList.contains('hidden')) return;
         if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
         if (el.modal.classList.contains('open')) { closeModal(); return; }
         if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
@@ -4752,6 +4781,7 @@ function init() {
   startLiveTicker();
   bindEvents();
   initNativeBridge();
+  checkLegalConsent();
   initReveal();
   applyEffects();
   SECTION_MANAGER.init();
