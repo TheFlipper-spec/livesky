@@ -6,7 +6,7 @@
 графики, качество воздуха, офлайн-режим и умные погодные уведомления.
 
 [![Live Site](https://img.shields.io/badge/🌤%20Открыть%20сайт-LiveSky-38bdf8?style=for-the-badge&labelColor=0b1120)](https://theflipper-spec.github.io/livesky/)
-[![Android Beta](https://img.shields.io/badge/Android-Beta%20APK-3ddc84?style=for-the-badge&logo=android&logoColor=white&labelColor=0b1120)](https://github.com/TheFlipper-spec/livesky/releases/tag/v2.0.0-android-beta.1)
+[![Android Release](https://img.shields.io/badge/Android-Release%20APK-3ddc84?style=for-the-badge&logo=android&logoColor=white&labelColor=0b1120)](https://github.com/TheFlipper-spec/livesky/releases)
 
 [![Release](https://img.shields.io/github/v/release/TheFlipper-spec/livesky?include_prereleases&style=flat-square&color=818cf8)](https://github.com/TheFlipper-spec/livesky/releases)
 [![Issues](https://img.shields.io/github/issues/TheFlipper-spec/livesky?style=flat-square&color=f87171)](https://github.com/TheFlipper-spec/livesky/issues)
@@ -131,15 +131,15 @@
 
 ## 📱 Android
 
-### [⬇️ Скачать LiveSky Android Beta](https://github.com/TheFlipper-spec/livesky/releases/tag/v2.0.0-android-beta.1)
+### [⬇️ Скачать LiveSky Android](https://github.com/TheFlipper-spec/livesky/releases)
 
 - Android 7.0+ (API 24), Application ID `io.github.theflipperspec.livesky`
 - нативная геолокация, уведомления и обработка кнопки «Назад»
 - фирменные adaptive icons и splash screen
 
-> Beta APK подписан отладочным ключом и предназначен для тестирования. Перед установкой
-> новой beta-версии может потребоваться удалить предыдущую сборку. Для стабильных
-> обновлений и Google Play нужен постоянный release-keystore.
+### Установка
+
+Актуальные стабильные release-сборки Android-приложения доступны во вкладке Releases.
 
 ## 🚀 Запуск локально
 
@@ -198,6 +198,9 @@ docs/                        # публикуемый сайт (GitHub Pages)
 │   ├── i18n.js              # словари RU/EN/ES + коды погоды WMO
 │   └── app.js               # логика (PWA, FPS, радар, алерты, Smart Visibility,
 │                            #   minutely nowcast, scrub графика, LifeSky)
+├── legal/                   # юридические документы
+│   ├── privacy.html         # политика конфиденциальности
+│   └── terms.html           # пользовательское соглашение
 ├── manifest.webmanifest     # PWA-манифест
 ├── sw.js                    # service worker (кеш оболочки + прогноз + push)
 └── icons/                   # иконки приложения (16…512 px)

@@ -140,6 +140,10 @@
             <button class="dd-item" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location">Моё местоположение</span></button>
             <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
             <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
+
+            <div class="dd-group-label" data-translate="legal_info">Юридическая информация</div>
+            <a class="dd-item" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
+            <a class="dd-item" href="legal/privacy.html" target="_blank" rel="noopener"><i class="ph ph-shield-check"></i><span data-translate="privacy_policy">Политика конфиденциальности</span></a>
           </div>
         </div>
       </div>
@@ -392,10 +396,32 @@
       <div class="footer-links">
         <a class="footer-link" href="https://t.me/liveskydev" target="_blank" rel="noopener"><i class="ph-fill ph-telegram-logo"></i><span data-translate="footer_telegram">LiveSky/Dev</span></a>
         <a class="footer-link" href="https://github.com/TheFlipper-spec/livesky/issues" target="_blank" rel="noopener"><i class="ph-bold ph-chat-teardrop-text"></i><span data-translate="footer_feedback">Обратная связь</span></a>
+        <a class="footer-link" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
+        <a class="footer-link" href="legal/privacy.html" target="_blank" rel="noopener"><i class="ph ph-shield-check"></i><span data-translate="privacy_policy">Политика конфиденциальности</span></a>
       </div>
       <p class="footer-copy"><span data-translate="footer_copy">LiveSky Weather Pro · данные: Open-Meteo</span><br />
         Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Maps by <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL</a> &amp; OSM · Geocoding by Open-Meteo / Nominatim</p>
     </footer>
+  </div>
+
+  <!-- ==== First-launch Legal Consent Modal ==== -->
+  <div class="consent-overlay hidden" id="consent-modal" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+    <div class="consent-card">
+      <div class="consent-icon"><i class="ph-fill ph-shield-check"></i></div>
+      <h2 id="consent-title" data-translate="consent_title">Добро пожаловать в LiveSky</h2>
+      <p class="consent-text" id="consent-text">
+        <span data-translate="consent_p1">Добро пожаловать в LiveSky. Нажимая «Продолжить», вы подтверждаете, что ознакомились и согласны с нашим</span>
+        <a href="legal/terms.html" target="_blank" rel="noopener" class="legal-link" data-translate="consent_terms">Пользовательским соглашением</a>
+        <span data-translate="consent_and">и</span>
+        <a href="legal/privacy.html" target="_blank" rel="noopener" class="legal-link" data-translate="consent_privacy">Политикой конфиденциальности</a>.
+      </p>
+      <div class="consent-actions">
+        <button class="btn btn-primary consent-btn" id="consent-accept-btn">
+          <i class="ph-bold ph-check"></i>
+          <span data-translate="consent_btn">Продолжить</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- ==== Details modal ==== -->

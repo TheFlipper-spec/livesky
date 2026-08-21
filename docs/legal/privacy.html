@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="adaptive">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Политика конфиденциальности — LiveSky Weather Pro</title>
+  <meta name="description" content="Политика конфиденциальности и обработки данных погодного сервиса LiveSky." />
+  <meta name="theme-color" content="#05070f" />
+  <link rel="icon" href="../favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="../icons/icon-32.png" />
+  <link rel="apple-touch-icon" href="../icons/icon-180.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2"></script>
+  <link rel="stylesheet" href="../css/app.css?v=34" />
+  <style>
+    .legal-page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 16px 48px;
+      max-width: 860px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 10;
+    }
+    .legal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 28px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--stroke);
+    }
+    .legal-card {
+      background: var(--surface);
+      border: 1px solid var(--stroke-strong);
+      border-radius: var(--radius-lg);
+      padding: 32px 28px;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: blur(24px) saturate(160%);
+      -webkit-backdrop-filter: blur(24px) saturate(160%);
+    }
+    .legal-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      color: var(--accent);
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    .legal-card h1 {
+      font-family: 'Unbounded', sans-serif;
+      font-size: clamp(22px, 4vw, 30px);
+      font-weight: 800;
+      line-height: 1.25;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+    .legal-updated {
+      font-size: 13px;
+      color: var(--text-3);
+      margin-bottom: 24px;
+    }
+    .legal-highlight {
+      background: rgba(56, 189, 248, 0.08);
+      border-left: 3px solid var(--accent);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 16px 20px;
+      margin: 24px 0;
+      font-size: 15px;
+      line-height: 1.65;
+      color: var(--text);
+      font-weight: 500;
+    }
+    .legal-section {
+      margin-top: 28px;
+    }
+    .legal-section h2 {
+      font-family: 'Unbounded', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .legal-section h2 i {
+      color: var(--accent);
+      font-size: 20px;
+    }
+    .legal-section p, .legal-section ul {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-2);
+      margin-bottom: 12px;
+    }
+    .legal-section ul {
+      padding-left: 20px;
+    }
+    .legal-section li {
+      margin-bottom: 6px;
+    }
+    .legal-nav {
+      margin-top: 32px;
+      padding-top: 20px;
+      border-top: 1px solid var(--stroke);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    @media (max-width: 600px) {
+      .legal-card { padding: 22px 18px; }
+      .legal-page { padding: 16px 12px 32px; }
+    }
+  </style>
+</head>
+<body data-theme="adaptive">
+  <!-- Background layers -->
+  <div id="bg-container">
+    <div id="bg-layer-1" class="bg-layer active" style="background: linear-gradient(180deg, #0a1020 0%, #05070f 100%);"></div>
+  </div>
+  <div id="aurora">
+    <div class="aurora-blob blob-a"></div>
+    <div class="aurora-blob blob-b"></div>
+  </div>
+  <div id="vignette"></div>
+
+  <div class="legal-page">
+    <header class="legal-header">
+      <a href="../index.html" class="brand" title="LiveSky Weather Pro">
+        <div class="brand-logo"><i class="ph-fill ph-wind"></i></div>
+        <div>
+          <div class="brand-name">LiveSky</div>
+          <div class="brand-tag">PRO WEATHER</div>
+        </div>
+      </a>
+      <a href="../index.html" class="btn"><i class="ph-bold ph-arrow-left"></i> <span>На главную</span></a>
+    </header>
+
+    <main class="legal-card">
+      <div class="legal-badge"><i class="ph-fill ph-shield-check"></i> Privacy Policy</div>
+      <h1>Политика конфиденциальности</h1>
+      <div class="legal-updated">Сервис LiveSky (Web &amp; Android) · Версия 2.0</div>
+
+      <div class="legal-highlight">
+        <p><strong>Сервис LiveSky уважает вашу конфиденциальность. Приложение может запрашивать доступ к данным о вашем местоположении (геолокации) исключительно в момент использования для обработки запроса к внешним метеорологическим API (например, Open-Meteo) и предоставления точного локального прогноза погоды. Сервис не сохраняет историю перемещений, не связывает координаты с личностью пользователя и не передает данные третьим лицам. Использование приложения подразумевает согласие с данной политикой обработки технических геоданных.</strong></p>
+      </div>
+
+      <section class="legal-section">
+        <h2><i class="ph ph-map-pin"></i> 1. Использование геоданных</h2>
+        <p>При нажатии кнопки определения геолокации или при первом запуске приложения запрашивается разрешение на доступ к координатам устройства (широта и долгота). Эти данные используются исключительно для:</p>
+        <ul>
+          <li>Получения локального прогноза погоды, индекса качества воздуха и данных об осадках;</li>
+          <li>Отображения названия населенного пункта через API обратного геокодирования;</li>
+          <li>Позиционирования карты осадков на текущей точке.</li>
+        </ul>
+        <p>Координаты обрабатываются в оперативной памяти и не передаются ни на какие серверы, кроме указанных поставщиков метеоданных.</p>
+      </section>
+
+      <section class="legal-section">
+        <h2><i class="ph ph-cloud-sun"></i> 2. Внешние метеорологические API</h2>
+        <p>Приложение LiveSky функционирует на стороне клиента (Client-Side) и обращается к открытым и проверенным сервисам:</p>
+        <ul>
+          <li><strong>Open-Meteo API</strong> — расчет погодных моделей и индексов качества воздуха (не собирает персональные данные);</li>
+          <li><strong>RainViewer API</strong> — радарные карты осадков в реальном времени;</li>
+          <li><strong>MapLibre GL / OpenStreetMap</strong> — отображение картографической подложки.</li>
+        </ul>
+      </section>
+
+      <section class="legal-section">
+        <h2><i class="ph ph-hard-drive"></i> 3. Локальное хранение (LocalStorage &amp; Cache)</h2>
+        <p>Приложение сохраняет на вашем устройстве следующие настройки:</p>
+        <ul>
+          <li>Выбранный язык интерфейса, цветовая тема и единицы измерения;</li>
+          <li>Список избранных и недавних городов для быстрого переключения;</li>
+          <li>Кеш последнего полученного прогноза для поддержки офлайн-режима;</li>
+          <li>Факт принятия настоящего соглашения и политики конфиденциальности.</li>
+        </ul>
+        <p>Данные настройки не синхронизируются со сторонними серверами и могут быть полностью очищены в настройках браузера или приложения.</p>
+      </section>
+
+      <section class="legal-section">
+        <h2><i class="ph ph-bell"></i> 4. Уведомления</h2>
+        <p>Погодные уведомления о резких изменениях и опасных погодных явлениях формируются локально на вашем устройстве без использования сторонних рекламных трекеров.</p>
+      </section>
+
+      <div class="legal-nav">
+        <a href="terms.html" class="footer-link"><i class="ph-bold ph-file-text"></i> <span>Пользовательское соглашение →</span></a>
+        <a href="../index.html" class="btn btn-primary"><i class="ph-bold ph-check"></i> <span>Вернуться к прогнозу</span></a>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

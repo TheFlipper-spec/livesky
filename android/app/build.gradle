@@ -16,10 +16,42 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            def keystoreBase64 = System.getenv("KEYSTORE_BASE64")
+            def keystorePath = System.getenv("KEYSTORE_FILE") ?: (project.findProperty('RELEASE_STORE_FILE') ?: "${rootDir}/app/release.keystore")
+            def keystoreFile = file(keystorePath)
+
+            // Decode keystore from Base64 environment variable if provided
+            if (keystoreBase64 && !keystoreFile.exists()) {
+                keystoreFile.parentFile?.mkdirs()
+                keystoreFile.bytes = keystoreBase64.decodeBase64()
+            }
+
+            def storePasswordVal = System.getenv("KEYSTORE_PASSWORD") ?: (project.findProperty('RELEASE_STORE_PASSWORD') ?: "")
+            def keyAliasVal = System.getenv("KEY_ALIAS") ?: (project.findProperty('RELEASE_KEY_ALIAS') ?: "")
+            def keyPasswordVal = System.getenv("KEY_PASSWORD") ?: (project.findProperty('RELEASE_KEY_PASSWORD') ?: "")
+
+            if (keystoreFile.exists() && storePasswordVal && keyAliasVal) {
+                storeFile keystoreFile
+                storePassword storePasswordVal
+                keyAlias keyAliasVal
+                keyPassword (keyPasswordVal ?: storePasswordVal)
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            def keystorePath = System.getenv("KEYSTORE_FILE") ?: (project.findProperty('RELEASE_STORE_FILE') ?: "${rootDir}/app/release.keystore")
+            def storePasswordVal = System.getenv("KEYSTORE_PASSWORD") ?: (project.findProperty('RELEASE_STORE_PASSWORD') ?: "")
+            def keyAliasVal = System.getenv("KEY_ALIAS") ?: (project.findProperty('RELEASE_KEY_ALIAS') ?: "")
+
+            if ((file(keystorePath).exists() || System.getenv("KEYSTORE_BASE64")) && storePasswordVal && keyAliasVal) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

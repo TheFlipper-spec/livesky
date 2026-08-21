@@ -86,7 +86,7 @@ function pad(n) { return String(n).padStart(2, '0'); }
 function genForecast() {
   const hourly = { time: [], temperature_2m: [], apparent_temperature: [], precipitation_probability: [], precipitation: [], weathercode: [], windspeed_10m: [], windgusts_10m: [], winddirection_10m: [], relativehumidity_2m: [], surface_pressure: [], dewpoint_2m: [], visibility: [], uv_index: [], is_day: [] };
   const daily = { time: [], weathercode: [], temperature_2m_max: [], temperature_2m_min: [], sunrise: [], sunset: [], precipitation_probability_max: [], precipitation_sum: [], uv_index_max: [], windspeed_10m_max: [], winddirection_10m_dominant: [] };
-  const base = new Date(); base.setHours(0, 0, 0, 0);
+  const base = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })); base.setHours(0, 0, 0, 0);
   for (let dI = -16; dI <= 16; dI++) {
     const day = new Date(base.getTime() + dI * 86400000);
     const ds = `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
@@ -190,7 +190,7 @@ function genForecast() {
 
 function genAir() {
   const hourly = { time: [], pm2_5: [], pm10: [], nitrogen_dioxide: [], ozone: [], european_aqi: [] };
-  const base = new Date(); base.setHours(0, 0, 0, 0);
+  const base = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Moscow' })); base.setHours(0, 0, 0, 0);
   for (let h = 0; h < 72; h++) {
     const d = new Date(base.getTime() + h * 3600000);
     hourly.time.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:00`);
@@ -292,9 +292,48 @@ setTimeout(() => {
       assert(/ACCESS_COARSE_LOCATION/.test(manifest) && /ACCESS_FINE_LOCATION/.test(manifest), 'Android location permissions are declared');
       assert(/SCHEDULE_EXACT_ALARM[\s\S]*tools:node="remove"/.test(manifest), 'unused restricted exact-alarm permission is removed');
       assert(/nativePlugin\('Geolocation'\)/.test(appSrc) && /nativePlugin\('LocalNotifications'\)/.test(appSrc) && /if \(isNativeApp\(\)\) return/.test(appSrc), 'web app includes native Capacitor adapters and skips PWA cache in Android');
+
+      /* Legal compliance static documents */
+      const privacyHtml = fs.readFileSync(path.join(DOCS, 'legal', 'privacy.html'), 'utf8');
+      const termsHtml = fs.readFileSync(path.join(DOCS, 'legal', 'terms.html'), 'utf8');
+      assert(privacyHtml.includes('Сервис LiveSky уважает вашу конфиденциальность') &&
+             privacyHtml.includes('Open-Meteo') &&
+             privacyHtml.includes('не сохраняет историю перемещений'),
+             'legal/privacy.html exists and contains complete privacy policy compliance text');
+      assert(termsHtml.includes('Пункт: Ограничение ответственности за метеорологические данные') &&
+             termsHtml.includes('автоматической математической экстраполяции') &&
+             termsHtml.includes('не является сертифицированной государственной системой гражданского оповещения'),
+             'legal/terms.html exists and contains complete terms of service liability limitation text');
+
+      /* Release signing configuration and CI workflow */
+      const appGradle = fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8');
+      assert(appGradle.includes('signingConfigs') && appGradle.includes('KEYSTORE_PASSWORD') && appGradle.includes('KEYSTORE_BASE64'),
+             'android/app/build.gradle contains release signingConfigs with environment variables');
+      const releaseWorkflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'android-release.yml'), 'utf8');
+      assert(releaseWorkflow.includes('assembleRelease') && releaseWorkflow.includes('KEYSTORE_BASE64') && releaseWorkflow.includes('upload-artifact'),
+             '.github/workflows/android-release.yml exists and builds signed release APK');
     }
     assert(typeof nativeBackHandler === 'function', 'Capacitor back-button listener accepts a direct listener handle');
     assert(q('boot-error').classList.contains('hidden'), 'Capacitor native bridge does not block application startup');
+
+    /* Legal consent modal tests */
+    assert(q('consent-modal') !== null, 'consent modal element exists in DOM');
+    assert(!q('consent-modal').classList.contains('hidden'), 'consent modal is displayed on first launch');
+    assert(q('consent-modal').querySelector('a[href*="terms.html"]') !== null &&
+           q('consent-modal').querySelector('a[href*="privacy.html"]') !== null,
+           'consent modal contains links to terms and privacy policy');
+    q('consent-accept-btn').click();
+    assert(q('consent-modal').classList.contains('hidden'), 'consent modal closes after clicking continue button');
+    assert(window.localStorage.getItem('livesky:legal_accepted') === 'true', 'legal acceptance is persisted in localStorage');
+
+    /* Footer & Menu legal links */
+    assert(document.querySelector('.site-footer a[href*="legal/terms.html"]') !== null &&
+           document.querySelector('.site-footer a[href*="legal/privacy.html"]') !== null,
+           'site footer contains links to legal terms and privacy policy');
+    assert(document.querySelector('#main-menu a[href*="legal/terms.html"]') !== null &&
+           document.querySelector('#main-menu a[href*="legal/privacy.html"]') !== null,
+           'settings / main-menu contains links to legal terms and privacy policy');
+
     assert(q('loader').classList.contains('done'), 'loader hidden after data load');
     assert(/[-\d]+°/.test(q('temperature').textContent), 'temperature rendered: ' + q('temperature').textContent);
     assert(!q('temp-unit'), 'double degree span removed');
