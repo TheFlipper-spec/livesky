@@ -41,7 +41,8 @@ const el = {
   radarBadge: $('radar-badge'), radarLive: $('radar-live'), radarOpacity: $('radar-opacity'),
   radarSpeed: $('radar-speed'), radarTicks: $('radar-ticks'),
   mapRadarBadge: $('map-radar-badge'),
-  consentModal: $('consent-modal'), consentAcceptBtn: $('consent-accept-btn')
+  consentModal: $('consent-modal'), consentAcceptBtn: $('consent-accept-btn'),
+  consentCheckbox: $('consent-checkbox'), consentError: $('consent-error')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -2608,25 +2609,113 @@ function releaseFocus(container) {
   lastFocused = null;
 }
 
-function checkLegalConsent() {
+/* ---------------- legal consent gate ----------------
+   The app is unreachable until the user explicitly accepts the Terms and the
+   Privacy Policy. The stored record is validated field by field on every boot
+   and re-validated whenever the tab regains focus or storage changes, so a
+   cleared, tampered or outdated record locks the interface again. */
+const CONSENT_VERSION = '2.1';
+const CONSENT_KEY = 'livesky:legal_consent';
+
+function readConsentRecord() {
+  const rec = store.get(CONSENT_KEY, null);
+  if (!rec || typeof rec !== 'object') return null;
+  return rec;
+}
+
+/* strict validation — anything unexpected means "not accepted" */
+function hasValidConsent() {
+  const rec = readConsentRecord();
+  if (!rec) return false;
+  if (rec.accepted !== true) return false;
+  if (rec.version !== CONSENT_VERSION) return false;   /* documents updated → ask again */
+  if (rec.terms !== true || rec.privacy !== true) return false;
+  if (typeof rec.ts !== 'number' || !isFinite(rec.ts) || rec.ts <= 0) return false;
+  if (rec.ts > Date.now() + 86400000) return false;    /* clock-skew / tampering */
+  return true;
+}
+
+function lockAppForConsent() {
+  document.documentElement.classList.add('consent-locked');
   if (!el.consentModal) return;
-  const accepted = store.get('livesky:legal_accepted', false);
-  if (!accepted) {
+  if (el.consentModal.classList.contains('hidden') || !el.consentModal._liveskyLocked) {
     el.consentModal.classList.remove('hidden');
+    el.consentModal._liveskyLocked = true;
     document.body.classList.add('no-scroll');
+    syncConsentButton();
     trapFocus(el.consentModal);
   }
 }
 
-function acceptLegalConsent() {
-  store.set('livesky:legal_accepted', true);
-  if (el.consentModal) {
-    el.consentModal.classList.add('hidden');
-    if (!el.modal || !el.modal.classList.contains('open')) {
-      document.body.classList.remove('no-scroll');
-    }
-    releaseFocus(el.consentModal);
+function unlockAppAfterConsent() {
+  document.documentElement.classList.remove('consent-locked');
+  if (!el.consentModal) return;
+  el.consentModal.classList.add('hidden');
+  el.consentModal._liveskyLocked = false;
+  if (!el.modal || !el.modal.classList.contains('open')) {
+    document.body.classList.remove('no-scroll');
   }
+  releaseFocus(el.consentModal);
+}
+
+function consentLocked() {
+  return document.documentElement.classList.contains('consent-locked') ||
+    !!(el.consentModal && !el.consentModal.classList.contains('hidden'));
+}
+
+/* the Continue button stays disabled until the checkbox is ticked */
+function syncConsentButton() {
+  const ok = !!(el.consentCheckbox && el.consentCheckbox.checked);
+  if (el.consentAcceptBtn) {
+    el.consentAcceptBtn.disabled = !ok;
+    el.consentAcceptBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+  }
+  if (ok && el.consentError) el.consentError.classList.add('hidden');
+}
+
+function rejectConsentAttempt() {
+  if (el.consentError) el.consentError.classList.remove('hidden');
+  const card = el.consentModal && el.consentModal.querySelector('.consent-card');
+  if (card) {
+    card.classList.remove('shake');
+    void card.offsetWidth;
+    card.classList.add('shake');
+  }
+  if (el.consentCheckbox && el.consentCheckbox.focus) el.consentCheckbox.focus();
+}
+
+function checkLegalConsent() {
+  if (!el.consentModal) return;
+  if (hasValidConsent()) unlockAppAfterConsent();
+  else lockAppForConsent();
+}
+
+function acceptLegalConsent() {
+  /* thorough check: the box must be ticked, no shortcut through a stray click */
+  if (!el.consentCheckbox || !el.consentCheckbox.checked) {
+    rejectConsentAttempt();
+    return;
+  }
+  store.set(CONSENT_KEY, {
+    accepted: true,
+    version: CONSENT_VERSION,
+    terms: true,
+    privacy: true,
+    ts: Date.now()
+  });
+  store.set('livesky:legal_accepted', true);
+  /* never trust the write blindly — verify it round-tripped before unlocking */
+  if (!hasValidConsent()) {
+    rejectConsentAttempt();
+    return;
+  }
+  unlockAppAfterConsent();
+}
+
+/* continuous re-validation: clearing or editing the record re-locks the app */
+function guardLegalConsent() {
+  if (!el.consentModal) return;
+  if (!hasValidConsent()) lockAppForConsent();
 }
 
 function openModal(title, subtitle, bodyHtml) {
@@ -3704,6 +3793,23 @@ function bindEvents() {
   if (el.consentAcceptBtn) {
     on(el.consentAcceptBtn, 'click', acceptLegalConsent);
   }
+  if (el.consentCheckbox) {
+    on(el.consentCheckbox, 'change', syncConsentButton);
+    on(el.consentCheckbox, 'keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); el.consentCheckbox.checked = !el.consentCheckbox.checked; syncConsentButton(); }
+    });
+  }
+  if (el.consentModal) {
+    /* the overlay is not dismissible: clicking outside the card only nudges the user */
+    on(el.consentModal, 'click', (e) => {
+      if (e.target === el.consentModal) rejectConsentAttempt();
+    });
+    /* re-validate the stored record whenever the page could have been tampered with */
+    on(window, 'storage', (e) => { if (!e || !e.key || e.key === CONSENT_KEY) guardLegalConsent(); });
+    on(window, 'focus', guardLegalConsent);
+    on(window, 'pageshow', guardLegalConsent);
+    on(document, 'visibilitychange', () => { if (!document.hidden) guardLegalConsent(); });
+  }
 
   on(el.modalClose, 'click', closeModal);
   on(el.modal, 'click', (e) => { if (e.target === el.modal) closeModal(); });
@@ -3731,8 +3837,12 @@ function bindEvents() {
   });
 
   document.addEventListener('keydown', (e) => {
+    /* while the legal gate is up no shortcut may reach the application */
+    if (consentLocked()) {
+      if (e.key === 'Escape') e.preventDefault();
+      return;
+    }
     if (e.key === 'Escape') {
-      if (el.consentModal && !el.consentModal.classList.contains('hidden')) return;
       if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
       if (el.modal.classList.contains('open')) { closeModal(); return; }
       setMenuOpen(false);
@@ -4732,7 +4842,7 @@ function initNativeBridge() {
       /* Capacitor's addListener can return a PluginListenerHandle directly
          instead of a Promise. Promise.resolve supports both API shapes. */
       Promise.resolve(nativeApp.addListener('backButton', () => {
-        if (el.consentModal && !el.consentModal.classList.contains('hidden')) return;
+        if (consentLocked()) return;
         if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
         if (el.modal.classList.contains('open')) { closeModal(); return; }
         if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
