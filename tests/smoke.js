@@ -313,12 +313,14 @@ setTimeout(() => {
 
       /* Every route from a legal document back into the app must explicitly
          enter the consent flow instead of relying on a possibly stale record. */
-      const legalReturnLinks = [privacyHtml, termsHtml].flatMap((src) =>
-        [...src.matchAll(/href="([^"#]*index\.html[^"#]*)"/g)].map((m) => m[1])
-      );
-      assert(legalReturnLinks.length === 6 &&
-             legalReturnLinks.every((href) => href === '../index.html?consent=required'),
-             'all legal-page return links request fresh consent');
+      const termsReturnLinks = [...termsHtml.matchAll(/href="([^"#]*index\.html[^"#]*)"/g)].map((m) => m[1]);
+      const privacyReturnLinks = [...privacyHtml.matchAll(/href="([^"#]*index\.html[^"#]*)"/g)].map((m) => m[1]);
+      assert(termsReturnLinks.length === 3 &&
+             termsReturnLinks.every((href) => href === '../index.html?consent=required'),
+             'terms-page return links request a fresh ToS confirmation');
+      assert(privacyReturnLinks.length === 3 &&
+             privacyReturnLinks.every((href) => href === '../index.html'),
+             'privacy-page return links do not re-lock the app');
 
       /* Regression: even a previously valid record must not let the legal-page
          "На главную" route bypass the consent dialog. Only the inline gate is
@@ -328,16 +330,18 @@ setTimeout(() => {
         runScripts: 'dangerously',
         beforeParse(w) {
           w.localStorage.setItem('livesky:legal_consent', JSON.stringify({
-            accepted: true, version: '2.1', terms: true, privacy: true, ts: Date.now()
+            accepted: true, version: '3.0', terms: true, privacy: false, ts: Date.now()
           }));
           w.localStorage.setItem('livesky:legal_accepted', 'true');
+          w.localStorage.setItem('livesky:tos_accepted', 'true');
         }
       });
       assert(forcedReturnDom.window.document.documentElement.classList.contains('consent-locked') &&
              forcedReturnDom.window.localStorage.getItem('livesky:legal_consent') === null &&
              forcedReturnDom.window.localStorage.getItem('livesky:legal_accepted') === null &&
+             forcedReturnDom.window.localStorage.getItem('livesky:tos_accepted') === null &&
              forcedReturnDom.window.sessionStorage.getItem('livesky:legal_consent_required') === 'true',
-             'legal-page return revokes stale consent and keeps the app locked');
+             'terms-page return revokes stale ToS and keeps the app locked');
       assert(!new URL(forcedReturnDom.window.location.href).searchParams.has('consent'),
              'one-time consent query is removed to avoid re-locking after acceptance');
       forcedReturnDom.window.close();
@@ -364,49 +368,88 @@ setTimeout(() => {
     const consentCss = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
     assert(/html\.consent-locked body > \*:not\(#consent-modal\)/.test(consentCss),
            'CSS makes everything but the consent dialog unreachable while locked');
-    assert(q('consent-modal').querySelector('a[href*="terms.html"]') !== null &&
-           q('consent-modal').querySelector('a[href*="privacy.html"]') !== null,
-           'consent modal contains links to terms and privacy policy');
-    assert(q('consent-checkbox') !== null && q('consent-checkbox').checked === false, 'explicit consent checkbox exists and starts unchecked');
-    assert(q('consent-accept-btn').disabled === true, 'continue button is disabled until the checkbox is ticked');
+    assert(q('consent-modal').querySelector('a[href*="terms.html"]') !== null,
+           'ToS modal contains a link to the terms of service');
+    assert(q('consent-modal').querySelector('a[href*="privacy.html"]') === null,
+           'ToS modal does not require the Privacy Policy');
+    assert(/вероятност|AS IS|как есть/i.test(q('consent-modal').textContent),
+           'ToS modal warns that forecasts are probabilistic and provided AS IS');
+    assert(q('consent-accept-btn') !== null && q('consent-accept-btn').disabled !== true,
+           'ToS has a single enabled Accept-and-continue button');
+    assert(/принять и продолжить/i.test(q('consent-accept-btn').textContent),
+           'ToS button is labelled Accept and continue');
     q('consent-accept-btn').click();
-    assert(!q('consent-modal').classList.contains('hidden') && window.localStorage.getItem('livesky:legal_consent') === null,
-           'clicking continue without ticking the checkbox does not grant access');
-    q('consent-checkbox').checked = true;
-    q('consent-checkbox').dispatchEvent(new window.Event('change'));
-    assert(q('consent-accept-btn').disabled === false, 'continue button unlocks once the checkbox is ticked');
-    q('consent-accept-btn').click();
-    assert(q('consent-modal').classList.contains('hidden'), 'consent modal closes after clicking continue button');
-    assert(!document.documentElement.classList.contains('consent-locked'), 'document unlocks only after a valid consent');
+    assert(q('consent-modal').classList.contains('hidden'), 'consent modal closes after accepting ToS');
+    assert(!document.documentElement.classList.contains('consent-locked'), 'document unlocks only after a valid ToS');
     assert(window.localStorage.getItem('livesky:legal_accepted') === 'true', 'legal acceptance is persisted in localStorage');
+    assert(window.localStorage.getItem('livesky:tos_accepted') === 'true', 'ToS acceptance is persisted in localStorage');
     {
       const rec = JSON.parse(window.localStorage.getItem('livesky:legal_consent'));
-      assert(rec && rec.accepted === true && rec.terms === true && rec.privacy === true &&
-             rec.version === '2.1' && typeof rec.ts === 'number',
-             'consent record stores version, both documents and a timestamp');
+      assert(rec && rec.accepted === true && rec.terms === true && rec.privacy !== true &&
+             rec.version === '3.0' && typeof rec.ts === 'number',
+             'consent record stores ToS only (privacy is independent) plus version and timestamp');
+      /* Sequential Step 2 opens immediately after ToS, before any geolocation. */
+      assert(q('privacy-modal') !== null && !q('privacy-modal').classList.contains('hidden'),
+             'privacy modal opens sequentially right after ToS');
+      assert(window.localStorage.getItem('livesky:privacy_accepted') !== 'true',
+             'accepting ToS does not grant privacy / geolocation consent');
+
       /* tampering / clearing the record must lock the app again */
       window.localStorage.setItem('livesky:legal_consent', JSON.stringify({ accepted: true, version: '0.1', terms: true, privacy: true, ts: Date.now() }));
       window.dispatchEvent(new window.Event('focus'));
       assert(!q('consent-modal').classList.contains('hidden') && document.documentElement.classList.contains('consent-locked'),
              'outdated consent version re-locks the app');
       window.localStorage.setItem('livesky:legal_consent', JSON.stringify(rec));
-      q('consent-checkbox').checked = true;
-      q('consent-checkbox').dispatchEvent(new window.Event('change'));
       q('consent-accept-btn').click();
       assert(q('consent-modal').classList.contains('hidden'), 'valid consent restores access');
 
-      /* Returning from a policy page overrides even a valid stored record until
-         the user explicitly checks the box and confirms again. */
+      /* Returning from the Terms page overrides even a valid stored record until
+         the user explicitly confirms again. */
       window.sessionStorage.setItem('livesky:legal_consent_required', 'true');
       window.dispatchEvent(new window.Event('focus'));
       assert(!q('consent-modal').classList.contains('hidden') && document.documentElement.classList.contains('consent-locked'),
              'fresh-consent marker re-locks an already accepted app');
-      q('consent-checkbox').checked = true;
-      q('consent-checkbox').dispatchEvent(new window.Event('change'));
       q('consent-accept-btn').click();
       assert(q('consent-modal').classList.contains('hidden') &&
              window.sessionStorage.getItem('livesky:legal_consent_required') === null,
              'explicit confirmation clears the marker and restores access');
+    }
+
+    /* Sequential Step 2 + just-in-time geo button. */
+    assert(q('privacy-modal') !== null, 'privacy consent modal exists in DOM');
+    assert(!q('privacy-modal').classList.contains('hidden'), 'privacy modal is showing after the ToS step');
+    {
+      const geoCount = () => {
+        const probe = document.createElement('script');
+        probe.textContent = 'window.__geoN = state.geoRequests || 0;';
+        document.body.appendChild(probe);
+        return window.__geoN || 0;
+      };
+      assert(geoCount() === 0, 'geolocation has not run before the user decides on Step 2');
+      assert(/геолокац|Open-Meteo|Политик/i.test(q('privacy-modal').textContent),
+             'privacy modal explains why location is needed and links the policy');
+      assert(q('privacy-cancel-btn') !== null && q('privacy-accept-btn') !== null,
+             'privacy modal has Decline and Allow buttons');
+
+      q('privacy-cancel-btn').click();
+      assert(q('privacy-modal').classList.contains('hidden'), 'privacy modal closes on Decline');
+      assert(geoCount() === 0, 'Decline aborts geolocation (no native API call)');
+      assert(window.localStorage.getItem('livesky:privacy_accepted') === 'false',
+             'Decline persists privacy_accepted = false');
+      assert(q('location').textContent === 'Москва', 'Decline keeps the default city');
+
+      q('geo-item').click();
+      assert(!q('privacy-modal').classList.contains('hidden'), 'privacy modal reappears when the user later taps geolocation');
+      q('privacy-accept-btn').click();
+      assert(q('privacy-modal').classList.contains('hidden'), 'privacy modal closes on Allow');
+      assert(window.localStorage.getItem('livesky:privacy_accepted') === 'true',
+             'Allow persists privacy_accepted in localStorage');
+      assert(geoCount() === 1, 'Allow continues to the Geolocation API');
+
+      q('geo-item').click();
+      assert(q('privacy-modal').classList.contains('hidden'), 'accepted privacy is not asked again');
+      assert(geoCount() === 2, 'later geolocation clicks proceed immediately');
+      if (q('loader')) q('loader').classList.add('done');
     }
 
     /* Footer & Menu legal links */

@@ -42,7 +42,9 @@ const el = {
   radarSpeed: $('radar-speed'), radarTicks: $('radar-ticks'),
   mapRadarBadge: $('map-radar-badge'),
   consentModal: $('consent-modal'), consentAcceptBtn: $('consent-accept-btn'),
-  consentCheckbox: $('consent-checkbox'), consentError: $('consent-error')
+  consentCheckbox: $('consent-checkbox'), consentError: $('consent-error'),
+  privacyModal: $('privacy-modal'), privacyAcceptBtn: $('privacy-accept-btn'),
+  privacyCancelBtn: $('privacy-cancel-btn')
 };
 /* safe event binding — never crashes if an element is missing */
 function on(node, ev, fn) { if (node) node.addEventListener(ev, fn); }
@@ -819,27 +821,39 @@ function handleLocationFailure() {
   if (!geoWarned) { geoWarned = true; toast(t('toast_geo_denied'), 'info'); }
   fetchWeather();
 }
-async function getUserLocation(notify) {
+/* Interceptor: never call the native Geolocation API until the user has
+   independently accepted the Privacy Policy. Cancel leaves the app usable
+   via manual city search. Continuation is synchronous so a granted click
+   proceeds in the same turn. */
+function getUserLocation(notify) {
+  if (consentLocked()) return;
+  requestPrivacyConsent(() => requestUserPosition(notify));
+}
+function requestUserPosition(notify) {
+  state.geoRequests = (state.geoRequests || 0) + 1;
   showLoader();
   const options = { enableHighAccuracy: true, timeout: 7000, maximumAge: 300000 };
   const nativeGeo = nativePlugin('Geolocation');
 
   if (nativeGeo) {
-    try {
-      let permission = await nativeGeo.checkPermissions();
-      if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') {
-        permission = await nativeGeo.requestPermissions();
+    (async () => {
+      try {
+        let permission = await nativeGeo.checkPermissions();
+        if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') {
+          permission = await nativeGeo.requestPermissions();
+        }
+        if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('Location permission denied');
+        const pos = await nativeGeo.getCurrentPosition(options);
+        await applyUserPosition(pos, notify);
+      } catch (e) {
+        handleLocationFailure();
       }
-      if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('Location permission denied');
-      const pos = await nativeGeo.getCurrentPosition(options);
-      await applyUserPosition(pos, notify);
-    } catch (e) {
-      handleLocationFailure();
-    }
+    })();
     return;
   }
 
   if (!navigator.geolocation) { fetchWeather(); return; }
+  showLoader();
   navigator.geolocation.getCurrentPosition(
     (pos) => { applyUserPosition(pos, notify).catch(handleLocationFailure); },
     handleLocationFailure,
@@ -2577,6 +2591,7 @@ function modalFocusables(container) {
 function onTrapKey(e) {
   if (e.key !== 'Tab') return;
   const container = (el.consentModal && !el.consentModal.classList.contains('hidden')) ? el.consentModal
+    : (el.privacyModal && !el.privacyModal.classList.contains('hidden')) ? el.privacyModal
     : (el.modal && el.modal.classList.contains('open')) ? el.modal
     : (el.mapModal && el.mapModal.classList.contains('open')) ? el.mapModal : null;
   if (!container) return;
@@ -2610,12 +2625,19 @@ function releaseFocus(container) {
 }
 
 /* ---------------- legal consent gate ----------------
-   The app is unreachable until the user explicitly accepts the Terms and the
-   Privacy Policy. The stored record is validated field by field on every boot
-   and re-validated whenever the tab regains focus or storage changes, so a
-   cleared, tampered or outdated record locks the interface again. */
-const CONSENT_VERSION = '2.1';
+   Sequential consent:
+   Stage 1 — Terms of Service (hard block). One button unlocks the app.
+   Stage 2 — Privacy / geolocation (soft block). Shown immediately after
+   ToS, and again just-in-time if the user later taps the geo button.
+   Auto-geolocation runs ONLY after an explicit «Allow».
+
+   The ToS record is validated field by field on every boot and re-validated
+   whenever the tab regains focus or storage changes, so a cleared, tampered
+   or outdated record locks the interface again. */
+const CONSENT_VERSION = '3.0';
 const CONSENT_KEY = 'livesky:legal_consent';
+const TOS_KEY = 'livesky:tos_accepted';
+const PRIVACY_KEY = 'livesky:privacy_accepted';
 const CONSENT_REQUIRED_KEY = 'livesky:legal_consent_required';
 
 function readConsentRecord() {
@@ -2629,25 +2651,46 @@ function consentConfirmationRequired() {
   catch (e) { return true; } /* storage uncertainty must never bypass the gate */
 }
 
-/* strict validation — anything unexpected means "not accepted" */
+/* Migrate the old bundled ToS+Privacy record so existing users are not
+   re-prompted, while keeping the two grants independent going forward. */
+function migrateLegacyConsent() {
+  const rec = readConsentRecord();
+  if (!rec || rec.accepted !== true || rec.version !== '2.1') return;
+  if (rec.terms !== true) return;
+  const next = {
+    accepted: true,
+    version: CONSENT_VERSION,
+    terms: true,
+    privacy: rec.privacy === true,
+    ts: (typeof rec.ts === 'number' && rec.ts > 0) ? rec.ts : Date.now()
+  };
+  store.set(CONSENT_KEY, next);
+  store.set(TOS_KEY, true);
+  store.set('livesky:legal_accepted', true);
+  if (next.privacy) store.set(PRIVACY_KEY, true);
+}
+
+/* strict ToS validation — privacy is intentionally NOT required here */
 function isValidConsentRecord(rec) {
   if (!rec) return false;
   if (rec.accepted !== true) return false;
   if (rec.version !== CONSENT_VERSION) return false;   /* documents updated → ask again */
-  if (rec.terms !== true || rec.privacy !== true) return false;
+  if (rec.terms !== true) return false;
   if (typeof rec.ts !== 'number' || !isFinite(rec.ts) || rec.ts <= 0) return false;
   if (rec.ts > Date.now() + 86400000) return false;    /* clock-skew / tampering */
   return true;
 }
 
 function hasValidConsent() {
-  /* A return from either legal page always requires a fresh explicit action,
-     even if this browser still contains an older valid consent record. */
+  /* A return from the Terms page always requires a fresh explicit action,
+     even if this browser still contains an older valid ToS record. */
   if (consentConfirmationRequired()) return false;
   return isValidConsentRecord(readConsentRecord());
 }
 
 function lockAppForConsent() {
+  privacyOnGranted = null;
+  hidePrivacyDialog();
   document.documentElement.classList.add('consent-locked');
   if (!el.consentModal) return;
   if (el.consentModal.classList.contains('hidden') || !el.consentModal._liveskyLocked) {
@@ -2664,7 +2707,7 @@ function unlockAppAfterConsent() {
   if (!el.consentModal) return;
   el.consentModal.classList.add('hidden');
   el.consentModal._liveskyLocked = false;
-  if (!el.modal || !el.modal.classList.contains('open')) {
+  if (!privacyDialogOpen() && (!el.modal || !el.modal.classList.contains('open'))) {
     document.body.classList.remove('no-scroll');
   }
   releaseFocus(el.consentModal);
@@ -2675,9 +2718,10 @@ function consentLocked() {
     !!(el.consentModal && !el.consentModal.classList.contains('hidden'));
 }
 
-/* the Continue button stays disabled until the checkbox is ticked */
+/* Single «Accept and continue» button — enabled unless a leftover checkbox is present and unchecked. */
 function syncConsentButton() {
-  const ok = !!(el.consentCheckbox && el.consentCheckbox.checked);
+  const hasBox = !!(el.consentCheckbox);
+  const ok = hasBox ? !!el.consentCheckbox.checked : true;
   if (el.consentAcceptBtn) {
     el.consentAcceptBtn.disabled = !ok;
     el.consentAcceptBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
@@ -2697,14 +2741,14 @@ function rejectConsentAttempt() {
 }
 
 function checkLegalConsent() {
+  migrateLegacyConsent();
   if (!el.consentModal) return;
   if (hasValidConsent()) unlockAppAfterConsent();
   else lockAppForConsent();
 }
 
 function acceptLegalConsent() {
-  /* thorough check: the box must be ticked, no shortcut through a stray click */
-  if (!el.consentCheckbox || !el.consentCheckbox.checked) {
+  if (el.consentCheckbox && !el.consentCheckbox.checked) {
     rejectConsentAttempt();
     return;
   }
@@ -2712,9 +2756,10 @@ function acceptLegalConsent() {
     accepted: true,
     version: CONSENT_VERSION,
     terms: true,
-    privacy: true,
+    privacy: hasPrivacyConsent(),
     ts: Date.now()
   });
+  store.set(TOS_KEY, true);
   store.set('livesky:legal_accepted', true);
 
   /* Verify the new record before clearing the forced-confirmation marker. This
@@ -2733,12 +2778,99 @@ function acceptLegalConsent() {
     return;
   }
   unlockAppAfterConsent();
+  /* Sequential Step 2: ask for geolocation immediately after ToS. */
+  offerPrivacyIfNeeded();
 }
 
 /* continuous re-validation: clearing or editing the record re-locks the app */
 function guardLegalConsent() {
+  migrateLegacyConsent();
   if (!el.consentModal) return;
   if (!hasValidConsent()) lockAppForConsent();
+}
+
+/* ---------------- privacy / geolocation consent (just-in-time) ---------------- */
+let privacyOnGranted = null;
+
+function privacyDecision() {
+  const v = store.get(PRIVACY_KEY, null);
+  if (v === true) return true;
+  if (v === false) return false;
+  const rec = readConsentRecord();
+  if (rec && rec.version === CONSENT_VERSION && rec.privacy === true) return true;
+  return null;
+}
+
+function hasPrivacyConsent() {
+  return privacyDecision() === true;
+}
+
+function persistPrivacyConsent(allowed) {
+  const ok = allowed !== false;
+  store.set(PRIVACY_KEY, ok);
+  const rec = readConsentRecord();
+  if (rec && typeof rec === 'object') {
+    rec.privacy = ok;
+    store.set(CONSENT_KEY, rec);
+  }
+}
+
+/* After ToS: if privacy is already granted and there is no saved city,
+   auto-request geolocation. If never decided, show the soft-block dialog.
+   An explicit decline leaves the default / last city in place. */
+function offerPrivacyIfNeeded() {
+  if (!hasValidConsent()) return;
+  if (hasPrivacyConsent()) {
+    const last = store.get('livesky:last_city', null);
+    if (!last || last.lat == null) getUserLocation();
+    return;
+  }
+  if (privacyDecision() === false) return;
+  requestPrivacyConsent(() => requestUserPosition());
+}
+
+function privacyDialogOpen() {
+  return !!(el.privacyModal && !el.privacyModal.classList.contains('hidden'));
+}
+
+function showPrivacyDialog() {
+  if (!el.privacyModal) return;
+  el.privacyModal.classList.remove('hidden');
+  document.body.classList.add('no-scroll');
+  trapFocus(el.privacyModal);
+}
+
+function hidePrivacyDialog() {
+  if (!el.privacyModal) return;
+  el.privacyModal.classList.add('hidden');
+  if (!consentLocked() && (!el.modal || !el.modal.classList.contains('open'))) {
+    document.body.classList.remove('no-scroll');
+  }
+  releaseFocus(el.privacyModal);
+}
+
+function requestPrivacyConsent(onGranted) {
+  if (hasPrivacyConsent()) {
+    if (typeof onGranted === 'function') onGranted();
+    return;
+  }
+  if (!el.privacyModal) return;
+  privacyOnGranted = onGranted || null;
+  showPrivacyDialog();
+}
+
+function acceptPrivacyConsent() {
+  persistPrivacyConsent(true);
+  const cont = privacyOnGranted;
+  privacyOnGranted = null;
+  hidePrivacyDialog();
+  if (hasPrivacyConsent() && typeof cont === 'function') cont();
+}
+
+function cancelPrivacyConsent() {
+  persistPrivacyConsent(false);
+  privacyOnGranted = null;
+  hidePrivacyDialog();
 }
 
 function openModal(title, subtitle, bodyHtml) {
@@ -3828,10 +3960,19 @@ function bindEvents() {
       if (e.target === el.consentModal) rejectConsentAttempt();
     });
     /* re-validate the stored record whenever the page could have been tampered with */
-    on(window, 'storage', (e) => { if (!e || !e.key || e.key === CONSENT_KEY) guardLegalConsent(); });
+    on(window, 'storage', (e) => {
+      if (!e || !e.key || e.key === CONSENT_KEY || e.key === TOS_KEY) guardLegalConsent();
+    });
     on(window, 'focus', guardLegalConsent);
     on(window, 'pageshow', guardLegalConsent);
     on(document, 'visibilitychange', () => { if (!document.hidden) guardLegalConsent(); });
+  }
+  if (el.privacyAcceptBtn) on(el.privacyAcceptBtn, 'click', acceptPrivacyConsent);
+  if (el.privacyCancelBtn) on(el.privacyCancelBtn, 'click', cancelPrivacyConsent);
+  if (el.privacyModal) {
+    on(el.privacyModal, 'click', (e) => {
+      if (e.target === el.privacyModal) cancelPrivacyConsent();
+    });
   }
 
   on(el.modalClose, 'click', closeModal);
@@ -3863,6 +4004,10 @@ function bindEvents() {
     /* while the legal gate is up no shortcut may reach the application */
     if (consentLocked()) {
       if (e.key === 'Escape') e.preventDefault();
+      return;
+    }
+    if (privacyDialogOpen()) {
+      if (e.key === 'Escape') { e.preventDefault(); cancelPrivacyConsent(); }
       return;
     }
     if (e.key === 'Escape') {
@@ -4866,6 +5011,7 @@ function initNativeBridge() {
          instead of a Promise. Promise.resolve supports both API shapes. */
       Promise.resolve(nativeApp.addListener('backButton', () => {
         if (consentLocked()) return;
+        if (privacyDialogOpen()) { cancelPrivacyConsent(); return; }
         if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
         if (el.modal.classList.contains('open')) { closeModal(); return; }
         if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
@@ -4935,10 +5081,11 @@ function init() {
     state.locationName = last.name || 'Москва';
     state.countryCode = last.cc || '';
     state.admin = last.admin || '';
-    fetchWeather();
-  } else {
-    getUserLocation();
   }
+  /* Always paint a default / last-city forecast so the UI is ready behind
+     the sequential dialogs. Auto-geolocation is offered in Step 2. */
+  fetchWeather();
+  if (hasValidConsent()) offerPrivacyIfNeeded();
 }
 
 /* fatal errors must never leave the user staring at the loader */
