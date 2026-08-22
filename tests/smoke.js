@@ -311,6 +311,37 @@ setTimeout(() => {
              termsHtml.includes('не является сертифицированной государственной системой гражданского оповещения'),
              'legal/terms.html exists and contains complete terms of service liability limitation text');
 
+      /* Every route from a legal document back into the app must explicitly
+         enter the consent flow instead of relying on a possibly stale record. */
+      const legalReturnLinks = [privacyHtml, termsHtml].flatMap((src) =>
+        [...src.matchAll(/href="([^"#]*index\.html[^"#]*)"/g)].map((m) => m[1])
+      );
+      assert(legalReturnLinks.length === 6 &&
+             legalReturnLinks.every((href) => href === '../index.html?consent=required'),
+             'all legal-page return links request fresh consent');
+
+      /* Regression: even a previously valid record must not let the legal-page
+         "На главную" route bypass the consent dialog. Only the inline gate is
+         needed for this pre-render test; external scripts are intentionally not loaded. */
+      const forcedReturnDom = new JSDOM(html, {
+        url: 'https://livesky.local/index.html?consent=required',
+        runScripts: 'dangerously',
+        beforeParse(w) {
+          w.localStorage.setItem('livesky:legal_consent', JSON.stringify({
+            accepted: true, version: '2.1', terms: true, privacy: true, ts: Date.now()
+          }));
+          w.localStorage.setItem('livesky:legal_accepted', 'true');
+        }
+      });
+      assert(forcedReturnDom.window.document.documentElement.classList.contains('consent-locked') &&
+             forcedReturnDom.window.localStorage.getItem('livesky:legal_consent') === null &&
+             forcedReturnDom.window.localStorage.getItem('livesky:legal_accepted') === null &&
+             forcedReturnDom.window.sessionStorage.getItem('livesky:legal_consent_required') === 'true',
+             'legal-page return revokes stale consent and keeps the app locked');
+      assert(!new URL(forcedReturnDom.window.location.href).searchParams.has('consent'),
+             'one-time consent query is removed to avoid re-locking after acceptance');
+      forcedReturnDom.window.close();
+
       /* Release signing configuration and CI workflow */
       const appGradle = fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8');
       assert(appGradle.includes('signingConfigs') && appGradle.includes('KEYSTORE_PASSWORD') && appGradle.includes('KEYSTORE_BASE64'),
@@ -326,7 +357,9 @@ setTimeout(() => {
     assert(q('consent-modal') !== null, 'consent modal element exists in DOM');
     assert(!q('consent-modal').classList.contains('hidden'), 'consent modal is displayed on first launch');
     assert(document.documentElement.classList.contains('consent-locked'), 'document is hard-locked until consent is given');
-    assert(/consent-locked/.test(html) && /localStorage.getItem\('livesky:legal_consent'\)/.test(html),
+    assert(/consent-locked/.test(html) &&
+           /CONSENT_KEY\s*=\s*'livesky:legal_consent'/.test(html) &&
+           /localStorage.getItem\(CONSENT_KEY\)/.test(html),
            'index.html locks the UI in an inline pre-render script');
     const consentCss = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
     assert(/html\.consent-locked body > \*:not\(#consent-modal\)/.test(consentCss),
@@ -361,6 +394,19 @@ setTimeout(() => {
       q('consent-checkbox').dispatchEvent(new window.Event('change'));
       q('consent-accept-btn').click();
       assert(q('consent-modal').classList.contains('hidden'), 'valid consent restores access');
+
+      /* Returning from a policy page overrides even a valid stored record until
+         the user explicitly checks the box and confirms again. */
+      window.sessionStorage.setItem('livesky:legal_consent_required', 'true');
+      window.dispatchEvent(new window.Event('focus'));
+      assert(!q('consent-modal').classList.contains('hidden') && document.documentElement.classList.contains('consent-locked'),
+             'fresh-consent marker re-locks an already accepted app');
+      q('consent-checkbox').checked = true;
+      q('consent-checkbox').dispatchEvent(new window.Event('change'));
+      q('consent-accept-btn').click();
+      assert(q('consent-modal').classList.contains('hidden') &&
+             window.sessionStorage.getItem('livesky:legal_consent_required') === null,
+             'explicit confirmation clears the marker and restores access');
     }
 
     /* Footer & Menu legal links */
