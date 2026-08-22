@@ -1207,6 +1207,15 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .modal-body { padding: 4px 26px 26px; overflow-y: auto; }
 
 /* ---------- Consent / Legal Modal (First Launch) ---------- */
+/* Hard gate: while html.consent-locked is set, nothing but the consent dialog
+   is visible, scrollable or clickable — the app is unreachable without consent. */
+html.consent-locked, html.consent-locked body { overflow: hidden !important; height: 100%; }
+html.consent-locked body > *:not(#consent-modal) {
+  pointer-events: none !important;
+  user-select: none !important;
+  filter: blur(16px) saturate(0.7) brightness(0.55);
+}
+html:not(.consent-locked) #consent-modal { display: none !important; }
 .consent-overlay {
   position: fixed; inset: 0; z-index: 500;
   display: flex; align-items: center; justify-content: center;
@@ -1264,6 +1273,49 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .consent-text a.legal-link:hover {
   color: #7dd3fc;
 }
+.consent-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+.consent-check input[type="checkbox"] {
+  flex: 0 0 auto;
+  width: 18px; height: 18px;
+  margin-top: 1px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.consent-error {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #f87171;
+  margin: -6px 0 12px;
+}
+.consent-error.hidden { display: none; }
+.consent-note {
+  font-size: 12px;
+  color: var(--text-3, var(--text-2));
+  opacity: 0.8;
+  margin-top: 12px;
+}
+.consent-card.shake { animation: consentShake 0.4s ease; }
+@keyframes consentShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-5px); }
+  80% { transform: translateX(5px); }
+}
 .consent-actions {
   display: flex;
   justify-content: center;
@@ -1274,6 +1326,11 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   font-size: 15px;
   font-weight: 700;
   justify-content: center;
+}
+.consent-btn[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
 }
 
 /* modal content blocks */
