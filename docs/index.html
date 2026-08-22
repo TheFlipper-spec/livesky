@@ -29,13 +29,38 @@
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid,
        current consent record. Runs synchronously so no frame of the app is ever
-       visible or interactive to a user who has not accepted the documents. -->
+       visible or interactive to a user who has not accepted the documents.
+
+       Legal pages return with ?consent=required. That one-time marker revokes
+       the previous record and keeps this tab locked until the user explicitly
+       confirms both documents again. -->
   <script>
     (function () {
       var VERSION = '2.1';
+      var CONSENT_KEY = 'livesky:legal_consent';
+      var REQUIRED_KEY = 'livesky:legal_consent_required';
       document.documentElement.classList.add('consent-locked');
       try {
-        var raw = localStorage.getItem('livesky:legal_consent');
+        var url = new URL(window.location.href);
+        var consentRequired = url.searchParams.get('consent') === 'required';
+
+        if (consentRequired) {
+          localStorage.removeItem(CONSENT_KEY);
+          localStorage.removeItem('livesky:legal_accepted');
+          sessionStorage.setItem(REQUIRED_KEY, 'true');
+
+          /* Remove the one-time query flag so a reload after a successful
+             confirmation does not revoke the newly stored consent again. */
+          url.searchParams.delete('consent');
+          try {
+            history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+          } catch (e) { /* the gate remains locked even if URL cleanup is unavailable */ }
+          return;
+        }
+
+        if (sessionStorage.getItem(REQUIRED_KEY) === 'true') return;
+
+        var raw = localStorage.getItem(CONSENT_KEY);
         if (!raw) return;
         var r = JSON.parse(raw);
         if (r && r.accepted === true && r.version === VERSION &&
@@ -531,6 +556,6 @@
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
   <script src="js/i18n.js?v=29"></script>
-  <script src="js/app.js?v=34"></script>
+  <script src="js/app.js?v=35"></script>
 </body>
 </html>
