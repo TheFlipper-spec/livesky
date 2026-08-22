@@ -25,7 +25,27 @@
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2"></script>
 
-  <link rel="stylesheet" href="css/app.css?v=34" />
+  <link rel="stylesheet" href="css/app.css?v=35" />
+
+  <!-- Legal gate: lock the UI before anything renders, unlock only for a valid,
+       current consent record. Runs synchronously so no frame of the app is ever
+       visible or interactive to a user who has not accepted the documents. -->
+  <script>
+    (function () {
+      var VERSION = '2.1';
+      document.documentElement.classList.add('consent-locked');
+      try {
+        var raw = localStorage.getItem('livesky:legal_consent');
+        if (!raw) return;
+        var r = JSON.parse(raw);
+        if (r && r.accepted === true && r.version === VERSION &&
+            r.terms === true && r.privacy === true &&
+            typeof r.ts === 'number' && r.ts > 0 && r.ts <= Date.now() + 86400000) {
+          document.documentElement.classList.remove('consent-locked');
+        }
+      } catch (e) { /* stay locked on any doubt */ }
+    })();
+  </script>
 </head>
 
 <body data-theme="adaptive">
@@ -405,7 +425,7 @@
   </div>
 
   <!-- ==== First-launch Legal Consent Modal ==== -->
-  <div class="consent-overlay hidden" id="consent-modal" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+  <div class="consent-overlay" id="consent-modal" role="dialog" aria-modal="true" aria-labelledby="consent-title" aria-describedby="consent-text">
     <div class="consent-card">
       <div class="consent-icon"><i class="ph-fill ph-shield-check"></i></div>
       <h2 id="consent-title" data-translate="consent_title">Добро пожаловать в LiveSky</h2>
@@ -415,12 +435,18 @@
         <span data-translate="consent_and">и</span>
         <a href="legal/privacy.html" target="_blank" rel="noopener" class="legal-link" data-translate="consent_privacy">Политикой конфиденциальности</a>.
       </p>
+      <label class="consent-check" for="consent-checkbox">
+        <input type="checkbox" id="consent-checkbox" />
+        <span data-translate="consent_checkbox">Я прочитал(а) и принимаю Пользовательское соглашение и Политику конфиденциальности</span>
+      </label>
+      <p class="consent-error hidden" id="consent-error" role="alert" data-translate="consent_error">Чтобы продолжить, необходимо подтвердить согласие с документами.</p>
       <div class="consent-actions">
-        <button class="btn btn-primary consent-btn" id="consent-accept-btn">
+        <button class="btn btn-primary consent-btn" id="consent-accept-btn" disabled aria-disabled="true">
           <i class="ph-bold ph-check"></i>
           <span data-translate="consent_btn">Продолжить</span>
         </button>
       </div>
+      <p class="consent-note" data-translate="consent_note">Без принятия соглашения доступ к приложению не предоставляется.</p>
     </div>
   </div>
 
@@ -504,7 +530,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=28"></script>
-  <script src="js/app.js?v=33"></script>
+  <script src="js/i18n.js?v=29"></script>
+  <script src="js/app.js?v=34"></script>
 </body>
 </html>

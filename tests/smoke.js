@@ -300,6 +300,12 @@ setTimeout(() => {
              privacyHtml.includes('Open-Meteo') &&
              privacyHtml.includes('не сохраняет историю перемещений'),
              'legal/privacy.html exists and contains complete privacy policy compliance text');
+      const privacyClause = 'Координаты не сохраняются на серверах LiveSky. Они передаются исключительно доверенным внешним провайдерам API (включая, но не ограничиваясь: Open-Meteo, Nominatim, RainViewer) строго в момент использования приложения для предоставления метеоданных и обратного геокодирования. Данные не профилируются и не передаются в маркетинговых целях.';
+      const privacyMd = fs.readFileSync(path.join(root, 'PRIVACY.md'), 'utf8');
+      assert(privacyHtml.includes(privacyClause) && privacyMd.includes(privacyClause),
+             'external API data-flow clause is present in privacy.html and PRIVACY.md');
+      assert(!/не передает данные третьим лицам/.test(privacyHtml) && !/не передает данные третьим лицам/.test(privacyMd),
+             'obsolete "no third parties" wording is removed everywhere');
       assert(termsHtml.includes('Пункт: Ограничение ответственности за метеорологические данные') &&
              termsHtml.includes('автоматической математической экстраполяции') &&
              termsHtml.includes('не является сертифицированной государственной системой гражданского оповещения'),
@@ -319,12 +325,43 @@ setTimeout(() => {
     /* Legal consent modal tests */
     assert(q('consent-modal') !== null, 'consent modal element exists in DOM');
     assert(!q('consent-modal').classList.contains('hidden'), 'consent modal is displayed on first launch');
+    assert(document.documentElement.classList.contains('consent-locked'), 'document is hard-locked until consent is given');
+    assert(/consent-locked/.test(html) && /localStorage.getItem\('livesky:legal_consent'\)/.test(html),
+           'index.html locks the UI in an inline pre-render script');
+    const consentCss = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
+    assert(/html\.consent-locked body > \*:not\(#consent-modal\)/.test(consentCss),
+           'CSS makes everything but the consent dialog unreachable while locked');
     assert(q('consent-modal').querySelector('a[href*="terms.html"]') !== null &&
            q('consent-modal').querySelector('a[href*="privacy.html"]') !== null,
            'consent modal contains links to terms and privacy policy');
+    assert(q('consent-checkbox') !== null && q('consent-checkbox').checked === false, 'explicit consent checkbox exists and starts unchecked');
+    assert(q('consent-accept-btn').disabled === true, 'continue button is disabled until the checkbox is ticked');
+    q('consent-accept-btn').click();
+    assert(!q('consent-modal').classList.contains('hidden') && window.localStorage.getItem('livesky:legal_consent') === null,
+           'clicking continue without ticking the checkbox does not grant access');
+    q('consent-checkbox').checked = true;
+    q('consent-checkbox').dispatchEvent(new window.Event('change'));
+    assert(q('consent-accept-btn').disabled === false, 'continue button unlocks once the checkbox is ticked');
     q('consent-accept-btn').click();
     assert(q('consent-modal').classList.contains('hidden'), 'consent modal closes after clicking continue button');
+    assert(!document.documentElement.classList.contains('consent-locked'), 'document unlocks only after a valid consent');
     assert(window.localStorage.getItem('livesky:legal_accepted') === 'true', 'legal acceptance is persisted in localStorage');
+    {
+      const rec = JSON.parse(window.localStorage.getItem('livesky:legal_consent'));
+      assert(rec && rec.accepted === true && rec.terms === true && rec.privacy === true &&
+             rec.version === '2.1' && typeof rec.ts === 'number',
+             'consent record stores version, both documents and a timestamp');
+      /* tampering / clearing the record must lock the app again */
+      window.localStorage.setItem('livesky:legal_consent', JSON.stringify({ accepted: true, version: '0.1', terms: true, privacy: true, ts: Date.now() }));
+      window.dispatchEvent(new window.Event('focus'));
+      assert(!q('consent-modal').classList.contains('hidden') && document.documentElement.classList.contains('consent-locked'),
+             'outdated consent version re-locks the app');
+      window.localStorage.setItem('livesky:legal_consent', JSON.stringify(rec));
+      q('consent-checkbox').checked = true;
+      q('consent-checkbox').dispatchEvent(new window.Event('change'));
+      q('consent-accept-btn').click();
+      assert(q('consent-modal').classList.contains('hidden'), 'valid consent restores access');
+    }
 
     /* Footer & Menu legal links */
     assert(document.querySelector('.site-footer a[href*="legal/terms.html"]') !== null &&
