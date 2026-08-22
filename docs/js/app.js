@@ -2616,6 +2616,7 @@ function releaseFocus(container) {
    cleared, tampered or outdated record locks the interface again. */
 const CONSENT_VERSION = '2.1';
 const CONSENT_KEY = 'livesky:legal_consent';
+const CONSENT_REQUIRED_KEY = 'livesky:legal_consent_required';
 
 function readConsentRecord() {
   const rec = store.get(CONSENT_KEY, null);
@@ -2623,9 +2624,13 @@ function readConsentRecord() {
   return rec;
 }
 
+function consentConfirmationRequired() {
+  try { return sessionStorage.getItem(CONSENT_REQUIRED_KEY) === 'true'; }
+  catch (e) { return true; } /* storage uncertainty must never bypass the gate */
+}
+
 /* strict validation — anything unexpected means "not accepted" */
-function hasValidConsent() {
-  const rec = readConsentRecord();
+function isValidConsentRecord(rec) {
   if (!rec) return false;
   if (rec.accepted !== true) return false;
   if (rec.version !== CONSENT_VERSION) return false;   /* documents updated → ask again */
@@ -2633,6 +2638,13 @@ function hasValidConsent() {
   if (typeof rec.ts !== 'number' || !isFinite(rec.ts) || rec.ts <= 0) return false;
   if (rec.ts > Date.now() + 86400000) return false;    /* clock-skew / tampering */
   return true;
+}
+
+function hasValidConsent() {
+  /* A return from either legal page always requires a fresh explicit action,
+     even if this browser still contains an older valid consent record. */
+  if (consentConfirmationRequired()) return false;
+  return isValidConsentRecord(readConsentRecord());
 }
 
 function lockAppForConsent() {
@@ -2704,7 +2716,18 @@ function acceptLegalConsent() {
     ts: Date.now()
   });
   store.set('livesky:legal_accepted', true);
-  /* never trust the write blindly — verify it round-tripped before unlocking */
+
+  /* Verify the new record before clearing the forced-confirmation marker. This
+     prevents an old or failed write from unlocking the page after legal review. */
+  if (!isValidConsentRecord(readConsentRecord())) {
+    rejectConsentAttempt();
+    return;
+  }
+  try { sessionStorage.removeItem(CONSENT_REQUIRED_KEY); }
+  catch (e) {
+    rejectConsentAttempt();
+    return;
+  }
   if (!hasValidConsent()) {
     rejectConsentAttempt();
     return;
