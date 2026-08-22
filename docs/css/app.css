@@ -1319,6 +1319,13 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .consent-actions {
   display: flex;
   justify-content: center;
+  gap: 10px;
+}
+.consent-actions-split .btn,
+.consent-actions-split .consent-btn {
+  width: auto;
+  flex: 1;
+  justify-content: center;
 }
 .consent-btn {
   width: 100%;
@@ -1332,6 +1339,9 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   cursor: not-allowed;
   filter: grayscale(0.4);
 }
+/* Privacy JIT dialog reuses the overlay card but must stay reachable
+   after ToS is accepted (it is never part of the hard lock). */
+#privacy-modal { z-index: 510; }
 
 /* modal content blocks */
 .m-detail-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 14px 0 18px; }
