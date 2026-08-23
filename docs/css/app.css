@@ -641,6 +641,9 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   pointer-events: none;
 }
 .map-placeholder i { font-size: 34px; color: var(--accent); opacity: 0.8; }
+/* Lazy map subsystem: first-load state on the mini-map card (set by LiveSkyMap). */
+.map-card.loading .map-placeholder i { animation: spin 1s linear infinite; }
+.map-card.loading .map-placeholder span { color: var(--accent); }
 [data-theme="light"] .map-placeholder { background: linear-gradient(180deg, #e9f0f7 0%, #eef3f8 100%); }
 #map { height: 208px; border-radius: 20px; z-index: 1; cursor: pointer; }
 .map-open-hint {
@@ -1932,6 +1935,7 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .st2 { width: 2px; height: 2px; bottom: 24px; left: 26px; animation-delay: 0.7s; }
 .st3 { width: 2.5px; height: 2.5px; top: 46px; left: 2px; animation-delay: 1.3s; }
 
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes spinRev { to { transform: rotate(-360deg); } }
 @keyframes corePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
 @keyframes twinkle { 0%, 100% { opacity: 0.25; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }

@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.3-modules';
+const VERSION = 'livesky-v1.3-lazy-map';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -30,7 +30,12 @@ async function trimForecastCache(maxEntries) {
   } catch (e) { /* non-critical */ }
 }
 
-/* App shell — everything needed to boot the page offline. */
+/* App shell — everything needed to boot the page offline.
+   NOTE: 11-map-radar.js is a LAZY module (fetched on first map/radar use, not
+   during boot) but it stays precached on purpose: after one online visit the
+   offline shell must still be able to open the map — the SW serves the cached
+   copy when the network is unavailable. Same for the MapLibre GL library and
+   its stylesheet, which the LiveSkyMap loader injects on demand. */
 const SHELL_ASSETS = [
   './',
   './index.html',
@@ -46,7 +51,8 @@ const SHELL_ASSETS = [
   './js/modules/07-effects.js',
   './js/modules/08-search-modals.js',
   './js/modules/09-lifecycle.js',
-  './js/modules/10-map-radar.js',
+  './js/modules/10-bootstrap.js',
+  './js/modules/11-map-radar.js',
   './legal/privacy.html',
   './legal/terms.html',
   './manifest.webmanifest',
