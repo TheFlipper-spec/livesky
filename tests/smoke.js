@@ -926,6 +926,20 @@ function phase5() {
       const p2 = w.__sectionProbe2 || {};
       assert(p2.chart === false && p2.hourly === false && p2.daily === false,
         'phase5: dirty flags cleared after the sections actually rendered');
+
+      /* Regression: unloading and restoring the chart used to render while its
+         card was detached. The global id lookup then missed the cached summary
+         and injected another "No rain" chip on every restore. */
+      const probe3 = doc.createElement('script');
+      probe3.textContent = `
+        const chartSection = SECTION_MANAGER.sections.get('chart');
+        SECTION_MANAGER.unload('chart', chartSection.el);
+        SECTION_MANAGER.activate('chart', chartSection.el);
+        window.__chartSummaryCount = chartSection.el.querySelectorAll('#chart-rain-summary').length;
+      `;
+      doc.body.appendChild(probe3);
+      assert(w.__chartSummaryCount === 1,
+        'phase6: chart restore keeps exactly one rain summary (' + w.__chartSummaryCount + ')');
       finish();
     } catch (e) { errors.push('phase5 crashed: ' + e.message); finish(); }
   }, 900);

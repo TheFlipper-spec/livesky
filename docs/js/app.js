@@ -1,7 +1,11 @@
+/* Generated from docs/js/modules/*.js — edit the modules, then run npm run build:js. */
 /* ============================================================
    LiveSky Weather Pro — Application Logic
    ============================================================ */
 'use strict';
+
+/* Canonical public version of the website and service. */
+const APP_VERSION = '1.3';
 
 /* ---------------- DOM refs ---------------- */
 const $ = (id) => document.getElementById(id);
@@ -607,7 +611,8 @@ function reportBugUrl(message) {
     '',
     '---',
     '**Страница / Page:** ' + (location.href || ''),
-    '**Версия / Version:** ' + (navigator.appVersion || ''),
+    '**Версия сайта и сервиса / Site and service version:** ' + APP_VERSION,
+    '**Браузер / Browser:** ' + (navigator.appVersion || ''),
     '**Ошибка / Error:** ' + (message || '—'),
     '',
     '**Что случилось / What happened:**',
@@ -1424,10 +1429,19 @@ function renderChartRainMarkers(bands, temps, X, Y, hours) {
 }
 
 function renderChartRainSummary(bands, times) {
-  let box = $('chart-rain-summary');
+  /* Prefer the chart card that owns the cached refs. During section unload that
+     card is detached, so document.getElementById() cannot find its summary. */
+  const card = el.chartDetail && el.chartDetail.closest('.chart-card');
+  let box = card ? card.querySelector('#chart-rain-summary') : $('chart-rain-summary');
+  if (card) {
+    /* Keep this renderer idempotent even if an older render left duplicates. */
+    card.querySelectorAll('#chart-rain-summary').forEach((node, index) => {
+      if (index === 0) return;
+      node.remove();
+    });
+  }
   if (!box) {
     /* inject once under the chart title area if markup is missing */
-    const card = el.chartDetail && el.chartDetail.parentElement;
     if (!card) return;
     box = document.createElement('div');
     box.id = 'chart-rain-summary';
@@ -4356,6 +4370,13 @@ const SECTION_MANAGER = {
     this.cancelUnload(name);
     el.dataset.sectionState = 'active';
 
+    /* Restore the cached card before rendering it. Renderers look up dynamic
+       nodes (for example #chart-rain-summary) through document.getElementById.
+       If rendering happened while the card was detached, that lookup returned
+       null and renderChartRainSummary() injected a second summary into the
+       cached card every time it was restored. */
+    this.mount(name);
+
     /* If we just came back from being unloaded, rebuild (only if the data
        changed while away) and re-insert the cached card. Keep the section
        dirty when the render was skipped (no forecast yet): renderAll() will
@@ -4363,7 +4384,6 @@ const SECTION_MANAGER = {
     if (wasUnloaded || section.dirty) {
       if (this.runRenderer(name)) section.dirty = false;
     }
-    this.mount(name);
     el.classList.remove('section-skeleton');
 
     if (immediate) {
@@ -4479,7 +4499,7 @@ const SECTION_MANAGER = {
     if (this.ioUnload) this.ioUnload.disconnect();
     this.sections.forEach(section => {
       if (section.unloadTimer) clearTimeout(section.unloadTimer);
-      if (section.skeleton && section.card) this.mount(section);
+      if (section.skeleton && section.card) this.mount(section.el.dataset.section);
     });
     this.sections.clear();
   }
