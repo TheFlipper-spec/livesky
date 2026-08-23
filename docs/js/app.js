@@ -113,6 +113,14 @@ const LOC_SHORT = { ru: 'ru', en: 'en', es: 'es' };
 const motionReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function t(key) { const d = I18N[state.lang] || I18N.en; return d[key] != null ? d[key] : key; }
+/* ---------------- self-hosted flag assets ----------------
+   Country flags are bundled locally (assets/flags/*.svg, built from the
+   MIT-licensed flag-icons set) so opening the app never pings a flag CDN.
+   Returns '' for codes we do not ship — callers hide the <img> in that case. */
+function flagUrl(cc) {
+  const code = String(cc || '').trim().toLowerCase();
+  return /^[a-z]{2}(-[a-z]{2,4})?$/.test(code) ? `assets/flags/${code}.svg` : '';
+}
 function loc() { return LOCALES[state.lang] || 'en-US'; }
 
 /* ---------------- time helpers ---------------- */
@@ -932,8 +940,12 @@ function updateFXIntensity() {
 
 function updateHero() {
   el.location.textContent = state.locationName;
-  el.locationFlag.classList.toggle('hidden', !state.countryCode);
-  if (state.countryCode) el.locationFlag.src = `https://flagcdn.com/w40/${state.countryCode.toLowerCase()}.png`;
+  const heroFlag = flagUrl(state.countryCode);
+  el.locationFlag.classList.toggle('hidden', !heroFlag);
+  if (heroFlag) {
+    el.locationFlag.onerror = () => el.locationFlag.classList.add('hidden');
+    el.locationFlag.src = heroFlag;
+  }
   let adminLine = state.admin || '';
   if (state.elevation != null) {
     const elev = state.units === 'imperial'
@@ -2459,7 +2471,7 @@ function renderFavoritesList() {
       const div = document.createElement('div');
       div.className = 'ac-item';
       div.innerHTML = `
-        ${f.country ? `<img class="ac-flag" src="https://flagcdn.com/20x15/${f.country.toLowerCase()}.png" alt="">` : '<span class="ac-flag"></span>'}
+        ${flagUrl(f.country) ? `<img class="ac-flag" src="${flagUrl(f.country)}" alt="" loading="lazy" onerror="this.remove()">` : '<span class="ac-flag"></span>'}
         <span><span class="ac-name">${escHtml(f.name)}</span>${f.admin ? `<br><span class="ac-admin">${escHtml(f.admin)}</span>` : ''}</span>
         <button class="ac-remove" aria-label="Удалить"><i class="ph-bold ph-x"></i></button>`;
       div.addEventListener('click', (e) => {
@@ -2488,7 +2500,7 @@ function renderFavoritesList() {
       const div = document.createElement('div');
       div.className = 'ac-item';
       div.innerHTML = `
-        ${f.country ? `<img class="ac-flag" src="https://flagcdn.com/20x15/${f.country.toLowerCase()}.png" alt="">` : '<span class="ac-flag"></span>'}
+        ${flagUrl(f.country) ? `<img class="ac-flag" src="${flagUrl(f.country)}" alt="" loading="lazy" onerror="this.remove()">` : '<span class="ac-flag"></span>'}
         <span><span class="ac-name">${escHtml(f.name)}</span>${f.admin ? `<br><span class="ac-admin">${escHtml(f.admin)}</span>` : ''}</span>
         <i class="ph ph-clock-counter-clockwise ac-star"></i>`;
       div.addEventListener('click', () => selectCity({ lat: f.lat, lon: f.lon, name: f.name, country: f.country, admin: f.admin }));
@@ -2535,7 +2547,7 @@ async function handleInput() {
           const div = document.createElement('div');
           div.className = 'ac-item';
           div.innerHTML = `
-            ${c.country_code ? `<img class="ac-flag" src="https://flagcdn.com/20x15/${c.country_code.toLowerCase()}.png" alt="">` : ''}
+            ${flagUrl(c.country_code) ? `<img class="ac-flag" src="${flagUrl(c.country_code)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
             <span><span class="ac-name">${escHtml(c.name)}</span><br><span class="ac-admin">${escHtml([c.admin1, c.country].filter(Boolean).join(', '))}</span></span>`;
           div.addEventListener('click', () => selectCity({ lat: c.latitude, lon: c.longitude, name: c.name, country: c.country_code, admin: [c.admin1, c.country].filter(Boolean).join(', ') }));
           el.autoList.appendChild(div);
@@ -2778,6 +2790,9 @@ function acceptLegalConsent() {
     return;
   }
   unlockAppAfterConsent();
+  /* Basemap tiles are the last third-party asset class held back behind the
+     ToS gate — release them as soon as the app unlocks. */
+  if (mapInitPending) initMap();
   /* Sequential Step 2: ask for geolocation immediately after ToS. */
   offerPrivacyIfNeeded();
 }
@@ -3556,6 +3571,10 @@ function showLifeSkySlot(index, type) {
 
 /* ---------------- maps (MapLibre GL, reliable raster tiles) ---------------- */
 let mapInst = null, mapMarkEl = null, smallMapFallback = false;
+/* Basemap tiles are third-party requests (CARTO / OSM), so the small map is
+   not initialised until the Terms of Service are accepted. The consent
+   overlay covers the placeholder on a locked boot — nothing is lost. */
+let mapInitPending = false;
 let fullMapInst = null, fullMarkEl = null, fullPopup = null, fullMapFallback = false;
 let tempLat = null, tempLon = null;
 
@@ -3592,6 +3611,7 @@ function makePinEl() {
 
 function initMap() {
   if (!window.maplibregl) { console.warn('LiveSky: MapLibre GL unavailable'); return; }
+  mapInitPending = false;
   /* open fullscreen map on tap/click, but NOT after dragging the map */
   let dragStart = null;
   on(el.mapSmall, 'pointerdown', (e) => { dragStart = { x: e.clientX, y: e.clientY }; });
@@ -3607,7 +3627,7 @@ function initMap() {
       style: mapStyle(),
       center: [state.lon, state.lat],
       zoom: 10,
-      attributionControl: false,
+      attributionControl: { compact: true },
       scrollZoom: false,
       boxZoom: false,
       doubleClickZoom: false
@@ -5065,7 +5085,12 @@ function init() {
   applyEffects();
   SECTION_MANAGER.init();
   showLoader();
-  initMap();
+  /* No third-party request of any kind on a locked boot: fonts, icons, the
+     map library and flags are self-hosted, and basemap tiles wait for the
+     ToS consent. Weather for the default / last city is the app's own first
+     data request and stays exactly where it was in the boot sequence. */
+  if (!consentLocked()) initMap();
+  else mapInitPending = true;
 
   /* PWA + adaptive performance + offline */
   registerServiceWorker();

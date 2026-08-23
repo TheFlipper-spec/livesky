@@ -2105,6 +2105,19 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .footer-link i { color: var(--accent); font-size: 16px; }
 .footer-copy { font-size: 11.5px; color: var(--text-4); line-height: 1.9; }
 .footer-copy a:hover { color: var(--accent); }
+/* Data-source attribution (Open-Meteo CC BY 4.0 · RainViewer · OSM/CARTO) —
+   small and unobtrusive, but always present and readable. */
+.footer-attribution {
+  font-size: 11px;
+  color: var(--text-4);
+  line-height: 1.8;
+  margin-top: 4px;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.footer-attribution a { color: var(--text-3); text-decoration: underline; text-decoration-color: var(--stroke-strong); text-underline-offset: 3px; transition: color .2s ease, text-decoration-color .2s ease; }
+.footer-attribution a:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
 /* ---------- Wide screens: fill the side zones ---------- */
 @media (min-width: 1750px) {

@@ -2,6 +2,36 @@
 
 Формат основан на [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [Не выпущено] — комплаенс-рефакторинг (IT-Compliance)
+
+### 🛡 Полная локализация статики (zero third-party requests до согласия)
+- Все внешние ресурсы перенесены с CDN в самостоятельный хостинг `docs/assets/`:
+  - **Шрифты** Montserrat и Unbounded (woff2, latin/latin-ext/cyrillic/cyrillic-ext,
+    веса 400–800) — сборки Fontsource, лицензии SIL OFL 1.1 приложены;
+  - **MapLibre GL 4.7.1** (BSD-2-Clause) и **Phosphor Icons 2.1.2** (MIT, 4 начертания);
+  - **Флаги** — 261 SVG (ISO 3166-1 alpha-2 + субдивизионы GB) из пакета flag-icons (MIT).
+- Убраны `fonts.googleapis.com`, `unpkg.com`, `flagcdn.com` из `index.html`,
+  `legal/privacy.html`, `legal/terms.html` и `js/app.js` (новый хелпер `flagUrl()`).
+- Тайлы подложки (CARTO/OSM) больше не грузятся до принятия Пользовательского
+  соглашения: инициализация мини-карты отложена до разблокировки (`mapInitPending`).
+- Service Worker: `livesky-v18`, shell-прекеш включает все локальные шрифты/библиотеки.
+
+### © Обязательная атрибуция поставщиков данных
+- Подвал: «Метеоданные — Open-Meteo (CC BY 4.0) · радар — RainViewer ·
+  карты © OpenStreetMap contributors, CARTO · отрисовка MapLibre GL» —
+  с кликабельными ссылками и переводами (ru/en/es).
+- На обеих картах MapLibre включена компактная атрибуция (`attributionControl: compact`).
+
+### 📄 Политика конфиденциальности v2.1
+- Добавлен пункт о резервных провайдерах геоданных (BigDataCloud, CARTO).
+- Добавлен пункт о локальном хранении истории городов (localStorage / Cache API).
+- Зафиксировано отсутствие обращений к сторонним доменам до запроса метеоданных.
+
+### ✅ Тесты
+- `tests/smoke.js`: регрессионные проверки — отсутствие CDN-ссылок, наличие
+  self-hosted ассетов и лицензий, атрибуция в подвале и на картах, новые пункты
+  политики, гейт тайлов за consent-модалью.
+
 ## [Не выпущено] — юридический слой
 
 ### 🔐 Последовательные согласия (Sequential Consent)

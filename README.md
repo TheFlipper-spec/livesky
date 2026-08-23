@@ -201,6 +201,10 @@ docs/                        # публикуемый сайт (GitHub Pages)
 ├── legal/                   # юридические документы
 │   ├── privacy.html         # политика конфиденциальности
 │   └── terms.html           # пользовательское соглашение
+├── assets/                  # self-hosted сторонние ресурсы (zero CDN)
+│   ├── fonts/               # Montserrat, Unbounded (woff2, SIL OFL 1.1)
+│   ├── vendor/              # MapLibre GL (BSD-2), Phosphor Icons (MIT)
+│   └── flags/               # 261 SVG-флаг ISO-кодов (flag-icons, MIT)
 ├── manifest.webmanifest     # PWA-манифест
 ├── sw.js                    # service worker (кеш оболочки + прогноз + push)
 └── icons/                   # иконки приложения (16…512 px)
@@ -232,6 +236,20 @@ i18n — вместо вечного лоадера панель ошибок.
 - Автодоклад о багах: при ошибке сети/сбое появляется кнопка-баг, ведущая на GitHub Issues
 - Санитизация настроек из localStorage · защита от устаревшего кеша (версии ассетов)
 
+## 🔒 Приватность и лицензионный комплаенс
+
+- **Ни одного запроса к сторонним доменам до согласия.** Шрифты, иконки,
+  картографическая библиотека и флаги хостятся локально (`docs/assets/`);
+  тайлы подложки грузятся только после принятия Пользовательского соглашения.
+- **Атрибуция поставщиков** (требования CC BY 4.0 / OSM / CARTO): блок в подвале
+  с кликабельными ссылками + компактная атрибуция MapLibre на обеих картах.
+- **Лицензии вендоров** приложены рядом с файлами: `assets/fonts/LICENSE-*`,
+  `assets/vendor/maplibre-gl/LICENSE.txt`, `assets/vendor/phosphor/LICENSE`,
+  `assets/flags/LICENSE`.
+- Политика конфиденциальности v2.1 отражает фактическую архитектуру: резервные
+  провайдеры геоданных (BigDataCloud, CARTO), локальное хранение истории городов
+  (localStorage / Cache API).
+
 ## 🐛 Обратная связь и баги
 
 Нашли ошибку или есть идея? Откройте [Issue на GitHub](https://github.com/TheFlipper-spec/livesky/issues).
@@ -247,8 +265,9 @@ i18n — вместо вечного лоадера панель ошибок.
 | Погода | [Open-Meteo](https://open-meteo.com/) (forecast, air-quality, geocoding) |
 | Радар | [RainViewer](https://www.rainviewer.com/) Weather Maps |
 | Карты | [MapLibre GL](https://maplibre.org/) + OpenStreetMap / CartoDB |
-| Иконки | [Phosphor Icons](https://phosphoricons.com/) |
-| Шрифты | [Google Fonts](https://fonts.google.com/) (Unbounded, Montserrat) |
+| Иконки | [Phosphor Icons](https://phosphoricons.com/) — self-hosted (MIT) |
+| Шрифты | Unbounded, Montserrat (SIL OFL 1.1) — self-hosted сборки Fontsource |
+| Флаги | [flag-icons](https://github.com/lipis/flag-icons) (MIT) — self-hosted SVG |
 
 ---
 
