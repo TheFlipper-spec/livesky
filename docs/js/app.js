@@ -4494,7 +4494,7 @@ const SECTION_MANAGER = {
     if (this.ioUnload) this.ioUnload.disconnect();
     this.sections.forEach(section => {
       if (section.unloadTimer) clearTimeout(section.unloadTimer);
-      if (section.skeleton && section.card) this.mount(section);
+      if (section.skeleton && section.card) this.mount(section.el.dataset.section);
     });
     this.sections.clear();
   }
