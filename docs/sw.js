@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v17';
+const VERSION = 'livesky-v18';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -48,7 +48,65 @@ const SHELL_ASSETS = [
   './icons/icon-96.png',
   './icons/icon-64.png',
   './icons/icon-32.png',
-  './icons/icon-16.png'
+  './icons/icon-16.png',
+  './assets/fonts/fonts.css',
+  './assets/fonts/files/montserrat-cyrillic-400-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-500-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-600-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-700-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-800-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-ext-400-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-ext-500-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-ext-600-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-ext-700-normal.woff2',
+  './assets/fonts/files/montserrat-cyrillic-ext-800-normal.woff2',
+  './assets/fonts/files/montserrat-latin-400-normal.woff2',
+  './assets/fonts/files/montserrat-latin-500-normal.woff2',
+  './assets/fonts/files/montserrat-latin-600-normal.woff2',
+  './assets/fonts/files/montserrat-latin-700-normal.woff2',
+  './assets/fonts/files/montserrat-latin-800-normal.woff2',
+  './assets/fonts/files/montserrat-latin-ext-400-normal.woff2',
+  './assets/fonts/files/montserrat-latin-ext-500-normal.woff2',
+  './assets/fonts/files/montserrat-latin-ext-600-normal.woff2',
+  './assets/fonts/files/montserrat-latin-ext-700-normal.woff2',
+  './assets/fonts/files/montserrat-latin-ext-800-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-400-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-500-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-600-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-700-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-800-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-ext-400-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-ext-500-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-ext-600-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-ext-700-normal.woff2',
+  './assets/fonts/files/unbounded-cyrillic-ext-800-normal.woff2',
+  './assets/fonts/files/unbounded-latin-400-normal.woff2',
+  './assets/fonts/files/unbounded-latin-500-normal.woff2',
+  './assets/fonts/files/unbounded-latin-600-normal.woff2',
+  './assets/fonts/files/unbounded-latin-700-normal.woff2',
+  './assets/fonts/files/unbounded-latin-800-normal.woff2',
+  './assets/fonts/files/unbounded-latin-ext-400-normal.woff2',
+  './assets/fonts/files/unbounded-latin-ext-500-normal.woff2',
+  './assets/fonts/files/unbounded-latin-ext-600-normal.woff2',
+  './assets/fonts/files/unbounded-latin-ext-700-normal.woff2',
+  './assets/fonts/files/unbounded-latin-ext-800-normal.woff2',
+  './assets/vendor/maplibre-gl/maplibre-gl.js',
+  './assets/vendor/maplibre-gl/maplibre-gl.css',
+  './assets/vendor/phosphor/regular/style.css',
+  './assets/vendor/phosphor/bold/style.css',
+  './assets/vendor/phosphor/fill/style.css',
+  './assets/vendor/phosphor/duotone/style.css',
+  './assets/vendor/phosphor/regular/Phosphor.woff2',
+  './assets/vendor/phosphor/regular/Phosphor.woff',
+  './assets/vendor/phosphor/bold/Phosphor-Bold.woff2',
+  './assets/vendor/phosphor/bold/Phosphor-Bold.woff',
+  './assets/vendor/phosphor/fill/Phosphor-Fill.woff2',
+  './assets/vendor/phosphor/fill/Phosphor-Fill.woff',
+  './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff2',
+  './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff',
+  './assets/flags/ru.svg',
+  './assets/flags/gb.svg',
+  './assets/flags/es.svg'
 ];
 
 /* Open-Meteo hosts whose responses we mirror into the forecast cache
@@ -127,7 +185,9 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  /* Cross-origin non-API (fonts, icons, map tiles): network first, cache fallback. */
+  /* Cross-origin non-API (basemap / radar tiles). Fonts, icon fonts and all
+     libraries are same-origin now (./assets), so this branch only serves the
+     post-consent map stack: network first, cache fallback. */
   event.respondWith(
     fetch(req).catch(() => caches.match(req).then((hit) => hit || Response.error()))
   );

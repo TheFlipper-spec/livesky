@@ -322,6 +322,53 @@ setTimeout(() => {
              privacyReturnLinks.every((href) => href === '../index.html'),
              'privacy-page return links do not re-lock the app');
 
+      /* ---- IT-compliance: zero third-party subresources before consent ---- */
+      const cdnRe = /unpkg\.com|googleapis\.com|gstatic\.com|flagcdn\.com|jsdelivr\.net/;
+      assert(!cdnRe.test(html) && !cdnRe.test(termsHtml) && !cdnRe.test(privacyHtml) && !cdnRe.test(appSrc) && !cdnRe.test(i18nSrc),
+             'no CDN subresource references remain — fonts, libs, icons and flags are self-hosted');
+      [
+        'assets/fonts/fonts.css',
+        'assets/vendor/maplibre-gl/maplibre-gl.js',
+        'assets/vendor/maplibre-gl/maplibre-gl.css',
+        'assets/vendor/phosphor/regular/style.css',
+        'assets/vendor/phosphor/bold/style.css',
+        'assets/vendor/phosphor/fill/style.css',
+        'assets/vendor/phosphor/duotone/style.css',
+        'assets/flags/ru.svg', 'assets/flags/gb.svg', 'assets/flags/es.svg'
+      ].forEach((p) => assert(fs.existsSync(path.join(DOCS, p)), 'self-hosted asset exists: ' + p));
+      /* every url() inside local stylesheets must resolve to a bundled file */
+      const fontsCssSrc = fs.readFileSync(path.join(DOCS, 'assets', 'fonts', 'fonts.css'), 'utf8');
+      [...fontsCssSrc.matchAll(/url\(\.\/(files\/[\w.-]+)\)/g)].forEach((m) =>
+        assert(fs.existsSync(path.join(DOCS, 'assets', 'fonts', m[1])), 'font file bundled: ' + m[1]));
+
+      /* ---- Attribution (CC BY 4.0 / RainViewer / OSM / CARTO) ---- */
+      assert(/footer-attribution/.test(html) &&
+             /href="https:\/\/open-meteo\.com\/"/.test(html) &&
+             /creativecommons\.org\/licenses\/by\/4\.0/.test(html) &&
+             /rainviewer\.com/.test(html) &&
+             /openstreetmap\.org\/copyright/.test(html) &&
+             /carto\.com\/attributions/.test(html),
+             'footer carries the mandatory provider attribution with clickable links');
+      const attribCtrlCount = (appSrc.match(/attributionControl:\s*\{\s*compact:\s*true\s*\}/g) || []).length;
+      assert(attribCtrlCount >= 2, 'both MapLibre views show compact OSM/CARTO attribution');
+
+      /* ---- Privacy policy matches the real architecture ---- */
+      assert(privacyHtml.includes('В целях обеспечения отказоустойчивости сервиса') &&
+             privacyHtml.includes('резервными провайдерами') &&
+             privacyHtml.includes('BigDataCloud') && privacyHtml.includes('CARTO') &&
+             privacyMd.includes('В целях обеспечения отказоустойчивости сервиса') && privacyMd.includes('BigDataCloud'),
+             'privacy policy discloses fallback geodata providers (BigDataCloud, CARTO)');
+      assert(privacyHtml.includes('localStorage / Cache API') &&
+             privacyHtml.includes('очистку данных сайта в настройках браузера') &&
+             privacyMd.includes('localStorage / Cache API') && privacyMd.includes('очистку данных сайта в настройках браузера'),
+             'privacy policy documents local-only city history (localStorage / Cache API)');
+
+      /* ---- Basemap tiles wait for the ToS consent ---- */
+      assert(/mapInitPending/.test(appSrc) && /if \(!consentLocked\(\)\) initMap\(\);/.test(appSrc),
+             'basemap tiles never load before the Terms of Service consent');
+      assert(/flagUrl\(/.test(appSrc) && !/flagcdn/.test(appSrc),
+             'country flags resolve from self-hosted SVG assets only');
+
       /* Regression: even a previously valid record must not let the legal-page
          "На главную" route bypass the consent dialog. Only the inline gate is
          needed for this pre-render test; external scripts are intentionally not loaded. */
