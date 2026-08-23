@@ -16,7 +16,7 @@
 let mapInst = null, mapMarkEl = null, smallMapFallback = false;
 /* The fullscreen map instance is created lazily inside openFullMap(); the
    pending flag keeps a rapid double-tap from creating two MapLibre views. */
-let fullMapInst = null, fullMapPending = false, fullMarkEl = null, fullPopup = null, fullMapFallback = false;
+let fullMapInst = null, fullMapPending = false, fullMarkEl = null, fullMapFallback = false;
 let tempLat = null, tempLon = null;
 
 /* Raster tiles proven to load reliably (CARTO). Four explicit subdomains
@@ -111,17 +111,15 @@ function openFullMap() {
         });
         fullMapInst.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), 'bottom-right');
         fullMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(fullMapInst);
-        fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
-          .setLngLat([state.lon, state.lat])
-          .setHTML('<b>' + escHtml(state.locationName) + '</b>')
-          .addTo(fullMapInst);
+        /* No city-name popup here: the pin marks the spot, the instruction bar
+           explains the tap-to-pick flow (regression: the default white
+           MapLibre popup tooltip showed up over the map). */
         fullMapInst.on('load', () => {
           fullMapInst.on('click', (e) => {
             /* Ignore clicks that are really the end of a pan. */
             if (fullMapInst._liveskyDragging) return;
             tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
             if (fullMarkEl) fullMarkEl.setLngLat([tempLon, tempLat]);
-            if (fullPopup) { fullPopup.remove(); fullPopup = null; }
             el.mapInstr.style.display = 'none';
             el.mapApply.classList.remove('hidden');
           });
@@ -147,11 +145,6 @@ function openFullMap() {
     const z = RADAR.active ? Math.min(fullMapInst.getZoom(), 8) : Math.max(fullMapInst.getZoom(), 9);
     fullMapInst.flyTo({ center: [state.lon, state.lat], zoom: z, duration: 500 });
     if (fullMarkEl) fullMarkEl.setLngLat([state.lon, state.lat]);
-    if (fullPopup) { fullPopup.remove(); fullPopup = null; }
-    fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
-      .setLngLat([state.lon, state.lat])
-      .setHTML('<b>' + escHtml(state.locationName) + '</b>')
-      .addTo(fullMapInst);
     setTimeout(() => {
       try { fullMapInst.resize(); } catch (e) { /* ignore */ }
       if (fullMapInst.triggerRepaint) fullMapInst.triggerRepaint();
@@ -169,7 +162,6 @@ function closeFullMap() {
   /* quiet period: the just-closed overlay must not leak clicks/cursor into the page */
   state.uiLockUntil = Date.now() + UI_LOCK_MS;
   clearTimeout(state.favOpenTimer);
-  if (fullPopup) { fullPopup.remove(); fullPopup = null; }
   if (fullMapInst) { try { fullMapInst.stop(); } catch (e) { /* ignore */ } }
   /* Pause animation while the map is hidden — saves tiles + battery. State stays. */
   RADAR.pause();
