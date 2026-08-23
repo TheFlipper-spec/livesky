@@ -10,11 +10,12 @@
   <link rel="icon" type="image/png" sizes="32x32" href="../icons/icon-32.png" />
   <link rel="apple-touch-icon" href="../icons/icon-180.png" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2"></script>
-  <link rel="stylesheet" href="../css/app.css?v=34" />
+  <!-- Self-hosted assets: this page loads no third-party resources at all. -->
+  <link rel="stylesheet" href="../assets/fonts/fonts.css?v=1" />
+  <link rel="stylesheet" href="../assets/vendor/phosphor/regular/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="../assets/vendor/phosphor/bold/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="../assets/vendor/phosphor/fill/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="../css/app.css?v=38" />
   <style>
     .legal-page {
       min-height: 100vh;
@@ -154,7 +155,7 @@
     <main class="legal-card">
       <div class="legal-badge"><i class="ph-fill ph-shield-check"></i> Privacy Policy</div>
       <h1>Политика конфиденциальности</h1>
-      <div class="legal-updated">Сервис LiveSky (Web &amp; Android) · Версия 2.0</div>
+      <div class="legal-updated">Сервис LiveSky (Web &amp; Android) · Версия 2.1</div>
 
       <div class="legal-highlight">
         <p><strong>Сервис LiveSky уважает вашу конфиденциальность. Приложение может запрашивать доступ к данным о вашем местоположении (геолокации) исключительно в момент использования для обработки запроса к внешним метеорологическим API (например, Open-Meteo) и предоставления точного локального прогноза погоды. Сервис не сохраняет историю перемещений и не связывает координаты с личностью пользователя. Координаты не сохраняются на серверах LiveSky. Они передаются исключительно доверенным внешним провайдерам API (включая, но не ограничиваясь: Open-Meteo, Nominatim, RainViewer) строго в момент использования приложения для предоставления метеоданных и обратного геокодирования. Данные не профилируются и не передаются в маркетинговых целях. Использование приложения подразумевает согласие с данной политикой обработки технических геоданных.</strong></p>
@@ -177,12 +178,15 @@
         <ul>
           <li><strong>Open-Meteo API</strong> — расчет погодных моделей и индексов качества воздуха (не собирает персональные данные);</li>
           <li><strong>RainViewer API</strong> — радарные карты осадков в реальном времени;</li>
-          <li><strong>MapLibre GL / OpenStreetMap</strong> — отображение картографической подложки.</li>
+          <li><strong>MapLibre GL / OpenStreetMap / CARTO</strong> — отображение картографической подложки.</li>
         </ul>
+        <p>В целях обеспечения отказоустойчивости сервиса, геоданные в момент запроса могут обрабатываться резервными провайдерами (например, <strong>BigDataCloud</strong>, <strong>CARTO</strong>). Резервные провайдеры используются только тогда, когда основной сервис геокодирования недоступен, и подчиняются тем же ограничениям: обработка строго в момент запроса, без хранения, профилирования и маркетинговых целей.</p>
+        <p>Все ресурсы самого приложения — шрифты, иконки, картографическая библиотека и изображения флагов — размещены на собственном хостинге LiveSky. До того как приложение приступит к запросу метеоданных, геокодирования или картографических тайлов, оно не отправляет ни одного запроса к сторонним доменам (исключается утечка IP-адреса через сторонние CDN).</p>
       </section>
 
       <section class="legal-section">
         <h2><i class="ph ph-hard-drive"></i> 3. Локальное хранение (LocalStorage &amp; Cache)</h2>
+        <p>История выбранных локаций и городов сохраняется исключительно в локальной памяти вашего устройства (localStorage / Cache API) для обеспечения работы приложения в офлайн-режиме. Эти данные не передаются на серверы LiveSky и могут быть удалены вами в любой момент через очистку данных сайта в настройках браузера.</p>
         <p>Приложение сохраняет на вашем устройстве следующие настройки:</p>
         <ul>
           <li>Выбранный язык интерфейса, цветовая тема и единицы измерения;</li>

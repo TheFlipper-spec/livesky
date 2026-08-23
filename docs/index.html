@@ -17,15 +17,19 @@
   <meta name="apple-mobile-web-app-title" content="LiveSky" />
   <link rel="manifest" href="manifest.webmanifest" />
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Unbounded:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Self-hosted assets only: before the user accepts the Terms of Service the
+       app must not send a single request to a third-party domain (no IP leak).
+       Fonts (Montserrat/Unbounded, OFL), MapLibre GL (BSD-2) and Phosphor
+       Icons (MIT) are served from ./assets — see assets/*/LICENSE files. -->
+  <link rel="stylesheet" href="assets/fonts/fonts.css?v=1" />
+  <link rel="stylesheet" href="assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1" />
+  <script src="assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1"></script>
+  <link rel="stylesheet" href="assets/vendor/phosphor/regular/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="assets/vendor/phosphor/bold/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <script defer src="https://unpkg.com/@phosphor-icons/web@2.1.2"></script>
-
-  <link rel="stylesheet" href="css/app.css?v=37" />
+  <link rel="stylesheet" href="css/app.css?v=38" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -162,9 +166,9 @@
           </button>
           <div class="dropdown" id="main-menu">
             <div class="dd-group-label" data-translate="language">Язык</div>
-            <button class="dd-item" data-lang="ru"><img class="lang-flag" src="https://flagcdn.com/20x15/ru.png" alt=""><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="en"><img class="lang-flag" src="https://flagcdn.com/20x15/gb.png" alt=""><span data-translate="lang_en">English</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="es"><img class="lang-flag" src="https://flagcdn.com/20x15/es.png" alt=""><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-lang="ru"><img class="lang-flag" src="assets/flags/ru.svg" alt="" loading="lazy"><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-lang="en"><img class="lang-flag" src="assets/flags/gb.svg" alt="" loading="lazy"><span data-translate="lang_en">English</span><i class="ph-bold ph-check dd-check"></i></button>
+            <button class="dd-item" data-lang="es"><img class="lang-flag" src="assets/flags/es.svg" alt="" loading="lazy"><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
 
             <div class="dd-group-label"><span data-translate="theme_group">Тема</span> · <span id="theme-label"></span></div>
             <button class="dd-item" data-theme-pick="adaptive"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check dd-check"></i></button>
@@ -457,8 +461,21 @@
         <a class="footer-link" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
         <a class="footer-link" href="legal/privacy.html" target="_blank" rel="noopener"><i class="ph ph-shield-check"></i><span data-translate="privacy_policy">Политика конфиденциальности</span></a>
       </div>
-      <p class="footer-copy"><span data-translate="footer_copy">LiveSky Weather Pro · данные: Open-Meteo</span><br />
-        Weather by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a> · Maps by <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL</a> &amp; OSM · Geocoding by Open-Meteo / Nominatim</p>
+      <!-- Mandatory data attribution (CC BY 4.0 / OSM / CARTO terms).
+           Translated lead-ins keep the provider links clickable. -->
+      <p class="footer-copy"><span data-translate="footer_copy">LiveSky Weather Pro · данные: Open-Meteo</span></p>
+      <p class="footer-attribution">
+        <span data-translate="attr_weather_pre">Метеоданные предоставлены сервисом</span>
+        <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+        (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>).
+        <span data-translate="attr_radar_pre">Данные радара —</span>
+        <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>.
+        <span data-translate="attr_map_pre">Картографические данные ©</span>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>,
+        <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>.
+        <span data-translate="attr_maps_by">Карты отрисованы с помощью</span>
+        <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL</a>.
+      </p>
     </footer>
   </div>
 
@@ -586,7 +603,7 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=30"></script>
-  <script src="js/app.js?v=36"></script>
+  <script src="js/i18n.js?v=31"></script>
+  <script src="js/app.js?v=37"></script>
 </body>
 </html>
