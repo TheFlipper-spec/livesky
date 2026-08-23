@@ -1,3 +1,191 @@
+/* ============================================================
+   LiveSky — map & precipitation radar (LAZY subsystem)
+   ------------------------------------------------------------
+   This file is NOT part of the initial page load. It is injected
+   by the LiveSkyMap facade in 10-bootstrap.js on the first real
+   map/radar interaction and registers its implementation back
+   with the loader, so it is fetched and executed exactly once.
+
+   It is a classic script that shares the global lexical scope of
+   modules 01–10 and therefore only executes after they have run
+   (the loader guarantees this). All map/radar UI handlers are
+   bound here exactly once, when the module first executes.
+   ============================================================ */
+
+/* ---------------- maps (MapLibre GL, reliable raster tiles) ---------------- */
+let mapInst = null, mapMarkEl = null, smallMapFallback = false;
+/* The fullscreen map instance is created lazily inside openFullMap(); the
+   pending flag keeps a rapid double-tap from creating two MapLibre views. */
+let fullMapInst = null, fullMapPending = false, fullMarkEl = null, fullPopup = null, fullMapFallback = false;
+let tempLat = null, tempLon = null;
+
+/* Raster tiles proven to load reliably (CARTO). Four explicit subdomains
+   because MapLibre does not expand the {s} token itself. */
+function cartoTiles(theme) {
+  const variant = theme === 'light' ? 'light_all' : 'dark_all';
+  return ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`);
+}
+function mapStyle() {
+  return {
+    version: 8,
+    sources: {
+      raster: { type: 'raster', tiles: cartoTiles(state.theme), tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' }
+    },
+    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
+  };
+}
+/* last-resort fallback: OSM standard tiles */
+function osmStyle() {
+  return {
+    version: 8,
+    sources: {
+      raster: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' }
+    },
+    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
+  };
+}
+function makePinEl() {
+  const d = document.createElement('div');
+  d.className = 'map-pin';
+  return d;
+}
+
+/* The small map is created only once this module is on board — i.e. after the
+   user actually asked for the map. Opening the mini-map itself is bound
+   eagerly in bindEvents() (it must work before this file exists). */
+function initMap() {
+  if (!window.maplibregl) { console.warn('LiveSky: MapLibre GL unavailable'); return; }
+  try {
+    mapInst = new maplibregl.Map({
+      container: 'map',
+      style: mapStyle(),
+      center: [state.lon, state.lat],
+      zoom: 10,
+      attributionControl: { compact: true },
+      scrollZoom: false,
+      boxZoom: false,
+      doubleClickZoom: false
+    });
+    mapInst.on('error', () => {
+      if (!smallMapFallback) { smallMapFallback = true; try { mapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
+    });
+    mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
+    setTimeout(() => { if (mapInst) mapInst.resize(); }, 300);
+  } catch (e) { console.warn('LiveSky: map init failed', e); }
+}
+function updateMap() {
+  if (!mapInst || !window.maplibregl) return;
+  mapInst.flyTo({ center: [state.lon, state.lat], zoom: Math.max(mapInst.getZoom(), 10), duration: 900 });
+  if (mapMarkEl) mapMarkEl.setLngLat([state.lon, state.lat]);
+  else mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
+}
+function updateMapTiles() {
+  if (!window.maplibregl) return;
+  smallMapFallback = false; fullMapFallback = false;
+  if (mapInst) mapInst.setStyle(mapStyle());
+  if (fullMapInst) fullMapInst.setStyle(mapStyle());
+}
+
+function openFullMap() {
+  if (!window.maplibregl) return;
+  el.mapModal.classList.add('open');
+  document.body.classList.add('no-scroll');
+  trapFocus(el.mapModal);
+  tempLat = null; tempLon = null;
+  el.mapInstr.style.display = '';
+  el.mapApply.classList.add('hidden');
+  /* Prefer a precip-friendly zoom when radar is (or will be) on. */
+  const openZoom = RADAR.active ? 7 : 10;
+  if (!fullMapInst && !fullMapPending) {
+    fullMapPending = true;
+    setTimeout(() => {
+      fullMapPending = false;
+      try {
+        fullMapInst = new maplibregl.Map({
+          container: 'full-map',
+          style: mapStyle(),
+          center: [state.lon, state.lat],
+          zoom: openZoom,
+          attributionControl: { compact: true },
+          maxPitch: 0
+        });
+        fullMapInst.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), 'bottom-right');
+        fullMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(fullMapInst);
+        fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
+          .setLngLat([state.lon, state.lat])
+          .setHTML('<b>' + escHtml(state.locationName) + '</b>')
+          .addTo(fullMapInst);
+        fullMapInst.on('load', () => {
+          fullMapInst.on('click', (e) => {
+            /* Ignore clicks that are really the end of a pan. */
+            if (fullMapInst._liveskyDragging) return;
+            tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
+            if (fullMarkEl) fullMarkEl.setLngLat([tempLon, tempLat]);
+            if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+            el.mapInstr.style.display = 'none';
+            el.mapApply.classList.remove('hidden');
+          });
+          fullMapInst.on('dragstart', () => { fullMapInst._liveskyDragging = true; });
+          fullMapInst.on('dragend', () => { setTimeout(() => { fullMapInst._liveskyDragging = false; }, 40); });
+          if (RADAR.active) {
+            RADAR.layerReady = false;
+            RADAR.ensureLayers();
+            RADAR.renderFrame(true);
+          }
+        });
+        fullMapInst.on('error', (e) => {
+          /* Only fall back the basemap — ignore missing radar tile 404 noise. */
+          const msg = (e && e.error && (e.error.message || e.error.status)) || '';
+          if (/radar/i.test(String(msg))) return;
+          if (!fullMapFallback) { fullMapFallback = true; try { fullMapInst.setStyle(osmStyle()); } catch (err) { /* ignore */ } }
+        });
+        fullMapInst.resize();
+      } catch (e) { console.warn('LiveSky: full map init failed', e); }
+    }, 320);
+  } else if (fullMapInst) {
+    /* Don't yank zoom back to 10 if the user was inspecting precip. */
+    const z = RADAR.active ? Math.min(fullMapInst.getZoom(), 8) : Math.max(fullMapInst.getZoom(), 9);
+    fullMapInst.flyTo({ center: [state.lon, state.lat], zoom: z, duration: 500 });
+    if (fullMarkEl) fullMarkEl.setLngLat([state.lon, state.lat]);
+    if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+    fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
+      .setLngLat([state.lon, state.lat])
+      .setHTML('<b>' + escHtml(state.locationName) + '</b>')
+      .addTo(fullMapInst);
+    setTimeout(() => {
+      try { fullMapInst.resize(); } catch (e) { /* ignore */ }
+      if (fullMapInst.triggerRepaint) fullMapInst.triggerRepaint();
+      if (RADAR.active) {
+        RADAR.ensureLayers();
+        RADAR.renderFrame(true);
+      }
+    }, 140);
+  }
+}
+function closeFullMap() {
+  el.mapModal.classList.remove('open');
+  document.body.classList.remove('no-scroll');
+  releaseFocus(el.mapModal);
+  /* quiet period: the just-closed overlay must not leak clicks/cursor into the page */
+  state.uiLockUntil = Date.now() + UI_LOCK_MS;
+  clearTimeout(state.favOpenTimer);
+  if (fullPopup) { fullPopup.remove(); fullPopup = null; }
+  if (fullMapInst) { try { fullMapInst.stop(); } catch (e) { /* ignore */ } }
+  /* Pause animation while the map is hidden — saves tiles + battery. State stays. */
+  RADAR.pause();
+}
+async function applyMapLocation() {
+  if (tempLat == null || tempLon == null) return;
+  const lat = tempLat, lon = tempLon;
+  tempLat = null; tempLon = null;
+  closeFullMap();
+  state.lat = lat; state.lon = lon;
+  showLoader();
+  await reverseGeo(state.lat, state.lon);
+  toast(t('toast_loc_set'), 'success');
+  fetchWeather();
+}
+
 /* ---------------- Precipitation map (RainViewer) — dual-layer smooth radar --------------- */
 /* RainViewer tiles only exist up to zoom 7. We keep TWO raster sources/layers and
    cross-fade between them on every frame change so the map never flashes blank
@@ -386,255 +574,46 @@ const RADAR = {
   toggle() { this.active ? this.disable() : this.enable(); }
 };
 
-/* ---------------- weather notifications (local + Web Push ready) ---------------- */
-/* Keeps a rolling record of alerts we already notified about so the user isn't
-   spammed with the same event every time the forecast refreshes. */
-let sentAlerts = store.get('livesky:sent_alerts', []);
-function prunSentAlerts() {
-  const now = Date.now();
-  sentAlerts = sentAlerts.filter(a => now - a.at < 3 * 3600 * 1000); /* 3h window */
-}
-function alertSignature(type, hourIso) {
-  /* Bucket by 30 minutes so refined minutely times of the same event don't re-fire. */
-  if (!hourIso) return type + '|?';
-  const hh = parseInt(hourIso.slice(11, 13), 10) || 0;
-  const mm = parseInt(hourIso.slice(14, 16), 10) || 0;
-  const bucket = String(hh).padStart(2, '0') + ':' + (mm < 30 ? '00' : '30');
-  return type + '|' + hourIso.slice(0, 10) + 'T' + bucket;
-}
-function shouldSendAlert(sig) { prunSentAlerts(); return !sentAlerts.some(a => a.sig === sig); }
-function markSent(sig) {
-  sentAlerts.push({ sig, at: Date.now() });
-  sentAlerts = sentAlerts.slice(-60);
-  store.set('livesky:sent_alerts', sentAlerts);
+/* ---------------- map / radar UI wiring (bound once, right here) ---------------- */
+/* These controls live inside the map modal / radar panel, which only becomes
+   reachable after this module has loaded — so binding them here, exactly once
+   at first execution, is safe and keeps bindEvents() free of map internals. */
+function bindMapEvents() {
+  on(el.mapClose, 'click', closeFullMap);
+  on(el.mapApply, 'click', applyMapLocation);
+
+  /* precipitation map (radar) */
+  on(el.radarToggle, 'click', () => RADAR.toggle());
+  on(el.radarClose, 'click', () => RADAR.disable());
+  on(el.radarPlay, 'click', () => RADAR.togglePlay());
+  on(el.radarNext, 'click', () => RADAR.step(1));
+  on(el.radarBack, 'click', () => RADAR.step(-1));
+  on(el.radarSlider, 'input', (e) => RADAR.goto(+e.target.value));
+  on(el.radarLive, 'click', () => RADAR.goLive());
+  on(el.radarOpacity, 'input', (e) => RADAR.setOpacity(+e.target.value / 100));
+  on(el.radarSpeed, 'change', (e) => RADAR.setSpeed(+e.target.value));
 }
 
-/* Public list for notifications — same engine as the banner, 24h horizon.
-   Each item has .type, .t (ISO with minutes), .abs (absolute minutes). */
-function upcomingAlerts() {
-  return collectHazardAlerts(24).map(a => ({
-    type: a.type,
-    t: a.t,
-    abs: a.abs,
-    extra: a.extra
-  }));
+/* Hand every implementation to the loader facade. From here on, all later
+   calls go straight to these functions — nothing is ever loaded twice. */
+if (window.LiveSkyMap && typeof window.LiveSkyMap._register === 'function') {
+  window.LiveSkyMap._register({
+    open: openFullMap,
+    close: closeFullMap,
+    applyLocation: applyMapLocation,
+    updateSmall: updateMap,
+    refreshTiles: updateMapTiles,
+    radarToggle: () => RADAR.toggle(),
+    radarEnable: () => RADAR.enable(),
+    radarDisable: () => RADAR.disable(),
+    radarPause: () => RADAR.pause(),
+    /* impl-side guard: only refresh frames while the radar layer is on screen */
+    radarRefresh: () => { if (RADAR.active) RADAR.refreshSilent(); },
+    radarActive: () => RADAR.active
+  });
 }
 
-function nativeNotificationId(alert) {
-  const source = alertSignature(alert.type, alert.t);
-  let hash = 0;
-  for (let i = 0; i < source.length; i++) hash = ((hash * 31) + source.charCodeAt(i)) | 0;
-  return Math.max(1, hash & 0x7fffffff);
-}
-function sendNotification(alert) {
-  const abs = alert.abs != null ? alert.abs : (alert.t ? absMinLocal(alert.t) : null);
-  const title = t('notif_title');
-  const body = formatAlertMsg(alert.type, abs, alert.extra);
-  const nativeNotifications = nativePlugin('LocalNotifications');
-
-  if (nativeNotifications) {
-    return nativeNotifications.schedule({
-      notifications: [{
-        id: nativeNotificationId(alert), title, body,
-        channelId: 'weather-alerts',
-        smallIcon: 'ic_stat_livesky',
-        iconColor: '#38BDF8',
-        extra: { type: alert.type, forecastTime: alert.t }
-      }]
-    });
-  }
-
-  const opts = {
-    body, icon: 'icons/icon-192.png', badge: 'icons/icon-96.png',
-    tag: 'livesky-' + alert.type, data: { url: location.href },
-    renotify: false
-  };
-  if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-    return navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts))
-      .catch(() => { try { new Notification(title, opts); } catch (e) { /* ignore */ } });
-  }
-  try { new Notification(title, opts); } catch (e) { /* ignore */ }
-  return Promise.resolve();
-}
-
-function dispatchWeatherAlerts() {
-  for (const a of upcomingAlerts()) {
-    const sig = alertSignature(a.type, a.t);
-    if (!shouldSendAlert(sig)) continue;
-    markSent(sig);
-    Promise.resolve(sendNotification(a)).catch(() => { /* permission can be changed in Android settings */ });
-  }
-}
-
-/* Called on every forecast refresh and on a periodic timer. Only fires when the
-   user enabled alerts, permission is granted and the event hasn't been sent. */
-function checkWeatherAlerts() {
-  if (!state.notif) return;
-  const nativeNotifications = nativePlugin('LocalNotifications');
-  if (nativeNotifications) {
-    if (state._notifPermissionCheck) return;
-    state._notifPermissionCheck = true;
-    nativeNotifications.checkPermissions()
-      .then(permission => { if (permission.display === 'granted') dispatchWeatherAlerts(); })
-      .catch(() => {})
-      .finally(() => { state._notifPermissionCheck = false; });
-    return;
-  }
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  dispatchWeatherAlerts();
-}
-
-function updateNotifItem() {
-  if (!el.notifItem) return;
-  const on = state.notif;
-  if (el.notifIco) el.notifIco.className = 'ph ' + (on ? 'ph-bell-ringing' : 'ph-bell');
-  if (el.notifLabel) {
-    el.notifLabel.dataset.translate = on ? 'notif_enabled' : 'notif_enable';
-    el.notifLabel.textContent = t(on ? 'notif_enabled' : 'notif_enable');
-  }
-  el.notifItem.classList.toggle('selected', on);
-}
-function setNotificationsEnabled() {
-  state.notif = true;
-  store.set('livesky:notif', true);
-  updateNotifItem();
-  toast(t('notif_toast_on'), 'success');
-  checkWeatherAlerts();
-}
-function toggleNotifications() {
-  if (state.notif) {
-    state.notif = false;
-    store.set('livesky:notif', false);
-    updateNotifItem();
-    toast(t('notif_toast_off'), 'info');
-    return;
-  }
-
-  const nativeNotifications = nativePlugin('LocalNotifications');
-  if (nativeNotifications) {
-    nativeNotifications.checkPermissions()
-      .then(permission => permission.display === 'granted' ? permission : nativeNotifications.requestPermissions())
-      .then(permission => {
-        if (permission.display === 'granted') setNotificationsEnabled();
-        else toast(t('notif_blocked'), 'error');
-      })
-      .catch(() => { toast(t('notif_unsupported'), 'error'); });
-    return;
-  }
-
-  if (typeof Notification === 'undefined') { toast(t('notif_unsupported'), 'error'); return; }
-  if (Notification.permission === 'denied') { toast(t('notif_blocked'), 'error'); return; }
-  if (Notification.permission === 'granted') { setNotificationsEnabled(); return; }
-  /* prompt the user for permission first time */
-  Notification.requestPermission().then(perm => {
-    if (perm === 'granted') setNotificationsEnabled();
-    else toast(t('notif_blocked'), 'error');
-  }).catch(() => { toast(t('notif_unsupported'), 'error'); });
-}
-
-/* ---------------- Capacitor / Android integration ---------------- */
-function initNativeBridge() {
-  if (!isNativeApp()) return;
-
-  const nativeApp = nativePlugin('App');
-  if (nativeApp) {
-    try {
-      /* Capacitor's addListener can return a PluginListenerHandle directly
-         instead of a Promise. Promise.resolve supports both API shapes. */
-      Promise.resolve(nativeApp.addListener('backButton', () => {
-        if (consentLocked()) return;
-        if (privacyDialogOpen()) { cancelPrivacyConsent(); return; }
-        if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
-        if (el.modal.classList.contains('open')) { closeModal(); return; }
-        if (el.mainMenu && el.mainMenu.classList.contains('open')) { setMenuOpen(false); return; }
-        if (el.autoList && !el.autoList.classList.contains('hidden')) { closeAutocomplete(); return; }
-        nativeApp.exitApp();
-      })).catch(() => {});
-    } catch (e) { /* a native listener must never block application startup */ }
-  }
-
-  const nativeNotifications = nativePlugin('LocalNotifications');
-  if (nativeNotifications) {
-    try {
-      Promise.resolve(nativeNotifications.createChannel({
-        id: 'weather-alerts',
-        name: 'LiveSky Weather',
-        description: 'Weather warnings and forecast alerts',
-        importance: 4,
-        visibility: 1,
-        vibration: true,
-        lights: true,
-        lightColor: '#38BDF8'
-      })).catch(() => {});
-    } catch (e) { /* notifications remain optional */ }
-  }
-}
-
-/* ---------------- init ---------------- */
-function init() {
-  /* sanitize persisted settings (old/foreign values must never break boot) */
-  if (!I18N[state.lang]) state.lang = 'ru';
-  if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';
-  if (!['metric', 'imperial'].includes(state.units)) state.units = 'metric';
-  if (!['auto', 'ecmwf_ifs04', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
-  if (!['auto', 'full', 'eco'].includes(state.effects)) state.effects = 'auto';
-
-  document.documentElement.dataset.theme = state.theme;
-  document.body.dataset.theme = state.theme;
-  el.input.placeholder = t('search_ph');
-  applyTranslations();
-  updateThemeLabel();
-  syncMenuChecks();
-  syncEffectsSelect();
-  updateFavIcon();
-  updateNotifItem();
-  startClock();
-  startLiveTicker();
-  bindEvents();
-  initNativeBridge();
-  checkLegalConsent();
-  initReveal();
-  applyEffects();
-  SECTION_MANAGER.init();
-  showLoader();
-  /* No third-party request of any kind on a locked boot: fonts, icons, the
-     map library and flags are self-hosted, and basemap tiles wait for the
-     ToS consent. Weather for the default / last city is the app's own first
-     data request and stays exactly where it was in the boot sequence. */
-  if (!consentLocked()) initMap();
-  else mapInitPending = true;
-
-  /* PWA + adaptive performance + offline */
-  registerServiceWorker();
-  initInstallPrompt();
-  updateInstallItem();
-  initConnectivity();
-  if (state.effects === 'auto') PERF.start();
-
-  const last = store.get('livesky:last_city', null);
-  if (last && last.lat != null) {
-    state.lat = last.lat;
-    state.lon = last.lon;
-    state.locationName = last.name || 'Москва';
-    state.countryCode = last.cc || '';
-    state.admin = last.admin || '';
-  }
-  /* Always paint a default / last-city forecast so the UI is ready behind
-     the sequential dialogs. Auto-geolocation is offered in Step 2. */
-  fetchWeather();
-  if (hasValidConsent()) offerPrivacyIfNeeded();
-}
-
-/* fatal errors must never leave the user staring at the loader */
-window.addEventListener('error', (e) => {
-  if (e && e.filename && /(app|i18n)\.js/.test(e.filename)) bootFail(e.message);
-});
-window.addEventListener('unhandledrejection', (e) => {
-  if (!state.weather) bootFail((e.reason && e.reason.message) || String(e.reason || 'Unknown error'));
-});
-
-try {
-  init();
-} catch (err) {
-  bootFail(err && err.message ? err.message : String(err));
-}
+/* First activation: create the small map and wire the map/radar UI once.
+   Basemap tiles still never load before the ToS consent. */
+if (!consentLocked()) initMap();
+bindMapEvents();

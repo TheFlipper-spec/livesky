@@ -239,11 +239,13 @@ async function fetchWeather(silent) {
 
     store.set('livesky:last_city', { lat: state.lat, lon: state.lon, name: state.locationName, cc: state.countryCode, admin: state.admin });
     renderAll();
-    updateMap();
+    /* The mini map (if the lazy map subsystem is already on board) follows the
+       city change; until then this is a safe no-op. */
+    if (window.LiveSkyMap) LiveSkyMap.update();
     fetchAir(seq);
     checkWeatherAlerts();
     /* Keep the radar frames fresh when the user is looking at the map. */
-    if (typeof RADAR !== 'undefined' && RADAR.active) RADAR.refreshSilent();
+    if (window.LiveSkyMap) LiveSkyMap.radarRefresh();
   } catch (e) {
     if (seq !== fetchSeq) return;
     console.error('fetchWeather failed:', e);

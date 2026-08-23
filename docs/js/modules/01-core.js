@@ -28,7 +28,7 @@ const el = {
   dStrip: $('daily-strip'), historyBtn: $('history-btn'),
   alertBox: $('alert-box'), alertMsg: $('alert-msg'), alertTitle: $('alert-title'),
   modal: $('modal'), modalTitle: $('modal-title'), modalSubtitle: $('modal-subtitle'), modalBody: $('modal-body'), modalClose: $('modal-close'),
-  mapModal: $('map-modal'), fullMap: $('full-map'), mapClose: $('map-close'), mapInstr: $('map-instr'), mapApply: $('map-apply-btn'), mapSmall: $('map'),
+  mapModal: $('map-modal'), fullMap: $('full-map'), mapClose: $('map-close'), mapInstr: $('map-instr'), mapApply: $('map-apply-btn'), mapSmall: $('map'), mapCard: $('map-card'),
   rainStatus: $('rain-status'), rainStatusText: $('rain-status-text'), moonChip: $('moon-chip'), mPressTrend: $('m-press-trend'),
   toastWrap: $('toast-wrap'),
   searchForm: $('search-form'), input: $('city-input'), autoList: $('autocomplete-list'),
