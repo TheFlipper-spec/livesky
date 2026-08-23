@@ -1619,6 +1619,12 @@ function liveTick(force) {
   /* Lightweight live updates — always cheap. */
   updateRainStatus();
   updateHeroLive();
+  /* Re-evaluate the weather-driven background and particle effect on every live
+     tick. Minutely nowcast data can change from dry to rain (or back) between
+     hourly boundaries, so waiting for a network refresh or a new hour leaves
+     the canvas effect stale until the page is reloaded. */
+  applyWeatherTheme();
+  updateFXIntensity();
   renderAlerts();
   /* Nudge the chart "now" cursor with the real minute when the user isn't scrubbing. */
   if (chartMeta && el.chartPlot && !el.chartPlot.classList.contains('is-scrubbing')) {
