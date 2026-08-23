@@ -3,6 +3,9 @@
    ============================================================ */
 'use strict';
 
+/* Canonical public version of the website and service. */
+const APP_VERSION = '1.3';
+
 /* ---------------- DOM refs ---------------- */
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -607,7 +610,8 @@ function reportBugUrl(message) {
     '',
     '---',
     '**Страница / Page:** ' + (location.href || ''),
-    '**Версия / Version:** ' + (navigator.appVersion || ''),
+    '**Версия сайта и сервиса / Site and service version:** ' + APP_VERSION,
+    '**Браузер / Browser:** ' + (navigator.appVersion || ''),
     '**Ошибка / Error:** ' + (message || '—'),
     '',
     '**Что случилось / What happened:**',
