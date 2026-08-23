@@ -1607,6 +1607,7 @@ function syncNowIdx() {
    the chart cursor tick forward without waiting for the next network pull.
    A silent network refresh is kicked off every ~3 minutes while the tab is open. */
 let liveMinuteKey = '';
+let liveEffectSignature = '';
 let liveRefreshTimer = 0;
 function liveTick(force) {
   if (!state.weather) return;
@@ -1619,12 +1620,16 @@ function liveTick(force) {
   /* Lightweight live updates — always cheap. */
   updateRainStatus();
   updateHeroLive();
-  /* Re-evaluate the weather-driven background and particle effect on every live
-     tick. Minutely nowcast data can change from dry to rain (or back) between
-     hourly boundaries, so waiting for a network refresh or a new hour leaves
-     the canvas effect stale until the page is reloaded. */
-  applyWeatherTheme();
-  updateFXIntensity();
+  /* Re-evaluate the weather-driven effect when the live weather state changes.
+     The 15-second ticker still catches minutely rain transitions, but avoids
+     rebuilding particles when the code, theme, and performance mode are the
+     same as on the previous tick. */
+  const liveEffectKey = [state.theme, state.effects, state._perfLow, currentWeatherCodeLive(), isDayNow()].join('|');
+  if (liveEffectKey !== liveEffectSignature) {
+    liveEffectSignature = liveEffectKey;
+    applyWeatherTheme();
+    updateFXIntensity();
+  }
   renderAlerts();
   /* Nudge the chart "now" cursor with the real minute when the user isn't scrubbing. */
   if (chartMeta && el.chartPlot && !el.chartPlot.classList.contains('is-scrubbing')) {
