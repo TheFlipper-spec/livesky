@@ -42,6 +42,12 @@ if (typeof window.PointerEvent !== 'function') {
 window.HTMLElement.prototype.setPointerCapture = function () {};
 window.HTMLElement.prototype.releasePointerCapture = function () {};
 
+/* Pin hardware capabilities for determinism: jsdom exposes the HOST's real
+   hardwareConcurrency (CI runners report 4+ cores, dev boxes differ), and the
+   device-aware map prefetch heuristic must never flip depending on the build
+   machine. 2 cores = weak device: the main world must stay fully lazy. */
+Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 2, configurable: true });
+
 /* canvas stub */
 const gradientStub = { addColorStop() {} };
 const ctxStub = new Proxy({}, {
@@ -625,15 +631,16 @@ setTimeout(() => {
       assert(window.LiveSkyMap.radarActive() === false, 'radar is inactive until enabled');
 
       /* ---- device-aware prefetch heuristic ----
-         jsdom reports 2 CPU cores → the default world must count as weak and
-         stay fully lazy. Overriding the hardware signals flips the decision. */
+         The main world is pinned to 2 CPU cores (see polyfills above) → it must
+         count as weak and stay fully lazy. Overriding the hardware signals
+         flips the decision; re-pin afterwards so later timers stay weak too. */
       assert(window.LiveSkyMap.shouldPrefetch() === false,
         'weak device (few CPU cores) keeps the map lazy');
       Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 8, configurable: true });
       Object.defineProperty(window.navigator, 'deviceMemory', { value: 8, configurable: true });
       assert(window.LiveSkyMap.shouldPrefetch() === true,
         'capable device (8 cores / 8 GB) qualifies for the background prefetch');
-      delete window.navigator.hardwareConcurrency;
+      Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 2, configurable: true });
       delete window.navigator.deviceMemory;
       {
         const probe = document.createElement('script');
@@ -645,7 +652,7 @@ setTimeout(() => {
           state.effects = 'full';
           const fullEager = LiveSkyMap.shouldPrefetch();
           state.effects = eff;
-          delete navigator.hardwareConcurrency;
+          Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true });
           window.__prefetchProbe = { ecoLazy, fullEager };`;
         document.body.appendChild(probe);
         const pp = window.__prefetchProbe || {};
@@ -932,6 +939,9 @@ function makeWorld(htmlMod) {
   w.HTMLCanvasElement.prototype.getContext = () => ctxStub;
   w.maplibregl = { Map: function () { return fakeMap(); }, Marker: function () { return { setLngLat() { return this; }, addTo() { return this; }, remove() {} }; }, Popup: function () { return { setLngLat() { return this; }, setHTML() { return this; }, addTo() { return this; }, remove() {} }; }, NavigationControl: function () {}, AttributionControl: function () {} };
   w.addEventListener('error', (e) => errors.push('window error: ' + e.message));
+  /* Weak hardware pin (same as the main world): phases must behave identically
+     on 2-core dev boxes and 4+-core CI runners regardless of the host CPU. */
+  Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 2, configurable: true });
   return { w, doc };
 }
 
