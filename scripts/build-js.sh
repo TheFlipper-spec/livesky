@@ -1,22 +1,16 @@
 #!/usr/bin/env bash
+# Kept as a compatibility npm command. JavaScript is intentionally not bundled.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="$ROOT/docs/js/app.js"
-MODULES=(
-  01-core.js
-  02-weather-data.js
-  03-rendering.js
-  04-chart.js
-  05-hourly-alerts.js
-  06-air.js
-  07-effects.js
-  08-search-modals.js
-  09-lifecycle.js
-  10-map-radar.js
-)
-{
-  printf '%s\n' '/* Generated from docs/js/modules/*.js — edit the modules, then run npm run build:js. */'
-  for module in "${MODULES[@]}"; do
-    cat "$ROOT/docs/js/modules/$module"
-  done
-} > "$OUT"
+node --check "$ROOT/docs/js/app.js"
+COMBINED="$(mktemp --suffix=.js)"
+trap 'rm -f "$COMBINED"' EXIT
+for module in "$ROOT"/docs/js/modules/*.js; do
+  node --check "$module"
+  cat "$module" >> "$COMBINED"
+  printf '\n;\n' >> "$COMBINED"
+done
+# Classic scripts share a global lexical environment. Check their concatenation
+# too, so duplicate top-level const/let declarations fail CI without creating a bundle.
+node --check "$COMBINED"
+printf '%s\n' 'JavaScript modules are loaded directly; no app.js bundle was produced.'
