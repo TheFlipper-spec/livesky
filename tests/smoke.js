@@ -247,7 +247,11 @@ process.on('unhandledRejection', (r) => errors.push('unhandled rejection: ' + (r
 window.LIVE_FAV_DELAY_MS = 0;   /* open favorites list synchronously on focus */
 window.LIVE_UI_LOCK_MS = 200;   /* short UI lock after closing overlays */
 const i18nSrc = fs.readFileSync(path.join(DOCS, 'js', 'i18n.js'), 'utf8');
-const appSrc = fs.readFileSync(path.join(DOCS, 'js', 'app.js'), 'utf8');
+const moduleNames = ['01-core.js', '02-weather-data.js', '03-rendering.js', '04-chart.js',
+  '05-hourly-alerts.js', '06-air.js', '07-effects.js', '08-search-modals.js',
+  '09-lifecycle.js', '10-map-radar.js'];
+/* Inline each source in order: this mirrors index.html's classic script tags. */
+const appSrc = moduleNames.map((name) => fs.readFileSync(path.join(DOCS, 'js', 'modules', name), 'utf8')).join('\n;\n');
 try {
   const s1 = document.createElement('script');
   s1.textContent = i18nSrc;
@@ -264,6 +268,19 @@ setTimeout(() => {
   try {
     /* CSS regressions: closed overlay must be inert, input must use text cursor */
     {
+      const compatibilityLoader = fs.readFileSync(path.join(DOCS, 'js', 'app.js'), 'utf8');
+      const swSrc = fs.readFileSync(path.join(DOCS, 'sw.js'), 'utf8');
+      assert(Buffer.byteLength(compatibilityLoader) < 2500, 'app.js remains a small compatibility loader');
+      assert(!/src=\"js\/app\.js/.test(html), 'index.html does not load the legacy app.js bundle');
+      assert((appSrc.match(/try \{\n  init\(\);/g) || []).length === 1,
+        'the module sequence has exactly one application initialization call');
+      let previous = -1;
+      moduleNames.forEach((name) => {
+        const position = html.indexOf('js/modules/' + name);
+        assert(position > previous, 'index.html loads ' + name + ' in dependency order');
+        previous = position;
+        assert(swSrc.includes('./js/modules/' + name), 'service worker precaches ' + name);
+      });
       const cssSrc = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');

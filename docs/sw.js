@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.3';
+const VERSION = 'livesky-v1.3-modules';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -37,6 +37,16 @@ const SHELL_ASSETS = [
   './css/app.css',
   './js/i18n.js',
   './js/app.js',
+  './js/modules/01-core.js',
+  './js/modules/02-weather-data.js',
+  './js/modules/03-rendering.js',
+  './js/modules/04-chart.js',
+  './js/modules/05-hourly-alerts.js',
+  './js/modules/06-air.js',
+  './js/modules/07-effects.js',
+  './js/modules/08-search-modals.js',
+  './js/modules/09-lifecycle.js',
+  './js/modules/10-map-radar.js',
   './legal/privacy.html',
   './legal/terms.html',
   './manifest.webmanifest',

@@ -605,6 +605,16 @@
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
   <script src="js/i18n.js?v=31"></script>
-  <script src="js/app.js?v=37"></script>
+  <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones. -->
+  <script src="js/modules/01-core.js?v=1"></script>
+  <script src="js/modules/02-weather-data.js?v=1"></script>
+  <script src="js/modules/03-rendering.js?v=1"></script>
+  <script src="js/modules/04-chart.js?v=1"></script>
+  <script src="js/modules/05-hourly-alerts.js?v=1"></script>
+  <script src="js/modules/06-air.js?v=1"></script>
+  <script src="js/modules/07-effects.js?v=1"></script>
+  <script src="js/modules/08-search-modals.js?v=1"></script>
+  <script src="js/modules/09-lifecycle.js?v=1"></script>
+  <script src="js/modules/10-map-radar.js?v=1"></script>
 </body>
 </html>
