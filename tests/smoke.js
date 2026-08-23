@@ -553,6 +553,9 @@ setTimeout(() => {
     assert(document.querySelector('.site-footer a[href*="legal/terms.html"]') !== null &&
            document.querySelector('.site-footer a[href*="legal/privacy.html"]') !== null,
            'site footer contains links to legal terms and privacy policy');
+    assert(document.querySelector('.site-footer a[href="https://github.com/TheFlipper-spec/livesky"]') !== null &&
+           document.querySelector('.site-footer a[href="https://github.com/TheFlipper-spec/livesky"] .ph-github-logo') !== null,
+           'site footer links to the project GitHub repository');
     assert(document.querySelector('#main-menu a[href*="legal/terms.html"]') !== null &&
            document.querySelector('#main-menu a[href*="legal/privacy.html"]') !== null,
            'settings / main-menu contains links to legal terms and privacy policy');
