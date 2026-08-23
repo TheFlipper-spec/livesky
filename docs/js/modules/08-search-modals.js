@@ -390,9 +390,12 @@ function acceptLegalConsent() {
     return;
   }
   unlockAppAfterConsent();
-  /* Basemap tiles are the last third-party asset class held back behind the
-     ToS gate — release them as soon as the app unlocks. */
-  if (mapInitPending) initMap();
+  /* Basemap tiles stay behind the ToS gate — the map stack is a lazy
+     subsystem and only loads on the first explicit map/radar interaction
+     (see the LiveSkyMap facade in 10-bootstrap.js). On capable devices the
+     facade now starts a silent background prefetch right here, so the
+     mini-map appears essentially like the old eager behaviour. */
+  if (window.LiveSkyMap) LiveSkyMap.schedulePrefetch();
   /* Sequential Step 2: ask for geolocation immediately after ToS. */
   offerPrivacyIfNeeded();
 }
@@ -1169,186 +1172,12 @@ function showLifeSkySlot(index, type) {
 
 
 
-/* ---------------- maps (MapLibre GL, reliable raster tiles) ---------------- */
-let mapInst = null, mapMarkEl = null, smallMapFallback = false;
-/* Basemap tiles are third-party requests (CARTO / OSM), so the small map is
-   not initialised until the Terms of Service are accepted. The consent
-   overlay covers the placeholder on a locked boot — nothing is lost. */
-let mapInitPending = false;
-let fullMapInst = null, fullMarkEl = null, fullPopup = null, fullMapFallback = false;
-let tempLat = null, tempLon = null;
-
-/* Raster tiles proven to load reliably (CARTO). Four explicit subdomains
-   because MapLibre does not expand the {s} token itself. */
-function cartoTiles(theme) {
-  const variant = theme === 'light' ? 'light_all' : 'dark_all';
-  return ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`);
-}
-function mapStyle() {
-  return {
-    version: 8,
-    sources: {
-      raster: { type: 'raster', tiles: cartoTiles(state.theme), tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' }
-    },
-    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
-  };
-}
-/* last-resort fallback: OSM standard tiles */
-function osmStyle() {
-  return {
-    version: 8,
-    sources: {
-      raster: { type: 'raster', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256, attribution: '© OpenStreetMap contributors' }
-    },
-    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
-  };
-}
-function makePinEl() {
-  const d = document.createElement('div');
-  d.className = 'map-pin';
-  return d;
-}
-
-function initMap() {
-  if (!window.maplibregl) { console.warn('LiveSky: MapLibre GL unavailable'); return; }
-  mapInitPending = false;
-  /* open fullscreen map on tap/click, but NOT after dragging the map */
-  let dragStart = null;
-  on(el.mapSmall, 'pointerdown', (e) => { dragStart = { x: e.clientX, y: e.clientY }; });
-  on(el.mapSmall, 'pointerup', (e) => {
-    if (!dragStart) return;
-    const dist = Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y);
-    dragStart = null;
-    if (dist < 6) openFullMap();
-  });
-  try {
-    mapInst = new maplibregl.Map({
-      container: 'map',
-      style: mapStyle(),
-      center: [state.lon, state.lat],
-      zoom: 10,
-      attributionControl: { compact: true },
-      scrollZoom: false,
-      boxZoom: false,
-      doubleClickZoom: false
-    });
-    mapInst.on('error', () => {
-      if (!smallMapFallback) { smallMapFallback = true; try { mapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
-    });
-    mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
-    setTimeout(() => { if (mapInst) mapInst.resize(); }, 300);
-  } catch (e) { console.warn('LiveSky: map init failed', e); }
-}
-function updateMap() {
-  if (!mapInst || !window.maplibregl) return;
-  mapInst.flyTo({ center: [state.lon, state.lat], zoom: Math.max(mapInst.getZoom(), 10), duration: 900 });
-  if (mapMarkEl) mapMarkEl.setLngLat([state.lon, state.lat]);
-  else mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
-}
-function updateMapTiles() {
-  if (!window.maplibregl) return;
-  smallMapFallback = false; fullMapFallback = false;
-  if (mapInst) mapInst.setStyle(mapStyle());
-  if (fullMapInst) fullMapInst.setStyle(mapStyle());
-}
-
-function openFullMap() {
-  if (!window.maplibregl) return;
-  el.mapModal.classList.add('open');
-  document.body.classList.add('no-scroll');
-  trapFocus(el.mapModal);
-  tempLat = null; tempLon = null;
-  el.mapInstr.style.display = '';
-  el.mapApply.classList.add('hidden');
-  /* Prefer a precip-friendly zoom when radar is (or will be) on. */
-  const openZoom = RADAR.active ? 7 : 10;
-  if (!fullMapInst) {
-    setTimeout(() => {
-      try {
-        fullMapInst = new maplibregl.Map({
-          container: 'full-map',
-          style: mapStyle(),
-          center: [state.lon, state.lat],
-          zoom: openZoom,
-          attributionControl: { compact: true },
-          maxPitch: 0
-        });
-        fullMapInst.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), 'bottom-right');
-        fullMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(fullMapInst);
-        fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
-          .setLngLat([state.lon, state.lat])
-          .setHTML('<b>' + escHtml(state.locationName) + '</b>')
-          .addTo(fullMapInst);
-        fullMapInst.on('load', () => {
-          fullMapInst.on('click', (e) => {
-            /* Ignore clicks that are really the end of a pan. */
-            if (fullMapInst._liveskyDragging) return;
-            tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
-            if (fullMarkEl) fullMarkEl.setLngLat([tempLon, tempLat]);
-            if (fullPopup) { fullPopup.remove(); fullPopup = null; }
-            el.mapInstr.style.display = 'none';
-            el.mapApply.classList.remove('hidden');
-          });
-          fullMapInst.on('dragstart', () => { fullMapInst._liveskyDragging = true; });
-          fullMapInst.on('dragend', () => { setTimeout(() => { fullMapInst._liveskyDragging = false; }, 40); });
-          if (RADAR.active) {
-            RADAR.layerReady = false;
-            RADAR.ensureLayers();
-            RADAR.renderFrame(true);
-          }
-        });
-        fullMapInst.on('error', (e) => {
-          /* Only fall back the basemap — ignore missing radar tile 404 noise. */
-          const msg = (e && e.error && (e.error.message || e.error.status)) || '';
-          if (/radar/i.test(String(msg))) return;
-          if (!fullMapFallback) { fullMapFallback = true; try { fullMapInst.setStyle(osmStyle()); } catch (err) { /* ignore */ } }
-        });
-        fullMapInst.resize();
-      } catch (e) { console.warn('LiveSky: full map init failed', e); }
-    }, 320);
-  } else {
-    /* Don't yank zoom back to 10 if the user was inspecting precip. */
-    const z = RADAR.active ? Math.min(fullMapInst.getZoom(), 8) : Math.max(fullMapInst.getZoom(), 9);
-    fullMapInst.flyTo({ center: [state.lon, state.lat], zoom: z, duration: 500 });
-    if (fullMarkEl) fullMarkEl.setLngLat([state.lon, state.lat]);
-    if (fullPopup) { fullPopup.remove(); fullPopup = null; }
-    fullPopup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 16 })
-      .setLngLat([state.lon, state.lat])
-      .setHTML('<b>' + escHtml(state.locationName) + '</b>')
-      .addTo(fullMapInst);
-    setTimeout(() => {
-      try { fullMapInst.resize(); } catch (e) { /* ignore */ }
-      if (fullMapInst.triggerRepaint) fullMapInst.triggerRepaint();
-      if (RADAR.active) {
-        RADAR.ensureLayers();
-        RADAR.renderFrame(true);
-      }
-    }, 140);
-  }
-}
-function closeFullMap() {
-  el.mapModal.classList.remove('open');
-  document.body.classList.remove('no-scroll');
-  releaseFocus(el.mapModal);
-  /* quiet period: the just-closed overlay must not leak clicks/cursor into the page */
-  state.uiLockUntil = Date.now() + UI_LOCK_MS;
-  clearTimeout(state.favOpenTimer);
-  if (fullPopup) { fullPopup.remove(); fullPopup = null; }
-  if (fullMapInst) { try { fullMapInst.stop(); } catch (e) { /* ignore */ } }
-  /* Pause animation while the map is hidden — saves tiles + battery. State stays. */
-  if (typeof RADAR !== 'undefined') RADAR.pause();
-}
-async function applyMapLocation() {
-  if (tempLat == null || tempLon == null) return;
-  const lat = tempLat, lon = tempLon;
-  tempLat = null; tempLon = null;
-  closeFullMap();
-  state.lat = lat; state.lon = lon;
-  showLoader();
-  await reverseGeo(state.lat, state.lon);
-  toast(t('toast_loc_set'), 'success');
-  fetchWeather();
-}
+/* ---------------- maps & radar: LAZY subsystem ---------------- */
+/* The MapLibre views, the RainViewer radar and all their UI wiring live in
+   the on-demand module js/modules/11-map-radar.js. They are fetched by the
+   LiveSkyMap facade (10-bootstrap.js) on the first real map/radar
+   interaction and are never part of the boot path. Eager code below only
+   talks to the facade, which is a safe no-op until the subsystem loads. */
 
 /* ---------------- theme / lang / settings ---------------- */
 const THEME_CYCLE = { adaptive: 'light', light: 'dark', dark: 'adaptive' };
@@ -1358,7 +1187,7 @@ function applyTheme() {
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
   updateThemeLabel();
-  updateMapTiles();
+  if (window.LiveSkyMap) LiveSkyMap.refreshTiles();
   applyWeatherTheme();
   syncMenuChecks();
   store.set('livesky:theme', state.theme);
@@ -1531,22 +1360,26 @@ function bindEvents() {
   on(el.installItem, 'click', promptInstall);
   on(el.notifItem, 'click', () => { setMenuOpen(false); toggleNotifications(); });
 
-  /* precipitation map (radar) */
-  on(el.radarToggle, 'click', () => RADAR.toggle());
-  on(el.radarClose, 'click', () => RADAR.disable());
-  on(el.radarPlay, 'click', () => RADAR.togglePlay());
-  on(el.radarNext, 'click', () => RADAR.step(1));
-  on(el.radarBack, 'click', () => RADAR.step(-1));
-  on(el.radarSlider, 'input', (e) => RADAR.goto(+e.target.value));
-  on(el.radarLive, 'click', () => RADAR.goLive());
-  on(el.radarOpacity, 'input', (e) => RADAR.setOpacity(+e.target.value / 100));
-  on(el.radarSpeed, 'change', (e) => RADAR.setSpeed(+e.target.value));
+  /* ---- lazy map / radar entry points -------------------------------------
+     The whole map subsystem (MapLibre GL + 11-map-radar.js) is fetched on the
+     first tap below; the facade then opens the expected screen directly. The
+     radar controls themselves are bound inside the lazy module, exactly once. */
+
+  /* Mini-map: a tap (NOT a drag) opens the fullscreen map. The handlers are
+     eager because they must work before the map subsystem exists; drag
+     distance keeps panning the mini map from opening the overlay. */
+  let mapTapStart = null;
+  on(el.mapSmall, 'pointerdown', (e) => { mapTapStart = { x: e.clientX, y: e.clientY }; });
+  on(el.mapSmall, 'pointerup', (e) => {
+    if (!mapTapStart) return;
+    const dist = Math.hypot(e.clientX - mapTapStart.x, e.clientY - mapTapStart.y);
+    mapTapStart = null;
+    if (dist < 6) LiveSkyMap.open();
+  });
   /* small-map badge opens fullscreen map with radar already on */
   on(el.mapRadarBadge, 'click', (e) => {
     e.preventDefault(); e.stopPropagation();
-    openFullMap();
-    /* enable after the map container is sized — avoid adding layer to 0×0 canvas */
-    setTimeout(() => RADAR.enable(), 420);
+    LiveSkyMap.open({ radar: true });
   });
 
   on(el.adviceBtn, 'click', showAdvice);
@@ -1597,8 +1430,6 @@ function bindEvents() {
 
   on(el.modalClose, 'click', closeModal);
   on(el.modal, 'click', (e) => { if (e.target === el.modal) closeModal(); });
-  on(el.mapClose, 'click', closeFullMap);
-  on(el.mapApply, 'click', applyMapLocation);
 
   /* The 24-hour graph is a native horizontal scroller on touch screens.
      Arrow-key support keeps the focusable chart equally usable without touch. */
@@ -1631,7 +1462,7 @@ function bindEvents() {
       return;
     }
     if (e.key === 'Escape') {
-      if (el.mapModal.classList.contains('open')) { closeFullMap(); return; }
+      if (el.mapModal.classList.contains('open')) { LiveSkyMap.close(); return; }
       if (el.modal.classList.contains('open')) { closeModal(); return; }
       setMenuOpen(false);
       closeAutocomplete();
@@ -1663,14 +1494,14 @@ function bindEvents() {
       /* On return: refresh if data is older than 2 minutes so rain that just
          stopped is reflected immediately. */
       if (Date.now() - state.lastFetchTs > 2 * 60 * 1000) fetchWeather(true);
-      if (typeof RADAR !== 'undefined' && RADAR.active) RADAR.refreshSilent();
+      if (window.LiveSkyMap) LiveSkyMap.radarRefresh();
     } else {
       if (FX.running) {
         cancelAnimationFrame(FX.raf);
         FX.running = false;
       }
       PERF.stop();
-      if (typeof RADAR !== 'undefined') RADAR.pause();
+      if (window.LiveSkyMap) LiveSkyMap.radarPause();
     }
   });
   /* Backup auto-refresh + weather-alert check. The live ticker already pulls
@@ -1678,7 +1509,7 @@ function bindEvents() {
   setInterval(() => {
     if (!document.hidden && Date.now() - state.lastFetchTs > 3 * 60 * 1000) fetchWeather(true);
     if (!document.hidden) checkWeatherAlerts();
-    if (!document.hidden && typeof RADAR !== 'undefined' && RADAR.active) RADAR.refreshSilent();
+    if (!document.hidden && window.LiveSkyMap) LiveSkyMap.radarRefresh();
   }, 60 * 1000);
   /* offline state is surfaced by the offline banner (see initConnectivity) */
 }

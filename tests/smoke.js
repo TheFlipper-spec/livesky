@@ -42,6 +42,12 @@ if (typeof window.PointerEvent !== 'function') {
 window.HTMLElement.prototype.setPointerCapture = function () {};
 window.HTMLElement.prototype.releasePointerCapture = function () {};
 
+/* Pin hardware capabilities for determinism: jsdom exposes the HOST's real
+   hardwareConcurrency (CI runners report 4+ cores, dev boxes differ), and the
+   device-aware map prefetch heuristic must never flip depending on the build
+   machine. 2 cores = weak device: the main world must stay fully lazy. */
+Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 2, configurable: true });
+
 /* canvas stub */
 const gradientStub = { addColorStop() {} };
 const ctxStub = new Proxy({}, {
@@ -247,11 +253,19 @@ process.on('unhandledRejection', (r) => errors.push('unhandled rejection: ' + (r
 window.LIVE_FAV_DELAY_MS = 0;   /* open favorites list synchronously on focus */
 window.LIVE_UI_LOCK_MS = 200;   /* short UI lock after closing overlays */
 const i18nSrc = fs.readFileSync(path.join(DOCS, 'js', 'i18n.js'), 'utf8');
+/* Eager modules: inlined in order, exactly like index.html's classic script tags. */
 const moduleNames = ['01-core.js', '02-weather-data.js', '03-rendering.js', '04-chart.js',
   '05-hourly-alerts.js', '06-air.js', '07-effects.js', '08-search-modals.js',
-  '09-lifecycle.js', '10-map-radar.js'];
+  '09-lifecycle.js', '10-bootstrap.js'];
+/* The map/radar module is a LAZY subsystem: index.html must not load it and the
+   smoke run delivers it below the way the LiveSkyMap loader would. */
+const lazyModuleName = '11-map-radar.js';
+const lazySrc = fs.readFileSync(path.join(DOCS, 'js', 'modules', lazyModuleName), 'utf8');
 /* Inline each source in order: this mirrors index.html's classic script tags. */
 const appSrc = moduleNames.map((name) => fs.readFileSync(path.join(DOCS, 'js', 'modules', name), 'utf8')).join('\n;\n');
+/* Combined sources: the lazy module shares the classic-script global scope with
+   the eager ones once it executes, so checks like name conflicts cover both. */
+const allSrc = appSrc + '\n;\n' + lazySrc;
 try {
   const s1 = document.createElement('script');
   s1.textContent = i18nSrc;
@@ -274,6 +288,10 @@ setTimeout(() => {
       assert(!/src=\"js\/app\.js/.test(html), 'index.html does not load the legacy app.js bundle');
       assert((appSrc.match(/try \{\n  init\(\);/g) || []).length === 1,
         'the module sequence has exactly one application initialization call');
+      assert((lazySrc.match(/try \{\n  init\(\);/g) || []).length === 0 && !/\binit\(\)\s*;/.test(lazySrc),
+        'the lazy map module never calls the application init()');
+      assert(/LiveSkyMap\._register/.test(lazySrc) && /window\.LiveSkyMap/.test(appSrc),
+        'lazy map module registers with the LiveSkyMap loader facade');
       let previous = -1;
       moduleNames.forEach((name) => {
         const position = html.indexOf('js/modules/' + name);
@@ -281,6 +299,22 @@ setTimeout(() => {
         previous = position;
         assert(swSrc.includes('./js/modules/' + name), 'service worker precaches ' + name);
       });
+      /* ---- lazy map/radar loading guarantees ---- */
+      assert(!new RegExp('<script[^>]*' + lazyModuleName.replace(/\./g, '\\.')).test(html),
+        'index.html keeps the map/radar module off the initial script path');
+      assert(swSrc.includes('./js/modules/' + lazyModuleName),
+        'service worker precaches the lazy map/radar module (offline shell stays complete)');
+      assert(!/<script[^>]*maplibre-gl\.js/.test(html) && !/maplibre-gl\.css/.test(html),
+        'MapLibre GL library and stylesheet are no longer loaded eagerly by index.html');
+      assert(swSrc.includes('./assets/vendor/maplibre-gl/maplibre-gl.js') && swSrc.includes('./assets/vendor/maplibre-gl/maplibre-gl.css'),
+        'service worker precaches the lazily injected MapLibre library and stylesheet');
+      /* the white city-name tooltip must stay gone; vendor CSS must not override app.css */
+      assert(!/maplibregl\.Popup/.test(lazySrc),
+        'fullscreen map shows no city-name popup (white tooltip regression)');
+      assert(/link\[rel="stylesheet"\]\[href\*="app\.css"\]/.test(appSrc) && /insertBefore\(link, appCss\)/.test(appSrc),
+        'lazy MapLibre CSS is inserted before app.css so theme overrides keep winning');
+      assert(/shouldPrefetch\(\)/.test(appSrc) && /schedulePrefetch\(\)/.test(appSrc) && /hardwareConcurrency/.test(appSrc) && /deviceMemory/.test(appSrc),
+        'device-aware map prefetch (capable devices preload, weak devices stay lazy)');
       const cssSrc = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
@@ -341,7 +375,7 @@ setTimeout(() => {
 
       /* ---- IT-compliance: zero third-party subresources before consent ---- */
       const cdnRe = /unpkg\.com|googleapis\.com|gstatic\.com|flagcdn\.com|jsdelivr\.net/;
-      assert(!cdnRe.test(html) && !cdnRe.test(termsHtml) && !cdnRe.test(privacyHtml) && !cdnRe.test(appSrc) && !cdnRe.test(i18nSrc),
+      assert(!cdnRe.test(html) && !cdnRe.test(termsHtml) && !cdnRe.test(privacyHtml) && !cdnRe.test(appSrc) && !cdnRe.test(lazySrc) && !cdnRe.test(i18nSrc),
              'no CDN subresource references remain — fonts, libs, icons and flags are self-hosted');
       [
         'assets/fonts/fonts.css',
@@ -366,7 +400,7 @@ setTimeout(() => {
              /openstreetmap\.org\/copyright/.test(html) &&
              /carto\.com\/attributions/.test(html),
              'footer carries the mandatory provider attribution with clickable links');
-      const attribCtrlCount = (appSrc.match(/attributionControl:\s*\{\s*compact:\s*true\s*\}/g) || []).length;
+      const attribCtrlCount = (allSrc.match(/attributionControl:\s*\{\s*compact:\s*true\s*\}/g) || []).length;
       assert(attribCtrlCount >= 2, 'both MapLibre views show compact OSM/CARTO attribution');
 
       /* ---- Privacy policy matches the real architecture ---- */
@@ -381,8 +415,13 @@ setTimeout(() => {
              'privacy policy documents local-only city history (localStorage / Cache API)');
 
       /* ---- Basemap tiles wait for the ToS consent ---- */
-      assert(/mapInitPending/.test(appSrc) && /if \(!consentLocked\(\)\) initMap\(\);/.test(appSrc),
-             'basemap tiles never load before the Terms of Service consent');
+      assert(!/initMap\s*\(/.test(appSrc),
+             'no map initialisation runs on the boot path (the map stack is lazy)');
+      const facadeOpen = appSrc.match(/open\(opts\) \{[\s\S]{0,160}/);
+      assert(!!facadeOpen && /consentLocked\(\)\) return;/.test(facadeOpen[0]),
+             'the lazy map loader refuses map requests while the ToS consent is locked');
+      assert(/!consentLocked\(\)\) initMap\(\);/.test(lazySrc),
+             'the lazy module itself skips map tile init while consent is locked');
       assert(/flagUrl\(/.test(appSrc) && !/flagcdn/.test(appSrc),
              'country flags resolve from self-hosted SVG assets only');
 
@@ -520,6 +559,9 @@ setTimeout(() => {
     assert(document.querySelector('.site-footer a[href*="legal/terms.html"]') !== null &&
            document.querySelector('.site-footer a[href*="legal/privacy.html"]') !== null,
            'site footer contains links to legal terms and privacy policy');
+    assert(document.querySelector('.site-footer a[href="https://github.com/TheFlipper-spec/livesky"]') !== null &&
+           document.querySelector('.site-footer a[href="https://github.com/TheFlipper-spec/livesky"] .ph-github-logo') !== null,
+           'site footer links to the project GitHub repository');
     assert(document.querySelector('#main-menu a[href*="legal/terms.html"]') !== null &&
            document.querySelector('#main-menu a[href*="legal/privacy.html"]') !== null,
            'settings / main-menu contains links to legal terms and privacy policy');
@@ -555,6 +597,70 @@ setTimeout(() => {
     }
     assert(q('map-radar-badge') !== null, 'map radar badge exists');
     assert(q('radar-opacity') !== null && q('radar-speed') !== null && q('radar-live') !== null, 'radar controls exist');
+
+    /* ---- lazy map/radar loading (first user request simulation) ---- */
+    {
+      const lazyTags = () => document.querySelectorAll('script[src*="11-map-radar"]');
+      assert(typeof window.RADAR === 'undefined', 'radar module is NOT executed during boot');
+      assert(window.LiveSkyMap && !window.LiveSkyMap.isLoaded(), 'LiveSkyMap loader starts unloaded');
+      assert(lazyTags().length === 0, 'no lazy map script tag exists before the first request');
+      const lazyP1 = window.LiveSkyMap.load();
+      const lazyP2 = window.LiveSkyMap.load();
+      lazyP1.catch(() => {}); lazyP2.catch(() => {}); /* jsdom never fetches src scripts */
+      assert(lazyP1 === lazyP2, 'concurrent load() calls share one promise');
+      assert(lazyTags().length === 1, 'the loader inserts the lazy module exactly once');
+      assert(q('map-card').classList.contains('loading'), 'mini-map card shows a loading state during the first fetch');
+      /* Deliver the module like the network would (jsdom does not fetch src scripts). */
+      const lazyScript = document.createElement('script');
+      lazyScript.textContent = lazySrc;
+      document.body.appendChild(lazyScript);
+      assert(window.LiveSkyMap.isLoaded(), 'lazy map module registered itself after execution');
+      window.LiveSkyMap.load().catch(() => {});
+      assert(lazyTags().length === 1, 'load() after registration never inserts a second script');
+      /* The user lands on the expected screen without a second tap. */
+      window.LiveSkyMap.open();
+      assert(q('map-modal').classList.contains('open'), 'lazy map opens the fullscreen map directly');
+      window.LiveSkyMap.close();
+      assert(!q('map-modal').classList.contains('open'), 'lazy map closes cleanly');
+      assert(typeof window.closeFullMap === 'function', 'map globals become available after lazy load');
+      /* Facade wrappers must be safe no-ops AND working passthroughs. */
+      window.LiveSkyMap.update();
+      window.LiveSkyMap.refreshTiles();
+      window.LiveSkyMap.radarRefresh();
+      window.LiveSkyMap.radarPause();
+      assert(window.LiveSkyMap.radarActive() === false, 'radar is inactive until enabled');
+
+      /* ---- device-aware prefetch heuristic ----
+         The main world is pinned to 2 CPU cores (see polyfills above) → it must
+         count as weak and stay fully lazy. Overriding the hardware signals
+         flips the decision; re-pin afterwards so later timers stay weak too. */
+      assert(window.LiveSkyMap.shouldPrefetch() === false,
+        'weak device (few CPU cores) keeps the map lazy');
+      Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 8, configurable: true });
+      Object.defineProperty(window.navigator, 'deviceMemory', { value: 8, configurable: true });
+      assert(window.LiveSkyMap.shouldPrefetch() === true,
+        'capable device (8 cores / 8 GB) qualifies for the background prefetch');
+      Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 2, configurable: true });
+      delete window.navigator.deviceMemory;
+      {
+        const probe = document.createElement('script');
+        probe.textContent = `
+          Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true });
+          const eff = state.effects;
+          state.effects = 'eco';
+          const ecoLazy = LiveSkyMap.shouldPrefetch();
+          state.effects = 'full';
+          const fullEager = LiveSkyMap.shouldPrefetch();
+          state.effects = eff;
+          Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true });
+          window.__prefetchProbe = { ecoLazy, fullEager };`;
+        document.body.appendChild(probe);
+        const pp = window.__prefetchProbe || {};
+        assert(pp.ecoLazy === false, 'Eco quality preset always keeps the map lazy');
+        assert(pp.fullEager === true, 'Maximum quality preset forces the map prefetch even on weak hardware');
+      }
+    }
+
     {
       const probe = document.createElement('script');
       probe.textContent = `window.__radarProbe = { hasEnsureLayers: typeof RADAR.ensureLayers === 'function', hasRenderFrame: typeof RADAR.renderFrame === 'function', tileSize: RADAR.tileSize() };
@@ -833,6 +939,9 @@ function makeWorld(htmlMod) {
   w.HTMLCanvasElement.prototype.getContext = () => ctxStub;
   w.maplibregl = { Map: function () { return fakeMap(); }, Marker: function () { return { setLngLat() { return this; }, addTo() { return this; }, remove() {} }; }, Popup: function () { return { setLngLat() { return this; }, setHTML() { return this; }, addTo() { return this; }, remove() {} }; }, NavigationControl: function () {}, AttributionControl: function () {} };
   w.addEventListener('error', (e) => errors.push('window error: ' + e.message));
+  /* Weak hardware pin (same as the main world): phases must behave identically
+     on 2-core dev boxes and 4+-core CI runners regardless of the host CPU. */
+  Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 2, configurable: true });
   return { w, doc };
 }
 
@@ -957,9 +1066,106 @@ function phase5() {
       doc.body.appendChild(probe3);
       assert(w.__chartSummaryCount === 1,
         'phase6: chart restore keeps exactly one rain summary (' + w.__chartSummaryCount + ')');
-      finish();
-    } catch (e) { errors.push('phase5 crashed: ' + e.message); finish(); }
+      phase6();
+    } catch (e) { errors.push('phase5 crashed: ' + e.message); phase6(); }
   }, 900);
+}
+
+/* phase 6 (lazy map loader): the map module is off the boot path. Requests are
+   refused while the ToS dialog is up; a failed script load must surface an
+   error toast with a working retry instead of hanging the UI. */
+function phase6() {
+  const { w, doc } = makeWorld();
+  w.fetch = makeFetchStub();
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q6 = (sel) => doc.querySelector(sel);
+  setTimeout(() => {
+    try {
+      const LM = w.LiveSkyMap;
+      const tags = () => doc.querySelectorAll('script[src*="11-map-radar"]');
+      assert(LM && !LM.isLoaded(), 'phase6: map subsystem starts unloaded');
+      assert(typeof w.RADAR === 'undefined' && tags().length === 0,
+        'phase6: boot does not touch the map module');
+      /* While the ToS dialog is up, map requests must be refused. */
+      LM.open({ radar: true });
+      LM.toggleRadar();
+      assert(tags().length === 0, 'phase6: loader refuses to fetch the map while consent is locked');
+      /* Accept ToS, then request the radar — the loader kicks in. */
+      doc.getElementById('consent-accept-btn').click();
+      assert(!doc.documentElement.classList.contains('consent-locked'), 'phase6: ToS accepted');
+      LM.toggleRadar();
+      assert(tags().length === 1, 'phase6: first radar request inserts the lazy script once');
+      const firstTag = tags()[0];
+      /* Simulate the network failing for that script. */
+      if (firstTag && typeof firstTag.onerror === 'function') firstTag.onerror(new w.Event('error'));
+      setTimeout(() => {
+        try {
+          assert(!LM.isLoaded(), 'phase6: failed load leaves the subsystem unloaded');
+          assert(tags().length === 0, 'phase6: the failed script tag is cleaned up');
+          assert(doc.querySelectorAll('.toast').length >= 1,
+            'phase6: failed lazy load surfaces an error toast');
+          const retryBtn = q6('.toast .t-action');
+          assert(!!retryBtn, 'phase6: the toast offers a retry action');
+          retryBtn.click();
+          assert(tags().length === 1 && tags()[0] !== firstTag,
+            'phase6: retry inserts a fresh script tag');
+          phase7();
+        } catch (e) { errors.push('phase6 crashed: ' + e.message); phase7(); }
+      }, 60);
+    } catch (e) { errors.push('phase6 crashed: ' + e.message); phase7(); }
+  }, 900);
+}
+
+/* phase 7 (device-aware prefetch): on a capable device the map subsystem is
+   silently prefetched in the background right after the ToS consent — the
+   mini-map appears like the old eager behaviour, and no screen is opened. */
+function phase7() {
+  const { w, doc } = makeWorld();
+  w.LIVE_MAP_PREFETCH_MS = 50; /* fast-forward the prefetch delay */
+  /* make this world look like capable hardware (jsdom defaults to 2 cores) */
+  Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 8, configurable: true });
+  Object.defineProperty(w.navigator, 'deviceMemory', { value: 8, configurable: true });
+  w.fetch = makeFetchStub();
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q7 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const LM = w.LiveSkyMap;
+      const tags = () => doc.querySelectorAll('script[src*="11-map-radar"]');
+      /* consent is still locked: the boot-time prefetch must have been refused */
+      assert(LM.shouldPrefetch() === false, 'phase7: prefetch refused while the ToS dialog is up');
+      assert(tags().length === 0 && !LM.isLoaded(), 'phase7: locked boot prefetches nothing');
+      q7('consent-accept-btn').click();
+      setTimeout(() => {
+        try {
+          assert(!doc.documentElement.classList.contains('consent-locked'), 'phase7: ToS accepted');
+          assert(LM.shouldPrefetch() === true, 'phase7: capable unlocked device wants the map');
+          assert(tags().length === 1, 'phase7: background prefetch fetched the lazy module');
+          assert(q7('map-card').classList.contains('loading'), 'phase7: mini-map shows the loading state');
+          assert(!q7('map-modal').classList.contains('open'), 'phase7: prefetch does not open any screen');
+          /* deliver the module like the network would */
+          const s3 = doc.createElement('script'); s3.textContent = lazySrc; doc.body.appendChild(s3);
+          const tag = tags()[0];
+          if (tag && typeof tag.onload === 'function') tag.onload();
+          setTimeout(() => {
+            try {
+              assert(LM.isLoaded(), 'phase7: prefetched module registered');
+              assert(!q7('map-card').classList.contains('loading'), 'phase7: loading state cleared after registration');
+              const probe = doc.createElement('script');
+              probe.textContent = 'window.__prefetchMapProbe = { miniMapReady: !!(mapInst), fullscreenOpen: !!fullMapInst };';
+              doc.body.appendChild(probe);
+              const mp = w.__prefetchMapProbe || {};
+              assert(mp.miniMapReady === true, 'phase7: mini-map initialised in the background (old eager behaviour)');
+              assert(mp.fullscreenOpen === false, 'phase7: fullscreen map not created by the prefetch');
+              finish();
+            } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+          }, 120);
+        } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+      }, 220);
+    } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+  }, 300);
 }
 
 function finish() {

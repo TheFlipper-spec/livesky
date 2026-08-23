@@ -20,17 +20,18 @@
 
   <!-- Self-hosted assets only: before the user accepts the Terms of Service the
        app must not send a single request to a third-party domain (no IP leak).
-       Fonts (Montserrat/Unbounded, OFL), MapLibre GL (BSD-2) and Phosphor
-       Icons (MIT) are served from ./assets — see assets/*/LICENSE files. -->
+       Fonts (Montserrat/Unbounded, OFL) and Phosphor Icons (MIT) are served
+       from ./assets — see assets/*/LICENSE files. MapLibre GL (BSD-2) is also
+       self-hosted but LAZY: the map library, its stylesheet and the map/radar
+       module are fetched by the LiveSkyMap loader on the first real
+       map/radar interaction, keeping the heavy renderer off the boot path. -->
   <link rel="stylesheet" href="assets/fonts/fonts.css?v=1" />
-  <link rel="stylesheet" href="assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1" />
-  <script src="assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1"></script>
   <link rel="stylesheet" href="assets/vendor/phosphor/regular/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/bold/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=38" />
+  <link rel="stylesheet" href="css/app.css?v=39" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -321,7 +322,7 @@
         <aside class="side-col">
           <!-- Map -->
           <div class="card map-card hover-lift" id="map-card">
-            <div class="map-placeholder"><i class="ph ph-globe-hemisphere-west"></i><span data-translate="map_loading">Загружаем карту...</span></div>
+            <div class="map-placeholder"><i class="ph ph-globe-hemisphere-west"></i><span data-translate="map_tap_open">Нажмите, чтобы открыть карту</span></div>
             <div id="map" aria-label="Карта"></div>
             <button type="button" class="map-radar-badge" id="map-radar-badge" title="Карта осадков">
               <i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_btn">Радар</span>
@@ -457,6 +458,7 @@
     <!-- ==== Footer ==== -->
     <footer class="site-footer">
       <div class="footer-links">
+        <a class="footer-link" href="https://github.com/TheFlipper-spec/livesky" target="_blank" rel="noopener" title="Github"><i class="ph-fill ph-github-logo"></i><span data-translate="footer_github">Github</span></a>
         <a class="footer-link" href="https://t.me/liveskydev" target="_blank" rel="noopener"><i class="ph-fill ph-telegram-logo"></i><span data-translate="footer_telegram">LiveSky/Dev</span></a>
         <a class="footer-link" href="https://github.com/TheFlipper-spec/livesky/issues" target="_blank" rel="noopener"><i class="ph-bold ph-chat-teardrop-text"></i><span data-translate="footer_feedback">Обратная связь</span></a>
         <a class="footer-link" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
@@ -604,17 +606,21 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=31"></script>
-  <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones. -->
-  <script src="js/modules/01-core.js?v=1"></script>
-  <script src="js/modules/02-weather-data.js?v=1"></script>
-  <script src="js/modules/03-rendering.js?v=1"></script>
-  <script src="js/modules/04-chart.js?v=1"></script>
-  <script src="js/modules/05-hourly-alerts.js?v=1"></script>
-  <script src="js/modules/06-air.js?v=1"></script>
-  <script src="js/modules/07-effects.js?v=1"></script>
-  <script src="js/modules/08-search-modals.js?v=1"></script>
-  <script src="js/modules/09-lifecycle.js?v=1"></script>
-  <script src="js/modules/10-map-radar.js?v=1"></script>
+  <script src="js/i18n.js?v=32"></script>
+  <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones.
+       The map/radar module (js/modules/11-map-radar.js) is intentionally NOT
+       here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
+       MapLibre GL library) on the first map/radar interaction. The service
+       worker still precaches it, so offline map opens keep working. -->
+  <script src="js/modules/01-core.js?v=2"></script>
+  <script src="js/modules/02-weather-data.js?v=2"></script>
+  <script src="js/modules/03-rendering.js?v=2"></script>
+  <script src="js/modules/04-chart.js?v=2"></script>
+  <script src="js/modules/05-hourly-alerts.js?v=2"></script>
+  <script src="js/modules/06-air.js?v=2"></script>
+  <script src="js/modules/07-effects.js?v=2"></script>
+  <script src="js/modules/08-search-modals.js?v=3"></script>
+  <script src="js/modules/09-lifecycle.js?v=2"></script>
+  <script src="js/modules/10-bootstrap.js?v=3"></script>
 </body>
 </html>
