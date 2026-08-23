@@ -4,6 +4,7 @@
   "description": "LiveSky Weather Pro — premium weather web app",
   "private": true,
   "scripts": {
+    "build:js": "bash scripts/build-js.sh",
     "test": "node tests/smoke.js",
     "serve": "python3 -m http.server 8000 --bind 0.0.0.0 --directory docs",
     "cap:sync": "cap sync android",
