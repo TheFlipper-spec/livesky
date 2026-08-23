@@ -1,3 +1,4 @@
+/* Generated from docs/js/modules/*.js — edit the modules, then run npm run build:js. */
 /* ============================================================
    LiveSky Weather Pro — Application Logic
    ============================================================ */
