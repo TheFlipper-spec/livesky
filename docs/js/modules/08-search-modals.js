@@ -390,9 +390,12 @@ function acceptLegalConsent() {
     return;
   }
   unlockAppAfterConsent();
-  /* Basemap tiles stay behind the ToS gate — the whole map stack is a lazy
-     subsystem now and only loads on the first explicit map/radar interaction
-     (see the LiveSkyMap facade in 10-bootstrap.js). Nothing to release here. */
+  /* Basemap tiles stay behind the ToS gate — the map stack is a lazy
+     subsystem and only loads on the first explicit map/radar interaction
+     (see the LiveSkyMap facade in 10-bootstrap.js). On capable devices the
+     facade now starts a silent background prefetch right here, so the
+     mini-map appears essentially like the old eager behaviour. */
+  if (window.LiveSkyMap) LiveSkyMap.schedulePrefetch();
   /* Sequential Step 2: ask for geolocation immediately after ToS. */
   offerPrivacyIfNeeded();
 }

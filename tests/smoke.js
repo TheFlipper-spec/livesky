@@ -302,6 +302,13 @@ setTimeout(() => {
         'MapLibre GL library and stylesheet are no longer loaded eagerly by index.html');
       assert(swSrc.includes('./assets/vendor/maplibre-gl/maplibre-gl.js') && swSrc.includes('./assets/vendor/maplibre-gl/maplibre-gl.css'),
         'service worker precaches the lazily injected MapLibre library and stylesheet');
+      /* the white city-name tooltip must stay gone; vendor CSS must not override app.css */
+      assert(!/maplibregl\.Popup/.test(lazySrc),
+        'fullscreen map shows no city-name popup (white tooltip regression)');
+      assert(/link\[rel="stylesheet"\]\[href\*="app\.css"\]/.test(appSrc) && /insertBefore\(link, appCss\)/.test(appSrc),
+        'lazy MapLibre CSS is inserted before app.css so theme overrides keep winning');
+      assert(/shouldPrefetch\(\)/.test(appSrc) && /schedulePrefetch\(\)/.test(appSrc) && /hardwareConcurrency/.test(appSrc) && /deviceMemory/.test(appSrc),
+        'device-aware map prefetch (capable devices preload, weak devices stay lazy)');
       const cssSrc = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
@@ -613,6 +620,35 @@ setTimeout(() => {
       window.LiveSkyMap.radarRefresh();
       window.LiveSkyMap.radarPause();
       assert(window.LiveSkyMap.radarActive() === false, 'radar is inactive until enabled');
+
+      /* ---- device-aware prefetch heuristic ----
+         jsdom reports 2 CPU cores → the default world must count as weak and
+         stay fully lazy. Overriding the hardware signals flips the decision. */
+      assert(window.LiveSkyMap.shouldPrefetch() === false,
+        'weak device (few CPU cores) keeps the map lazy');
+      Object.defineProperty(window.navigator, 'hardwareConcurrency', { value: 8, configurable: true });
+      Object.defineProperty(window.navigator, 'deviceMemory', { value: 8, configurable: true });
+      assert(window.LiveSkyMap.shouldPrefetch() === true,
+        'capable device (8 cores / 8 GB) qualifies for the background prefetch');
+      delete window.navigator.hardwareConcurrency;
+      delete window.navigator.deviceMemory;
+      {
+        const probe = document.createElement('script');
+        probe.textContent = `
+          Object.defineProperty(navigator, 'hardwareConcurrency', { value: 2, configurable: true });
+          const eff = state.effects;
+          state.effects = 'eco';
+          const ecoLazy = LiveSkyMap.shouldPrefetch();
+          state.effects = 'full';
+          const fullEager = LiveSkyMap.shouldPrefetch();
+          state.effects = eff;
+          delete navigator.hardwareConcurrency;
+          window.__prefetchProbe = { ecoLazy, fullEager };`;
+        document.body.appendChild(probe);
+        const pp = window.__prefetchProbe || {};
+        assert(pp.ecoLazy === false, 'Eco quality preset always keeps the map lazy');
+        assert(pp.fullEager === true, 'Maximum quality preset forces the map prefetch even on weak hardware');
+      }
     }
 
     {
@@ -1061,11 +1097,62 @@ function phase6() {
           retryBtn.click();
           assert(tags().length === 1 && tags()[0] !== firstTag,
             'phase6: retry inserts a fresh script tag');
-          finish();
-        } catch (e) { errors.push('phase6 crashed: ' + e.message); finish(); }
+          phase7();
+        } catch (e) { errors.push('phase6 crashed: ' + e.message); phase7(); }
       }, 60);
-    } catch (e) { errors.push('phase6 crashed: ' + e.message); finish(); }
+    } catch (e) { errors.push('phase6 crashed: ' + e.message); phase7(); }
   }, 900);
+}
+
+/* phase 7 (device-aware prefetch): on a capable device the map subsystem is
+   silently prefetched in the background right after the ToS consent — the
+   mini-map appears like the old eager behaviour, and no screen is opened. */
+function phase7() {
+  const { w, doc } = makeWorld();
+  w.LIVE_MAP_PREFETCH_MS = 50; /* fast-forward the prefetch delay */
+  /* make this world look like capable hardware (jsdom defaults to 2 cores) */
+  Object.defineProperty(w.navigator, 'hardwareConcurrency', { value: 8, configurable: true });
+  Object.defineProperty(w.navigator, 'deviceMemory', { value: 8, configurable: true });
+  w.fetch = makeFetchStub();
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q7 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const LM = w.LiveSkyMap;
+      const tags = () => doc.querySelectorAll('script[src*="11-map-radar"]');
+      /* consent is still locked: the boot-time prefetch must have been refused */
+      assert(LM.shouldPrefetch() === false, 'phase7: prefetch refused while the ToS dialog is up');
+      assert(tags().length === 0 && !LM.isLoaded(), 'phase7: locked boot prefetches nothing');
+      q7('consent-accept-btn').click();
+      setTimeout(() => {
+        try {
+          assert(!doc.documentElement.classList.contains('consent-locked'), 'phase7: ToS accepted');
+          assert(LM.shouldPrefetch() === true, 'phase7: capable unlocked device wants the map');
+          assert(tags().length === 1, 'phase7: background prefetch fetched the lazy module');
+          assert(q7('map-card').classList.contains('loading'), 'phase7: mini-map shows the loading state');
+          assert(!q7('map-modal').classList.contains('open'), 'phase7: prefetch does not open any screen');
+          /* deliver the module like the network would */
+          const s3 = doc.createElement('script'); s3.textContent = lazySrc; doc.body.appendChild(s3);
+          const tag = tags()[0];
+          if (tag && typeof tag.onload === 'function') tag.onload();
+          setTimeout(() => {
+            try {
+              assert(LM.isLoaded(), 'phase7: prefetched module registered');
+              assert(!q7('map-card').classList.contains('loading'), 'phase7: loading state cleared after registration');
+              const probe = doc.createElement('script');
+              probe.textContent = 'window.__prefetchMapProbe = { miniMapReady: !!(mapInst), fullscreenOpen: !!fullMapInst };';
+              doc.body.appendChild(probe);
+              const mp = w.__prefetchMapProbe || {};
+              assert(mp.miniMapReady === true, 'phase7: mini-map initialised in the background (old eager behaviour)');
+              assert(mp.fullscreenOpen === false, 'phase7: fullscreen map not created by the prefetch');
+              finish();
+            } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+          }, 120);
+        } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+      }, 220);
+    } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+  }, 300);
 }
 
 function finish() {

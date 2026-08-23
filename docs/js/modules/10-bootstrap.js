@@ -16,14 +16,19 @@
    The service worker still precaches all of these files, so the
    offline shell keeps the full map available after one online visit.
 
-   Eager modules never touch RADAR or the map internals directly —
-   they call this facade, which is a safe no-op until the subsystem
-   has loaded. The facade never bypasses the Terms of Service gate. */
+   Capable devices additionally PREFETCH the subsystem in the
+   background right after boot / ToS consent (see shouldPrefetch),
+   which restores the old "map is simply there" experience. Weak
+   devices stay fully lazy. Eager modules never touch RADAR or the
+   map internals directly — they call this facade, which is a safe
+   no-op until the subsystem has loaded. The facade never bypasses
+   the Terms of Service gate. */
 window.LiveSkyMap = (function () {
-  const MODULE_URL = 'js/modules/11-map-radar.js';
-  const MAPLIBRE_URL = 'assets/vendor/maplibre-gl/maplibre-gl.js';
-  const MAPLIBRE_CSS_URL = 'assets/vendor/maplibre-gl/maplibre-gl.css';
+  const MODULE_URL = 'js/modules/11-map-radar.js?v=3';
+  const MAPLIBRE_URL = 'assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1';
+  const MAPLIBRE_CSS_URL = 'assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1';
   const LOAD_TIMEOUT_MS = 20000;
+  const PREFETCH_DELAY_MS = window.LIVE_MAP_PREFETCH_MS != null ? window.LIVE_MAP_PREFETCH_MS : 1200;
 
   /* Inject one classic <script> and settle on onload/onerror. A watchdog
      keeps a stalled WebView from hanging the loading state forever. */
@@ -59,8 +64,38 @@ window.LiveSkyMap = (function () {
     _impl: null,
     _loadPromise: null,
     _registerResolve: null,
+    _prefetchTimer: null,
 
     isLoaded() { return this.ready; },
+
+    /* Capable devices get the map back on the boot path (as before): a silent
+       background prefetch shortly after start / consent. Weak devices keep the
+       stage-1 behaviour — the map loads on the first interaction. */
+    shouldPrefetch() {
+      if (typeof consentLocked === 'function' && consentLocked()) return false;
+      if (typeof state !== 'undefined') {
+        if (state.effects === 'eco' || state._perfLow) return false; /* explicit / detected low power */
+        if (state.effects === 'full') return true;                   /* user asked for maximum quality */
+      }
+      const nav = typeof navigator !== 'undefined' ? navigator : null;
+      const cores = (nav && nav.hardwareConcurrency) || 0; /* 0 = unknown */
+      const mem = (nav && nav.deviceMemory) || 0;           /* 0 = unknown (iOS) */
+      if (cores && cores < 4) return false; /* few CPU cores → weak device */
+      if (mem && mem < 4) return false;     /* little RAM → weak device */
+      return true; /* unknown hardware (desktops, iOS Safari) → assume capable */
+    },
+
+    schedulePrefetch() {
+      if (this._prefetchTimer) return;
+      this._prefetchTimer = setTimeout(() => {
+        this._prefetchTimer = null;
+        if (this.ready || this._loadPromise) return; /* already on board / loading */
+        if (document.hidden || !this.shouldPrefetch()) return;
+        /* A background fetch is silent: on failure the lazy path stays intact
+           for the first real user interaction (no toast, no retry button). */
+        this.load().catch(() => { /* silent */ });
+      }, PREFETCH_DELAY_MS);
+    },
 
     /* Load MapLibre + the map module exactly once. Concurrent callers share
        one promise (the script is never inserted twice); after a failure the
@@ -81,11 +116,16 @@ window.LiveSkyMap = (function () {
       let chain;
       if (!window.maplibregl) {
         /* The stylesheet is not render-critical: inject it alongside the
-           library but never block the map on it. */
+           library but never block the map on it. It must land BEFORE the
+           app.css link so LiveSky's theme overrides (dark controls,
+           attribution, popups) keep winning the cascade — exactly the order
+           the old eager <head> tags had. */
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = MAPLIBRE_CSS_URL;
-        document.head.appendChild(link);
+        const appCss = document.querySelector('link[rel="stylesheet"][href*="app.css"]');
+        if (appCss && appCss.parentNode) appCss.parentNode.insertBefore(link, appCss);
+        else document.head.appendChild(link);
         chain = injectScript(MAPLIBRE_URL).then(() => injectScript(MODULE_URL));
       } else {
         /* Library already on board (Android assets, legacy embeds): fetch the
@@ -412,6 +452,11 @@ function init() {
   updateInstallItem();
   initConnectivity();
   if (state.effects === 'auto') PERF.start();
+
+  /* Capable devices: bring the map back onto the boot path (like the old
+     eager behaviour) with a silent background prefetch shortly after start.
+     Weak devices / Eco mode stay fully lazy — see shouldPrefetch(). */
+  LiveSkyMap.schedulePrefetch();
 
   const last = store.get('livesky:last_city', null);
   if (last && last.lat != null) {
