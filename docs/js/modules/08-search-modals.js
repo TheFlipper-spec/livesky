@@ -807,10 +807,59 @@ function showAdvice() {
       <span class="row-main"><b>${it[2]}</b></span>
     </div>`).join('');
 
+  const lifeNowBlock = renderLifeNowBlock(h, i);
+
   const body = `
     <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">${list}</div>
-    <div class="m-note"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${wear}</p></div>`;
+    <div class="m-note"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${wear}</p></div>
+    ${lifeNowBlock}`;
   openModal(state.locationName, t('analysis_title') + ' · ' + fmtTempDeg(temp) + ' · ' + wmoLabel(code), body);
+  bindLifeNowCards(i);
+}
+
+/* ---------------- LifeSky "right now" mini-scores (inside Weather analysis) --------- */
+const LIFE_NOW_TYPES = [
+  { type: 'run', icon: 'ph-sneaker-move', color: '#34d399', bg: 'rgba(52,211,153,.14)' },
+  { type: 'car', icon: 'ph-car', color: '#60a5fa', bg: 'rgba(96,165,250,.14)' },
+  { type: 'walk', icon: 'ph-footprints', color: '#fb923c', bg: 'rgba(251,146,60,.14)' }
+];
+/* Renders the compact 3-card "score right now" strip. Falls back to an empty
+   string (rather than throwing) if the hourly slot has no usable data yet,
+   so a partially-loaded forecast never breaks the rest of the modal. */
+function renderLifeNowBlock(h, i) {
+  if (!h || !h.time || i == null || i < 0 || i >= h.time.length) return '';
+  const scoreFns = { run: scoreRun, car: scoreCarWash, walk: scoreWalk };
+  const titles = { run: t('life_run_title'), car: t('life_car_title'), walk: t('life_walk_title') };
+  let cards = '';
+  for (const cfg of LIFE_NOW_TYPES) {
+    let score = 0;
+    try { score = scoreFns[cfg.type](h, i); } catch (e) { score = 0; }
+    const color = score >= 70 ? '#34d399' : score >= 40 ? '#fbbf24' : '#f87171';
+    cards += `
+      <div class="life-now-card" data-life-now="${cfg.type}" role="button" tabindex="0" aria-label="${escHtml(titles[cfg.type])} · ${score}/100">
+        <div class="life-now-ico" style="background:${cfg.bg};color:${cfg.color}"><i class="ph-fill ${cfg.icon}"></i></div>
+        <span class="life-now-label">${escHtml(titles[cfg.type])}</span>
+        <span class="life-now-score" style="color:${color}">${score}</span>
+        <span class="life-now-tag" style="background:${color}1a;color:${color}">${escHtml(scoreLabel(score))}</span>
+      </div>`;
+  }
+  return `
+    <div class="life-now-title"><i class="ph-fill ph-heartbeat"></i><span>${escHtml(t('life_now_title'))}</span></div>
+    <div class="life-now-grid">${cards}</div>
+    <p class="life-now-hint">${escHtml(t('life_now_tap'))}</p>`;
+}
+/* Wires the "right now" cards to drill straight into that activity's detail
+   view for the current hour (same detail screen the 7-day list uses). */
+function bindLifeNowCards(nowIndex) {
+  const nodes = el.modalBody.querySelectorAll('.life-now-card[data-life-now]');
+  nodes.forEach(node => {
+    const type = node.dataset.lifeNow;
+    const open = () => showLifeSkySlot(nowIndex, type);
+    node.addEventListener('click', open);
+    node.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+  });
 }
 
 /* ---------------- lifestyle ---------------- */
