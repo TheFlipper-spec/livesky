@@ -257,16 +257,44 @@ async function fetchWeather(silent) {
   }
 }
 
-async function fetchAir(seq) {
+/* Air quality must never fail silently: on error the card used to stay on
+   "--" forever with zero feedback, which looked exactly like "the air
+   quality block doesn't work". Now a failed fetch is retried once
+   automatically, and if it still fails the card gets an explicit
+   "unavailable" state plus a toast with a manual retry action. */
+async function fetchAir(seq, isRetry) {
   try {
     const res = await fetchWithTimeout(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`, 12000);
-    if (!res.ok) return;
+    if (!res.ok) throw new Error('API ' + res.status);
     const data = await res.json();
-    if (!data || !data.hourly) return;
+    if (!data || !data.hourly) throw new Error('Bad payload');
     if (seq && seq !== fetchSeq) return;
     state.air = data;
+    renderAirError(false);
     renderAir();
-  } catch (e) { /* non-critical */ }
+  } catch (e) {
+    if (seq && seq !== fetchSeq) return;
+    if (!isRetry) {
+      /* transient errors (slow network, brief API hiccup) usually clear up
+         a second later — retry once, quietly, before bothering the user */
+      setTimeout(() => { if (!seq || seq === fetchSeq) fetchAir(seq, true); }, 2500);
+      return;
+    }
+    console.warn('fetchAir failed:', e);
+    state.air = null;
+    renderAirError(true);
+    toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
+  }
+}
+/* Explicit "no data" state for the AQI card instead of a silent, permanent "--". */
+function renderAirError(on) {
+  if (!el.aqiCard) return;
+  el.aqiCard.classList.toggle('aqi-error', !!on);
+  if (on) {
+    if (el.aqiValue) el.aqiValue.textContent = '—';
+    if (el.aqiLabel) el.aqiLabel.textContent = t('aqi_unavailable');
+    [el.aqiPm25, el.aqiPm10, el.aqiO3, el.aqiNo2].forEach((n) => { if (n) n.textContent = '--'; });
+  }
 }
 
 /* ---------------- geo ---------------- */
@@ -300,14 +328,24 @@ async function reverseGeo(lat, lon) {
 }
 
 let geoWarned = false;
-async function applyUserPosition(pos, notify) {
+/* `seq` is the locSeq value claimed the instant the geolocation request
+   started. Geolocation (and its reverse-geocoding follow-up) can take a
+   couple of seconds — long enough for the user to search for a different
+   city while the GPS fix is still pending. Without this guard, a slow
+   geolocation result that resolves AFTER a manual search silently jumps
+   the app back to the user's current location, making the search look
+   like it "didn't work". */
+async function applyUserPosition(pos, notify, seq) {
+  if (seq !== state.locSeq) return; /* a newer location request already won */
   state.lat = pos.coords.latitude;
   state.lon = pos.coords.longitude;
   await reverseGeo(state.lat, state.lon);
+  if (seq !== state.locSeq) return; /* re-check: reverseGeo awaited a network call too */
   if (notify) toast(t('toast_loc_set'), 'success');
   fetchWeather();
 }
-function handleLocationFailure() {
+function handleLocationFailure(seq) {
+  if (seq !== state.locSeq) return; /* the user already moved on to a different city */
   if (!geoWarned) { geoWarned = true; toast(t('toast_geo_denied'), 'info'); }
   fetchWeather();
 }
@@ -321,6 +359,7 @@ function getUserLocation(notify) {
 }
 function requestUserPosition(notify) {
   state.geoRequests = (state.geoRequests || 0) + 1;
+  const seq = ++state.locSeq; /* claim this as the newest location request in flight */
   showLoader();
   const options = { enableHighAccuracy: true, timeout: 7000, maximumAge: 300000 };
   const nativeGeo = nativePlugin('Geolocation');
@@ -334,9 +373,9 @@ function requestUserPosition(notify) {
         }
         if (permission.location !== 'granted' && permission.coarseLocation !== 'granted') throw new Error('Location permission denied');
         const pos = await nativeGeo.getCurrentPosition(options);
-        await applyUserPosition(pos, notify);
+        await applyUserPosition(pos, notify, seq);
       } catch (e) {
-        handleLocationFailure();
+        handleLocationFailure(seq);
       }
     })();
     return;
@@ -345,8 +384,8 @@ function requestUserPosition(notify) {
   if (!navigator.geolocation) { fetchWeather(); return; }
   showLoader();
   navigator.geolocation.getCurrentPosition(
-    (pos) => { applyUserPosition(pos, notify).catch(handleLocationFailure); },
-    handleLocationFailure,
+    (pos) => { applyUserPosition(pos, notify, seq).catch(() => handleLocationFailure(seq)); },
+    () => handleLocationFailure(seq),
     options
   );
 }

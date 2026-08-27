@@ -171,9 +171,11 @@ async function applyMapLocation() {
   const lat = tempLat, lon = tempLon;
   tempLat = null; tempLon = null;
   closeFullMap();
+  const seq = ++state.locSeq; /* a manual map pick always wins over any slower, older request */
   state.lat = lat; state.lon = lon;
   showLoader();
   await reverseGeo(state.lat, state.lon);
+  if (seq !== state.locSeq) return; /* the user already moved on to a different city */
   toast(t('toast_loc_set'), 'success');
   fetchWeather();
 }

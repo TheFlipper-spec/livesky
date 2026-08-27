@@ -27,6 +27,7 @@ function saveRecent() {
   store.set('livesky:recent', state.recent);
 }
 function selectCity(c, isFav) {
+  state.locSeq++; /* a manual pick always wins over any slower, older request in flight */
   state.lat = c.lat; state.lon = c.lon;
   state.locationName = c.name;
   state.countryCode = c.country || '';
@@ -163,9 +164,11 @@ async function handleSearch(e) {
   const q = el.input.value.trim();
   if (!q) return;
   closeAutocomplete();
+  const seq = ++state.locSeq; /* claim this as the newest location request in flight */
   try {
     const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${state.lang}&format=json`, 10000);
     const d = await r.json();
+    if (seq !== state.locSeq) return; /* the user already moved on to a newer city */
     if (!d.results || !d.results.length) {
       toast(t('toast_city_not_found'), 'error');
       return;
@@ -1233,7 +1236,7 @@ function applyTranslations() {
     node.textContent = t(key);
   });
   /* select options */
-  const modelLabels = { auto: 'source_model_auto', ecmwf_ifs04: 'source_model_ecmwf', gfs_seamless: 'source_model_gfs', icon_seamless: 'source_model_icon' };
+  const modelLabels = { auto: 'source_model_auto', ecmwf_ifs025: 'source_model_ecmwf', gfs_seamless: 'source_model_gfs', icon_seamless: 'source_model_icon' };
   if (el.modelSelect) [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
   const unitsLabels = { metric: 'units_metric', imperial: 'units_imperial' };
   if (el.unitsSelect) [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });

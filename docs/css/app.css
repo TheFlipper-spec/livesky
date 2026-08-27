@@ -700,6 +700,8 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 
 /* aqi */
 .aqi-card { padding: 20px 22px 18px; }
+.aqi-card.aqi-error #aqi-value, .aqi-card.aqi-error #aqi-label { color: var(--text-4); }
+.aqi-card.aqi-error .aqi-ring-fg { opacity: 0.35; }
 .aqi-main { display: flex; align-items: center; gap: 18px; }
 .aqi-ring-box { position: relative; width: 108px; height: 108px; flex: none; }
 .aqi-ring-box svg { width: 100%; height: 100%; transform: rotate(-90deg); }
