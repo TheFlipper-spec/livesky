@@ -11,6 +11,7 @@ const $ = (id) => document.getElementById(id);
 const el = {
   loader: $('loader'), loaderPhrase: $('loader-phrase'), progress: $('progress'),
   bg1: $('bg-layer-1'), bg2: $('bg-layer-2'), aurora: $('aurora'), fxCanvas: $('fx-canvas'), flash: $('flash'),
+  glassCanvas: $('glass-fx-canvas'),
   location: $('location'), locationFlag: $('location-flag'), locationAdmin: $('location-admin'),
   date: $('current-date'), clock: $('realtime-clock'), updatedChip: $('updated-chip'), updatedAt: $('updated-at'),
   temp: $('temperature'), cond: $('condition'), bigIcon: $('weather-icon-big'),

@@ -1179,13 +1179,129 @@ function phase7() {
               const mp = w.__prefetchMapProbe || {};
               assert(mp.miniMapReady === true, 'phase7: mini-map initialised in the background (old eager behaviour)');
               assert(mp.fullscreenOpen === false, 'phase7: fullscreen map not created by the prefetch');
-              finish();
-            } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+              phase8();
+            } catch (e) { errors.push('phase7 crashed: ' + e.message); phase8(); }
           }, 120);
-        } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+        } catch (e) { errors.push('phase7 crashed: ' + e.message); phase8(); }
       }, 220);
-    } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+    } catch (e) { errors.push('phase7 crashed: ' + e.message); phase8(); }
   }, 300);
+}
+
+/* phase 8: fuzzy / wrong-keyboard-layout city search. The geocoding stub here
+   mimics the real Open-Meteo API's behavior — it only matches a normalized
+   prefix of a known city name and returns nothing for garbled queries — so
+   the test actually exercises the client-side layout-swap + typo-transposition
+   correction logic, not just a mock that always succeeds. */
+function phase8() {
+  const { w, doc } = makeWorld();
+  const KNOWN = [{ name: 'Москва', latitude: 55.75, longitude: 37.62, country_code: 'RU', admin1: 'Москва', country: 'Россия' }];
+  w.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/v1/forecast')) return { ok: true, json: async () => genForecast() };
+    if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
+    if (u.includes('geocoding-api')) {
+      const m = /[?&]name=([^&]+)/.exec(u);
+      const q = decodeURIComponent(m ? m[1] : '').toLowerCase();
+      const results = KNOWN.filter(c => c.name.toLowerCase().startsWith(q));
+      return { ok: true, json: async () => ({ results }) };
+    }
+    if (u.includes('rainviewer.com')) return { ok: true, json: async () => ({ host: 'https://tilecache.rainviewer.com', radar: { past: [], nowcast: [] }, generated: Math.floor(Date.now() / 1000) }) };
+    throw new Error('unhandled url: ' + u);
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q8 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      if (q8('consent-accept-btn')) q8('consent-accept-btn').click(); /* unlock the app for interaction */
+      if (q8('privacy-accept-btn')) q8('privacy-accept-btn').click();
+      /* 1) wrong keyboard layout: "Vjcrdf" is "Москва" typed with an EN layout selected */
+      q8('city-input').value = 'Vjcrdf';
+      q8('city-input').dispatchEvent(new w.Event('input'));
+      setTimeout(() => {
+        try {
+          const list = q8('autocomplete-list');
+          assert(!list.classList.contains('hidden'), 'phase8: layout-corrected search shows suggestions');
+          assert(list.querySelector('.ac-item .ac-name') && list.querySelector('.ac-item .ac-name').textContent === 'Москва',
+            'phase8: "Vjcrdf" (wrong-layout typing) resolves to Москва');
+          assert(list.querySelector('.ac-corrected-hint') !== null, 'phase8: UI is transparent that the query was auto-corrected');
+
+          /* 2) typo tolerance via form submit: "Моксва" is a transposition typo of "Москва" */
+          q8('city-input').value = 'Моксва';
+          q8('search-form').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+          setTimeout(() => {
+            try {
+              assert(q8('location').textContent === 'Москва', 'phase8: typo "Моксва" resolves to Москва on submit: ' + q8('location').textContent);
+              phase9();
+            } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+          }, 400);
+        } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+      }, 400);
+    } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+  }, 300);
+}
+
+/* phase 9: rain-on-glass droplet overlay (GlassFX). Must turn on for rain/
+   storm, turn off for clear weather, and stay off in Eco mode no matter what
+   the weather is — mirroring the exact gating already proven for the ambient
+   FX canvas. */
+function phase9() {
+  const { w, doc } = makeWorld();
+  w.fetch = makeFetchStub();
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q9 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const probe = doc.createElement('script');
+      probe.textContent = `
+        window.__glassProbe = {};
+        /* currentWeatherCode() prefers the minutely nowcast when present —
+           drop it so the hourly weathercode below actually drives the theme. */
+        state.minutely = null;
+        /* force a rainy "now" slot: weathercode 63 = moderate rain */
+        state.weather.hourly.weathercode[state.nowIdx] = 63;
+        state.weather.hourly.weathercode_best_match[state.nowIdx] = 63;
+        state.weather.hourly.precipitation[state.nowIdx] = 2;
+        applyWeatherTheme();
+        window.__glassProbe.rainOn = GlassFX.running && document.getElementById('glass-fx-canvas').classList.contains('on');
+        window.__glassProbe.dropCount = GlassFX.drops.length;
+
+        /* clear weather must turn it back off */
+        state.weather.hourly.weathercode[state.nowIdx] = 1;
+        state.weather.hourly.weathercode_best_match[state.nowIdx] = 1;
+        applyWeatherTheme();
+        window.__glassProbe.clearOff = !GlassFX.running && !document.getElementById('glass-fx-canvas').classList.contains('on');
+
+        /* storm should also enable it */
+        state.weather.hourly.weathercode[state.nowIdx] = 95;
+        state.weather.hourly.weathercode_best_match[state.nowIdx] = 95;
+        applyWeatherTheme();
+        window.__glassProbe.stormOn = GlassFX.running;
+
+        /* Eco mode must force it off even while it's actively storming */
+        state.effects = 'eco';
+        applyEffects();
+        window.__glassProbe.ecoOff = !GlassFX.running && document.documentElement.getAttribute('data-perf') === 'eco';
+
+        /* leaving Eco with the storm still active must bring it back */
+        state.effects = 'auto';
+        state._perfLow = false;
+        applyEffects();
+        window.__glassProbe.backOnAfterEco = GlassFX.running;
+      `;
+      doc.body.appendChild(probe);
+      const gp = w.__glassProbe || {};
+      assert(gp.rainOn === true, 'phase9: glass droplet overlay turns on for rain');
+      assert(gp.dropCount > 0, 'phase9: droplets are actually built when rain starts');
+      assert(gp.clearOff === true, 'phase9: glass droplet overlay turns off for clear weather');
+      assert(gp.stormOn === true, 'phase9: glass droplet overlay turns on for storms too');
+      assert(gp.ecoOff === true, 'phase9: Eco mode force-disables the glass overlay even during a storm');
+      assert(gp.backOnAfterEco === true, 'phase9: leaving Eco mode restores the overlay for ongoing rain');
+      finish();
+    } catch (e) { errors.push('phase9 crashed: ' + e.message); finish(); }
+  }, 900);
 }
 
 function finish() {
