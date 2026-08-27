@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=42" />
+  <link rel="stylesheet" href="css/app.css?v=43" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -107,11 +107,6 @@
   <canvas id="fx-canvas"></canvas>
   <div id="vignette"></div>
   <div id="flash"></div>
-  <!-- Rain-on-glass droplet overlay: sits above all cards/content (like looking
-       through a wet window) but is pointer-events:none, screen-blended (can
-       only brighten, never darken text) and fully skipped in Eco / low-power
-       mode — see GlassFX in 07-effects.js. -->
-  <canvas id="glass-fx-canvas" aria-hidden="true"></canvas>
 
   <!-- ==== Progress bar ==== -->
   <div id="progress"></div>
@@ -618,15 +613,15 @@
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=4"></script>
+  <script src="js/modules/01-core.js?v=5"></script>
   <script src="js/modules/02-weather-data.js?v=3"></script>
   <script src="js/modules/03-rendering.js?v=3"></script>
   <script src="js/modules/04-chart.js?v=2"></script>
   <script src="js/modules/05-hourly-alerts.js?v=2"></script>
   <script src="js/modules/06-air.js?v=3"></script>
-  <script src="js/modules/07-effects.js?v=3"></script>
+  <script src="js/modules/07-effects.js?v=4"></script>
   <script src="js/modules/08-search-modals.js?v=6"></script>
   <script src="js/modules/09-lifecycle.js?v=3"></script>
-  <script src="js/modules/10-bootstrap.js?v=5"></script>
+  <script src="js/modules/10-bootstrap.js?v=6"></script>
 </body>
 </html>

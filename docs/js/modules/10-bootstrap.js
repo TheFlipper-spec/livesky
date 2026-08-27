@@ -437,6 +437,7 @@ function init() {
   initNativeBridge();
   checkLegalConsent();
   initReveal();
+  GlassFX.init(); /* inject one small droplet canvas inside each card/search-bar, once */
   applyEffects();
   SECTION_MANAGER.init();
   showLoader();
