@@ -392,23 +392,26 @@ setTimeout(() => {
       [...fontsCssSrc.matchAll(/url\(\.\/(files\/[\w.-]+)\)/g)].forEach((m) =>
         assert(fs.existsSync(path.join(DOCS, 'assets', 'fonts', m[1])), 'font file bundled: ' + m[1]));
 
-      /* ---- Attribution (CC BY 4.0 / RainViewer / OSM / CARTO) ---- */
+      /* ---- Attribution (CC BY 4.0 / RainViewer / OSM / OpenFreeMap) ---- */
       assert(/footer-attribution/.test(html) &&
              /href="https:\/\/open-meteo\.com\/"/.test(html) &&
              /creativecommons\.org\/licenses\/by\/4\.0/.test(html) &&
              /rainviewer\.com/.test(html) &&
              /openstreetmap\.org\/copyright/.test(html) &&
-             /carto\.com\/attributions/.test(html),
+             /openfreemap\.org/.test(html),
              'footer carries the mandatory provider attribution with clickable links');
       const attribCtrlCount = (allSrc.match(/attributionControl:\s*\{\s*compact:\s*true\s*\}/g) || []).length;
-      assert(attribCtrlCount >= 2, 'both MapLibre views show compact OSM/CARTO attribution');
+      assert(attribCtrlCount >= 2, 'both MapLibre views show compact OSM/OpenFreeMap attribution');
+      assert(!/cartocdn\.com/.test(allSrc) && !/carto\.com\/attributions/.test(html),
+             'no more unkeyed CARTO raster basemap requests (avoids the API KEY REQUIRED watermark)');
 
       /* ---- Privacy policy matches the real architecture ---- */
       assert(privacyHtml.includes('В целях обеспечения отказоустойчивости сервиса') &&
-             privacyHtml.includes('резервными провайдерами') &&
-             privacyHtml.includes('BigDataCloud') && privacyHtml.includes('CARTO') &&
+             privacyHtml.includes('резервным провайдером') &&
+             privacyHtml.includes('BigDataCloud') &&
              privacyMd.includes('В целях обеспечения отказоустойчивости сервиса') && privacyMd.includes('BigDataCloud'),
-             'privacy policy discloses fallback geodata providers (BigDataCloud, CARTO)');
+             'privacy policy discloses the fallback geodata provider (BigDataCloud)');
+
       assert(privacyHtml.includes('localStorage / Cache API') &&
              privacyHtml.includes('очистку данных сайта в настройках браузера') &&
              privacyMd.includes('localStorage / Cache API') && privacyMd.includes('очистку данных сайта в настройках браузера'),

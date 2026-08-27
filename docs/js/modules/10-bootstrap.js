@@ -24,7 +24,7 @@
    no-op until the subsystem has loaded. The facade never bypasses
    the Terms of Service gate. */
 window.LiveSkyMap = (function () {
-  const MODULE_URL = 'js/modules/11-map-radar.js?v=4';
+  const MODULE_URL = 'js/modules/11-map-radar.js?v=5';
   const MAPLIBRE_URL = 'assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1';
   const MAPLIBRE_CSS_URL = 'assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1';
   const LOAD_TIMEOUT_MS = 20000;
