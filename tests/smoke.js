@@ -853,6 +853,23 @@ setTimeout(() => {
     assert(q('modal').classList.contains('open'), 'advice modal opens');
     assert(document.body.classList.contains('no-scroll'), 'body scroll locked on modal');
     assert(q('modal-body').innerHTML.includes('Что надеть'), 'advice modal has wear note');
+    /* LifeSky "right now" mini-scores inside the Weather analysis modal */
+    assert(q('modal-body').querySelector('.life-now-grid') !== null, 'advice modal shows the LifeSky right-now block');
+    const lifeNowCards = q('modal-body').querySelectorAll('.life-now-card[data-life-now]');
+    assert(lifeNowCards.length === 3, 'LifeSky right-now block has exactly 3 activity cards');
+    const lifeNowTypes = Array.from(lifeNowCards).map((n) => n.dataset.lifeNow).sort().join(',');
+    assert(lifeNowTypes === 'car,run,walk', 'LifeSky right-now cards cover run/car/walk: ' + lifeNowTypes);
+    lifeNowCards.forEach((node) => {
+      const scoreText = node.querySelector('.life-now-score').textContent;
+      const score = Number(scoreText);
+      assert(!isNaN(score) && score >= 0 && score <= 100, 'LifeSky right-now card has a valid 0-100 score: ' + scoreText);
+      assert(node.querySelector('.life-now-tag').textContent.trim().length > 0, 'LifeSky right-now card shows a score label');
+    });
+    /* Clicking a right-now card must open that activity's detail screen for the current hour. */
+    lifeNowCards[0].click();
+    assert(q('modal-body').querySelector('#life-back') !== null, 'LifeSky right-now card opens the activity detail screen');
+    assert(q('modal-body').textContent.includes(String(new Date().toLocaleDateString || '')) || q('modal-body').querySelector('.m-grid') !== null,
+      'LifeSky right-now detail screen renders the metrics grid');
     q('modal-close').click();
     assert(!q('modal').classList.contains('open'), 'modal closes');
     assert(!document.body.classList.contains('no-scroll'), 'body scroll unlocked after close');
