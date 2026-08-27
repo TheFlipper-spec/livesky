@@ -59,7 +59,7 @@ function applyWeatherTheme() {
     root.style.setProperty('--accent-2', '#06b6d4');
     ['--blob-1', '--blob-2', '--blob-3'].forEach((v, k) => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    FX.stop(); stopStorm();
+    FX.stop(); stopStorm(); GlassFX.stop();
     state.accent = '#7c3aed'; state.accent2 = '#06b6d4';
     return;
   }
@@ -69,7 +69,7 @@ function applyWeatherTheme() {
     root.style.setProperty('--accent-2', '#818cf8');
     ['--blob-1', '--blob-2', '--blob-3'].forEach(v => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    FX.stop(); stopStorm();
+    FX.stop(); stopStorm(); GlassFX.stop();
     state.accent = '#38bdf8'; state.accent2 = '#818cf8';
     return;
   }
@@ -96,10 +96,14 @@ function applyWeatherTheme() {
   else if (type === 'fog') fx = 'fog';
   else if (type === 'cloudy') fx = 'clouds';
 
-  if (effectsReduced()) { FX.stop(); stopStorm(); }
+  if (effectsReduced()) { FX.stop(); stopStorm(); GlassFX.stop(); }
   else {
     FX.start(fx);
     if (type === 'storm') startStorm(); else stopStorm();
+    /* Glass droplets only make sense for actual rain/storm — reuses the same
+       intensity value FX already computed from live precipitation data. */
+    if (type === 'rain' || type === 'storm') GlassFX.start(FX.intensity);
+    else GlassFX.stop();
   }
 }
 
@@ -265,6 +269,179 @@ const FX = {
         ctx.ellipse(p.x, p.y, p.w * 0.5, p.w * 0.16, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+    this.raf = requestAnimationFrame((tt) => this.loop(tt));
+  }
+};
+
+/* ---------- Rain-on-glass droplet overlay ----------
+   A second, foreground canvas that sits *above* the content (unlike FX,
+   which sits behind everything) to read as "looking at the weather through
+   a wet window pane" — only shown for rain/storm. Design constraints from
+   the product ask:
+     - content underneath must stay fully readable: no blur, no darkening.
+       The canvas is composited with mix-blend-mode: screen (see CSS), so a
+       black pixel is fully transparent and only bright highlight pixels can
+       ever lighten what's under them — text contrast is never reduced.
+     - must not tank FPS on weak devices: droplets are pre-rendered ONCE to
+       small offscreen sprite canvases, then each frame just does a handful
+       of ctx.drawImage() calls (cheap) instead of re-building gradients per
+       particle per frame (what FX's rain/snow do, fine at their scale but
+       wasteful here since droplets barely move). Particle count is small
+       (≈16-34, scaled by the same rain intensity already computed in
+       updateFXIntensity()) and most droplets are near-static, so the loop
+       is lighter than the existing ambient rain effect.
+     - fully disabled in Eco mode / on detected low-power devices: gated by
+       the exact same effectsReduced() check as FX (see applyWeatherTheme
+       and applyEffects), and hard-hidden via CSS on [data-perf="eco"/"low"]
+       as a second safety net. */
+const GlassFX = {
+  drops: [], raf: 0, running: false, w: 0, h: 0, dpr: 1, last: 0, intensity: 0.5, sprites: null,
+  ensureCanvas() { return el.glassCanvas; },
+  buildSprites() {
+    /* Three droplet sizes, each pre-rendered once. A droplet sprite is just
+       a soft radial highlight (bright center fading to transparent) plus a
+       thin brighter rim to fake refraction — no dark pixels at all, so on
+       screen-blend it can only ever brighten the page, never obscure it. */
+    const sizes = [16, 28, 42];
+    this.sprites = sizes.map((s) => {
+      const c = document.createElement('canvas');
+      c.width = c.height = s * 2;
+      const ctx = c.getContext('2d');
+      if (!ctx) return c;
+      const cx = s, cy = s;
+      const g = ctx.createRadialGradient(cx - s * 0.28, cy - s * 0.32, 1, cx, cy, s);
+      g.addColorStop(0, 'rgba(255,255,255,0.95)');
+      g.addColorStop(0.35, 'rgba(200,225,255,0.45)');
+      g.addColorStop(0.75, 'rgba(170,205,255,0.12)');
+      g.addColorStop(1, 'rgba(170,205,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(cx, cy, s, 0, Math.PI * 2);
+      ctx.fill();
+      /* rim highlight */
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = Math.max(1, s * 0.06);
+      ctx.beginPath();
+      ctx.arc(cx, cy, s * 0.82, Math.PI * 1.1, Math.PI * 1.85);
+      ctx.stroke();
+      return c;
+    });
+  },
+  resize() {
+    const cvs = this.ensureCanvas();
+    if (!cvs) return;
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    this.w = window.innerWidth; this.h = window.innerHeight;
+    cvs.width = this.w * this.dpr;
+    cvs.height = this.h * this.dpr;
+    cvs.style.width = this.w + 'px';
+    cvs.style.height = this.h + 'px';
+    const ctx = cvs.getContext('2d');
+    if (ctx) ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    if (this.running) this.build();
+  },
+  build() {
+    if (!this.sprites) this.buildSprites();
+    const n = Math.max(10, Math.min(36, Math.round(16 + this.intensity * 24)));
+    this.drops = [];
+    for (let i = 0; i < n; i++) {
+      const sizeIdx = Math.random() < 0.55 ? 0 : (Math.random() < 0.7 ? 1 : 2);
+      this.drops.push({
+        x: Math.random() * this.w,
+        y: Math.random() * this.h,
+        size: sizeIdx,
+        /* most drops just sit there and creep very slowly (surface tension);
+           occasionally one "runs" — accelerates and leaves a short trail. */
+        creep: 2 + Math.random() * 5,
+        running: false,
+        runSpeed: 0,
+        trail: 0,
+        wobble: Math.random() * Math.PI * 2,
+        alpha: 0.5 + Math.random() * 0.5
+      });
+    }
+  },
+  setIntensity(val) {
+    this.intensity = Math.max(0, Math.min(1, val || 0.5));
+    if (this.running) this.build();
+  },
+  start(intensity) {
+    if (intensity != null) this.intensity = Math.max(0, Math.min(1, intensity));
+    const cvs = this.ensureCanvas();
+    if (!cvs) return;
+    if (!this.running) {
+      this.running = true;
+      this.resize();
+      this.build();
+      cvs.classList.add('on');
+      this.last = performance.now();
+      this.raf = requestAnimationFrame((t) => this.loop(t));
+    }
+  },
+  stop() {
+    if (!this.running && this.drops.length === 0) return;
+    this.running = false;
+    this.drops = [];
+    cancelAnimationFrame(this.raf);
+    const cvs = el.glassCanvas;
+    if (cvs) {
+      cvs.classList.remove('on');
+      const ctx = cvs.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, this.w, this.h);
+    }
+  },
+  resume() {
+    if (!this.running) return;
+    this.last = performance.now();
+    this.raf = requestAnimationFrame((t) => this.loop(t));
+  },
+  pause() { cancelAnimationFrame(this.raf); },
+  loop(t) {
+    if (!this.running) return;
+    const dt = Math.min(0.05, (t - this.last) / 1000);
+    this.last = t;
+    const cvs = el.glassCanvas;
+    const ctx = cvs && cvs.getContext('2d');
+    if (!ctx) { this.raf = requestAnimationFrame((tt) => this.loop(tt)); return; }
+    ctx.clearRect(0, 0, this.w, this.h);
+    const sprite0 = this.sprites[0];
+    const spriteSizes = [16, 28, 42];
+    for (const d of this.drops) {
+      /* rare trigger: a resting droplet starts sliding down the pane */
+      if (!d.running && Math.random() < 0.0025) { d.running = true; d.runSpeed = 60 + Math.random() * 90; d.trail = 1; }
+      if (d.running) {
+        d.y += d.runSpeed * dt;
+        d.runSpeed += 40 * dt; /* gentle acceleration, like gravity on a pane */
+        d.trail = Math.min(1, d.trail + dt * 2);
+      } else {
+        d.y += d.creep * dt;
+        d.wobble += dt * 0.6;
+        d.x += Math.sin(d.wobble) * 0.6 * dt;
+      }
+      if (d.y - spriteSizes[d.size] > this.h) {
+        d.y = -spriteSizes[d.size];
+        d.x = Math.random() * this.w;
+        d.running = false; d.trail = 0; d.runSpeed = 0;
+      }
+      const sp = this.sprites[d.size] || sprite0;
+      const s = spriteSizes[d.size];
+      /* trail: a soft vertical streak above a running droplet */
+      if (d.running && d.trail > 0) {
+        const trailLen = 24 + s * 1.4;
+        const g = ctx.createLinearGradient(d.x, d.y - trailLen, d.x, d.y);
+        g.addColorStop(0, 'rgba(200,225,255,0)');
+        g.addColorStop(1, `rgba(210,230,255,${0.22 * d.trail})`);
+        ctx.strokeStyle = g;
+        ctx.lineWidth = Math.max(1.2, s * 0.09);
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y - trailLen);
+        ctx.lineTo(d.x, d.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = d.alpha;
+      ctx.drawImage(sp, d.x - s, d.y - s, s * 2, s * 2);
+      ctx.globalAlpha = 1;
     }
     this.raf = requestAnimationFrame((tt) => this.loop(tt));
   }

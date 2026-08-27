@@ -171,6 +171,26 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   background: radial-gradient(120% 90% at 50% 10%, transparent 55%, var(--vignette) 100%);
 }
 
+/* Rain-on-glass overlay: floats above the content (z-index 55, below the
+   header/dropdowns at 70 and far below any modal) so it reads as "looking
+   through a wet window" the same way the reference photo does. It never
+   darkens what's underneath — mix-blend-mode: screen means black pixels in
+   the canvas are fully transparent and only the bright highlight streaks
+   can lighten content, so text/cards stay legible. Toggled on/off in JS by
+   GlassFX; entirely absent from the render tree while inactive (canvas is
+   left blank + rAF loop stopped), so it costs nothing on clear weather or
+   in Eco mode. */
+#glass-fx-canvas {
+  position: fixed; inset: 0; z-index: 55; pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 1.1s ease-in-out;
+}
+#glass-fx-canvas.on { opacity: 0.85; }
+[data-theme="light"] #glass-fx-canvas.on { opacity: 0.5; }
+/* Eco / low-power: never show the overlay, even if a stray class lingers. */
+html[data-perf="eco"] #glass-fx-canvas, html[data-perf="low"] #glass-fx-canvas { display: none !important; }
+
 /* lightning flash overlay */
 #flash {
   position: fixed; inset: 0; z-index: 60; pointer-events: none;
@@ -337,6 +357,9 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 }
 .ac-item .ac-remove:hover { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
 .ac-empty { padding: 14px; text-align: center; color: var(--text-3); font-size: 13px; }
+.ac-corrected-hint {
+  color: var(--accent); text-transform: none; letter-spacing: normal; font-weight: 700; font-size: 12px;
+}
 
 .header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .hbtn {
