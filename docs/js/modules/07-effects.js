@@ -274,122 +274,108 @@ const FX = {
   }
 };
 
-/* ---------- Rain-on-glass droplet overlay ----------
-   A second, foreground canvas that sits *above* the content (unlike FX,
-   which sits behind everything) to read as "looking at the weather through
-   a wet window pane" — only shown for rain/storm. Design constraints from
-   the product ask:
-     - content underneath must stay fully readable: no blur, no darkening.
-       The canvas is composited with mix-blend-mode: screen (see CSS), so a
-       black pixel is fully transparent and only bright highlight pixels can
-       ever lighten what's under them — text contrast is never reduced.
-     - must not tank FPS on weak devices: droplets are pre-rendered ONCE to
-       small offscreen sprite canvases, then each frame just does a handful
-       of ctx.drawImage() calls (cheap) instead of re-building gradients per
-       particle per frame (what FX's rain/snow do, fine at their scale but
-       wasteful here since droplets barely move). Particle count is small
-       (≈16-34, scaled by the same rain intensity already computed in
-       updateFXIntensity()) and most droplets are near-static, so the loop
-       is lighter than the existing ambient rain effect.
-     - fully disabled in Eco mode / on detected low-power devices: gated by
-       the exact same effectsReduced() check as FX (see applyWeatherTheme
-       and applyEffects), and hard-hidden via CSS on [data-perf="eco"/"low"]
-       as a second safety net. */
+/* ---------- Rain-on-glass droplets (per-card, not a full-screen overlay) ----------
+   Rewritten after user feedback: the first version was a single full-viewport
+   canvas with large soft "bokeh" sprites on top of everything, which read as
+   glowing balls obscuring the UI. This version instead injects one small
+   <canvas class="glass-fx-layer"> INSIDE each content card/the search bar,
+   positioned to fill that card and painted at z-index: -1 *within the card's
+   own stacking context* (see CSS) — that guarantees the canvas always paints
+   after the card's background but strictly before the card's own text/icons,
+   so droplets sit behind the interface, never over it, no matter what markup
+   a given card contains.
+   Droplets themselves are small and sharp (≈2-8px), not glowing circles: a
+   flat semi-transparent fill, a thin darker rim along the bottom (implies
+   the glass casts a tiny shadow under the drop) and a small bright highlight
+   top-left (implies refraction) — three cheap primitive draws per drop, no
+   gradients rebuilt per frame. Most droplets stay put or barely creep; a
+   small fraction occasionally slide down and leave a short, fast-fading
+   trail, then rejoin the resting population.
+   Performance: a single requestAnimationFrame loop drives every card's
+   canvas; canvases that are currently detached from the document (a
+   SECTION_MANAGER-unloaded chart/hourly/daily/lifestyle card scrolled far
+   away) are skipped for free via a cheap `isConnected` check. Droplet count
+   per card scales with that card's own pixel area, not a fixed global count,
+   so small cards (search bar, sun/AQI tiles) get a handful and the hero gets
+   more — total drops on screen stay modest. Fully stopped (canvases cleared,
+   rAF cancelled) in Eco mode / on detected low-power devices via the exact
+   same effectsReduced()/applyEffects() gate as the ambient FX canvas, with a
+   CSS `display:none` on [data-perf="eco"/"low"] as a second safety net. */
 const GlassFX = {
-  drops: [], raf: 0, running: false, w: 0, h: 0, dpr: 1, last: 0, intensity: 0.5, sprites: null,
-  ensureCanvas() { return el.glassCanvas; },
-  buildSprites() {
-    /* Three droplet sizes, each pre-rendered once. A droplet sprite is just
-       a soft radial highlight (bright center fading to transparent) plus a
-       thin brighter rim to fake refraction — no dark pixels at all, so on
-       screen-blend it can only ever brighten the page, never obscure it. */
-    const sizes = [16, 28, 42];
-    this.sprites = sizes.map((s) => {
-      const c = document.createElement('canvas');
-      c.width = c.height = s * 2;
-      const ctx = c.getContext('2d');
-      if (!ctx) return c;
-      const cx = s, cy = s;
-      const g = ctx.createRadialGradient(cx - s * 0.28, cy - s * 0.32, 1, cx, cy, s);
-      g.addColorStop(0, 'rgba(255,255,255,0.95)');
-      g.addColorStop(0.35, 'rgba(200,225,255,0.45)');
-      g.addColorStop(0.75, 'rgba(170,205,255,0.12)');
-      g.addColorStop(1, 'rgba(170,205,255,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(cx, cy, s, 0, Math.PI * 2);
-      ctx.fill();
-      /* rim highlight */
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-      ctx.lineWidth = Math.max(1, s * 0.06);
-      ctx.beginPath();
-      ctx.arc(cx, cy, s * 0.82, Math.PI * 1.1, Math.PI * 1.85);
-      ctx.stroke();
-      return c;
+  HOST_SELECTOR: '.card, .search-form',
+  hosts: [], raf: 0, running: false, last: 0, intensity: 0.5, inited: false,
+
+  /* Discovers every card / search-bar host once and injects its canvas as
+     the very first child (so it paints first, i.e. furthest back). Safe to
+     call repeatedly — already-equipped hosts are skipped. */
+  init() {
+    const found = document.querySelectorAll(this.HOST_SELECTOR);
+    found.forEach((host) => {
+      if (host.querySelector(':scope > canvas.glass-fx-layer')) return;
+      const canvas = document.createElement('canvas');
+      canvas.className = 'glass-fx-layer';
+      canvas.setAttribute('aria-hidden', 'true');
+      host.insertBefore(canvas, host.firstChild);
+      this.hosts.push({ host, canvas, ctx: null, w: 0, h: 0, drops: [] });
     });
+    this.inited = true;
+  },
+  resizeHost(hd) {
+    const w = hd.host.clientWidth || 0, h = hd.host.clientHeight || 0;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    hd.w = w; hd.h = h;
+    hd.canvas.width = Math.max(1, Math.round(w * dpr));
+    hd.canvas.height = Math.max(1, Math.round(h * dpr));
+    hd.ctx = hd.canvas.getContext('2d');
+    if (hd.ctx) hd.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   },
   resize() {
-    const cvs = this.ensureCanvas();
-    if (!cvs) return;
-    this.dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.w = window.innerWidth; this.h = window.innerHeight;
-    cvs.width = this.w * this.dpr;
-    cvs.height = this.h * this.dpr;
-    cvs.style.width = this.w + 'px';
-    cvs.style.height = this.h + 'px';
-    const ctx = cvs.getContext('2d');
-    if (ctx) ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    if (this.running) this.build();
+    if (!this.inited) return;
+    this.hosts.forEach((hd) => this.resizeHost(hd));
+    if (this.running) this.hosts.forEach((hd) => this.buildHost(hd));
   },
-  build() {
-    if (!this.sprites) this.buildSprites();
-    const n = Math.max(10, Math.min(36, Math.round(16 + this.intensity * 24)));
-    this.drops = [];
-    for (let i = 0; i < n; i++) {
-      const sizeIdx = Math.random() < 0.55 ? 0 : (Math.random() < 0.7 ? 1 : 2);
-      this.drops.push({
-        x: Math.random() * this.w,
-        y: Math.random() * this.h,
-        size: sizeIdx,
-        /* most drops just sit there and creep very slowly (surface tension);
-           occasionally one "runs" — accelerates and leaves a short trail. */
-        creep: 2 + Math.random() * 5,
-        running: false,
-        runSpeed: 0,
-        trail: 0,
-        wobble: Math.random() * Math.PI * 2,
-        alpha: 0.5 + Math.random() * 0.5
-      });
-    }
+  spawnDrop(hd) {
+    return {
+      x: Math.random() * hd.w,
+      y: Math.random() * hd.h,
+      r: 1 + Math.random() * 3, /* radius 1-4px -> visible diameter ~2-8px */
+      alpha: 0.32 + Math.random() * 0.4,
+      sliding: false, slideSpeed: 0, slideLife: 0, trail: 0
+    };
+  },
+  buildHost(hd) {
+    if (!hd.w && !hd.h) this.resizeHost(hd);
+    /* density scales with the card's own area + current rain intensity;
+       clamped so even the hero (largest card) stays visually restrained. */
+    const area = hd.w * hd.h;
+    const n = Math.max(3, Math.min(30, Math.round((area / 9000) * (0.4 + this.intensity * 0.9))));
+    hd.drops = [];
+    for (let i = 0; i < n; i++) hd.drops.push(this.spawnDrop(hd));
   },
   setIntensity(val) {
-    this.intensity = Math.max(0, Math.min(1, val || 0.5));
-    if (this.running) this.build();
+    this.intensity = Math.max(0, Math.min(1, val == null ? 0.5 : val));
+    if (this.running) this.hosts.forEach((hd) => this.buildHost(hd));
   },
   start(intensity) {
     if (intensity != null) this.intensity = Math.max(0, Math.min(1, intensity));
-    const cvs = this.ensureCanvas();
-    if (!cvs) return;
+    if (!this.inited) this.init();
+    if (!this.hosts.length) return;
     if (!this.running) {
       this.running = true;
-      this.resize();
-      this.build();
-      cvs.classList.add('on');
+      this.hosts.forEach((hd) => { this.resizeHost(hd); this.buildHost(hd); hd.canvas.classList.add('on'); });
       this.last = performance.now();
       this.raf = requestAnimationFrame((t) => this.loop(t));
     }
   },
   stop() {
-    if (!this.running && this.drops.length === 0) return;
+    if (!this.running && !this.hosts.some(h => h.drops.length)) return;
     this.running = false;
-    this.drops = [];
     cancelAnimationFrame(this.raf);
-    const cvs = el.glassCanvas;
-    if (cvs) {
-      cvs.classList.remove('on');
-      const ctx = cvs.getContext('2d');
-      if (ctx) ctx.clearRect(0, 0, this.w, this.h);
-    }
+    this.hosts.forEach((hd) => {
+      hd.canvas.classList.remove('on');
+      hd.drops = [];
+      if (hd.ctx) hd.ctx.clearRect(0, 0, hd.w, hd.h);
+    });
   },
   resume() {
     if (!this.running) return;
@@ -397,51 +383,58 @@ const GlassFX = {
     this.raf = requestAnimationFrame((t) => this.loop(t));
   },
   pause() { cancelAnimationFrame(this.raf); },
+  drawDrop(ctx, d) {
+    /* short, fast-fading trail above a currently/recently sliding droplet */
+    if (d.trail > 0) {
+      const len = 5 + d.r * 2.2;
+      ctx.strokeStyle = `rgba(200,222,255,${0.24 * d.trail})`;
+      ctx.lineWidth = Math.max(0.5, d.r * 0.3);
+      ctx.beginPath();
+      ctx.moveTo(d.x, d.y - len);
+      ctx.lineTo(d.x, d.y - d.r * 0.6);
+      ctx.stroke();
+    }
+    /* flat semi-transparent body */
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(214,230,255,${d.alpha})`;
+    ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    ctx.fill();
+    /* thin darker rim along the bottom — implies a tiny shadow under the drop */
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(8,14,26,${d.alpha * 0.5})`;
+    ctx.lineWidth = Math.max(0.5, d.r * 0.32);
+    ctx.arc(d.x, d.y, d.r * 0.8, Math.PI * 0.12, Math.PI * 0.88);
+    ctx.stroke();
+    /* small bright highlight, top-left — implies refraction/volume */
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(255,255,255,${Math.min(1, d.alpha + 0.3)})`;
+    ctx.arc(d.x - d.r * 0.35, d.y - d.r * 0.35, Math.max(0.35, d.r * 0.26), 0, Math.PI * 2);
+    ctx.fill();
+  },
   loop(t) {
     if (!this.running) return;
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
-    const cvs = el.glassCanvas;
-    const ctx = cvs && cvs.getContext('2d');
-    if (!ctx) { this.raf = requestAnimationFrame((tt) => this.loop(tt)); return; }
-    ctx.clearRect(0, 0, this.w, this.h);
-    const sprite0 = this.sprites[0];
-    const spriteSizes = [16, 28, 42];
-    for (const d of this.drops) {
-      /* rare trigger: a resting droplet starts sliding down the pane */
-      if (!d.running && Math.random() < 0.0025) { d.running = true; d.runSpeed = 60 + Math.random() * 90; d.trail = 1; }
-      if (d.running) {
-        d.y += d.runSpeed * dt;
-        d.runSpeed += 40 * dt; /* gentle acceleration, like gravity on a pane */
-        d.trail = Math.min(1, d.trail + dt * 2);
-      } else {
-        d.y += d.creep * dt;
-        d.wobble += dt * 0.6;
-        d.x += Math.sin(d.wobble) * 0.6 * dt;
+    for (const hd of this.hosts) {
+      /* off-screen / unloaded cards (SECTION_MANAGER detaches them from the
+         document while scrolled far away) cost nothing — skip entirely. */
+      if (!hd.canvas.isConnected) continue;
+      const ctx = hd.ctx;
+      if (!ctx) continue;
+      ctx.clearRect(0, 0, hd.w, hd.h);
+      for (const d of hd.drops) {
+        if (!d.sliding) {
+          if (Math.random() < 0.0018) { d.sliding = true; d.slideSpeed = 14 + Math.random() * 16; d.slideLife = 0.35 + Math.random() * 0.55; d.trail = 1; }
+        } else {
+          d.y += d.slideSpeed * dt;
+          d.slideSpeed += 12 * dt; /* gentle acceleration, like gravity on a pane */
+          d.slideLife -= dt;
+          if (d.slideLife <= 0) d.sliding = false;
+        }
+        if (!d.sliding && d.trail > 0) d.trail = Math.max(0, d.trail - dt * 3.2); /* fades quickly once it stops */
+        if (d.y - d.r > hd.h) { Object.assign(d, this.spawnDrop(hd)); d.y = -d.r; }
+        this.drawDrop(ctx, d);
       }
-      if (d.y - spriteSizes[d.size] > this.h) {
-        d.y = -spriteSizes[d.size];
-        d.x = Math.random() * this.w;
-        d.running = false; d.trail = 0; d.runSpeed = 0;
-      }
-      const sp = this.sprites[d.size] || sprite0;
-      const s = spriteSizes[d.size];
-      /* trail: a soft vertical streak above a running droplet */
-      if (d.running && d.trail > 0) {
-        const trailLen = 24 + s * 1.4;
-        const g = ctx.createLinearGradient(d.x, d.y - trailLen, d.x, d.y);
-        g.addColorStop(0, 'rgba(200,225,255,0)');
-        g.addColorStop(1, `rgba(210,230,255,${0.22 * d.trail})`);
-        ctx.strokeStyle = g;
-        ctx.lineWidth = Math.max(1.2, s * 0.09);
-        ctx.beginPath();
-        ctx.moveTo(d.x, d.y - trailLen);
-        ctx.lineTo(d.x, d.y);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = d.alpha;
-      ctx.drawImage(sp, d.x - s, d.y - s, s * 2, s * 2);
-      ctx.globalAlpha = 1;
     }
     this.raf = requestAnimationFrame((tt) => this.loop(tt));
   }

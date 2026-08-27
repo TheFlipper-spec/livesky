@@ -1257,6 +1257,14 @@ function phase9() {
       const probe = doc.createElement('script');
       probe.textContent = `
         window.__glassProbe = {};
+        /* the droplet canvases are injected once as real DOM children of
+           each .card / .search-form — confirm they actually landed inside
+           the content, not as some detached/global overlay. */
+        window.__glassProbe.hostCount = GlassFX.hosts.length;
+        window.__glassProbe.allInsideCards = GlassFX.hosts.every(hd =>
+          hd.canvas.parentElement === hd.host && (hd.host.classList.contains('card') || hd.host.classList.contains('search-form')));
+        window.__glassProbe.noGlobalCanvas = document.getElementById('glass-fx-canvas') === null;
+
         /* currentWeatherCode() prefers the minutely nowcast when present —
            drop it so the hourly weathercode below actually drives the theme. */
         state.minutely = null;
@@ -1265,14 +1273,14 @@ function phase9() {
         state.weather.hourly.weathercode_best_match[state.nowIdx] = 63;
         state.weather.hourly.precipitation[state.nowIdx] = 2;
         applyWeatherTheme();
-        window.__glassProbe.rainOn = GlassFX.running && document.getElementById('glass-fx-canvas').classList.contains('on');
-        window.__glassProbe.dropCount = GlassFX.drops.length;
+        window.__glassProbe.rainOn = GlassFX.running && GlassFX.hosts.every(hd => hd.canvas.classList.contains('on'));
+        window.__glassProbe.dropCount = GlassFX.hosts.reduce((n, hd) => n + hd.drops.length, 0);
 
         /* clear weather must turn it back off */
         state.weather.hourly.weathercode[state.nowIdx] = 1;
         state.weather.hourly.weathercode_best_match[state.nowIdx] = 1;
         applyWeatherTheme();
-        window.__glassProbe.clearOff = !GlassFX.running && !document.getElementById('glass-fx-canvas').classList.contains('on');
+        window.__glassProbe.clearOff = !GlassFX.running && GlassFX.hosts.every(hd => !hd.canvas.classList.contains('on'));
 
         /* storm should also enable it */
         state.weather.hourly.weathercode[state.nowIdx] = 95;
@@ -1293,6 +1301,9 @@ function phase9() {
       `;
       doc.body.appendChild(probe);
       const gp = w.__glassProbe || {};
+      assert(gp.hostCount > 0, 'phase9: droplet canvases are injected into content cards');
+      assert(gp.allInsideCards === true, 'phase9: every droplet canvas lives inside its own card/search-bar (no global overlay)');
+      assert(gp.noGlobalCanvas === true, 'phase9: there is no full-viewport #glass-fx-canvas anymore');
       assert(gp.rainOn === true, 'phase9: glass droplet overlay turns on for rain');
       assert(gp.dropCount > 0, 'phase9: droplets are actually built when rain starts');
       assert(gp.clearOff === true, 'phase9: glass droplet overlay turns off for clear weather');
