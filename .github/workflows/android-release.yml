@@ -5,6 +5,14 @@ on:
   push:
     tags:
       - 'v*'
+    paths:
+      - 'android/**'
+      - 'docs/**'
+      - 'scripts/**'
+      - 'capacitor.config.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/android-release.yml'
   release:
     types: [published]
 
@@ -53,7 +61,7 @@ jobs:
         run: npm run cap:sync
 
       - name: Decode Keystore from GitHub Secret
-        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        if: env.KEYSTORE_BASE64 != ''
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
@@ -88,6 +96,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/LiveSky-release.apk
-          tag_name: ${{ github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
