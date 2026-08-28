@@ -23,8 +23,7 @@ function renderAll() {
   }
 }
 
-/* Calculate and apply rain/snow intensity from actual weather data (0-1 scale).
-   Maps precipitation data to particle count, speed, and opacity. */
+/* Calculate and apply rain/snow intensity from actual weather data (0–1 scale). */
 function updateFXIntensity() {
   if (!state.weather) return;
   const h = state.weather.hourly, i = state.nowIdx;
@@ -33,14 +32,9 @@ function updateFXIntensity() {
   const precipProb = getVal(h, 'precipitation_probability', i) || 0;
   const gust = getVal(h, 'windgusts_10m', i) || 0;
   const wind = getVal(h, 'windspeed_10m', i) || 0;
-
-  const rainCodes = [51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99];
-  const snowCodes = [71,73,75,77,85,86];
-
-  let intensity = 0.5; /* default moderate */
+  let intensity = 0.5;
 
   if (FX.kind === 'rain') {
-    /* Heavy rain codes: 65 (heavy rain), 82 (violent showers) */
     if ([65, 82, 96, 99].includes(code)) intensity = 0.9;
     else if ([63, 66, 67, 95].includes(code)) intensity = 0.75;
     else if ([53, 55, 57, 80, 81].includes(code)) intensity = 0.55;
@@ -49,14 +43,10 @@ function updateFXIntensity() {
     else if (precipProb > 30) intensity = 0.3;
     else intensity = 0.2;
 
-    /* Wind boosts intensity (wind drives rain sideways) */
     if (wind > 15 || gust > 20) intensity = Math.min(1, intensity + 0.15);
-
-    /* Precipitation amount scales intensity */
     if (precip > 5) intensity = Math.min(1, intensity + 0.15);
     else if (precip > 2) intensity = Math.min(1, intensity + 0.1);
   } else if (FX.kind === 'snow') {
-    /* Heavy snow: 75, 86 */
     if ([75, 86].includes(code)) intensity = 0.85;
     else if ([73, 85].includes(code)) intensity = 0.65;
     else if ([71, 77].includes(code)) intensity = 0.4;
@@ -65,9 +55,7 @@ function updateFXIntensity() {
   }
 
   FX.setIntensity(intensity);
-  if (FX.kind === 'rain' && GlassFX.running) GlassFX.setIntensity(intensity);
 }
-
 function updateHero() {
   el.location.textContent = state.locationName;
   const heroFlag = flagUrl(state.countryCode);

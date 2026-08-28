@@ -316,6 +316,13 @@ setTimeout(() => {
       assert(/shouldPrefetch\(\)/.test(appSrc) && /schedulePrefetch\(\)/.test(appSrc) && /hardwareConcurrency/.test(appSrc) && /deviceMemory/.test(appSrc),
         'device-aware map prefetch (capable devices preload, weak devices stay lazy)');
       const cssSrc = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
+      assert(!/GlassFX|glass-fx-layer|rain-glass/.test(appSrc + cssSrc + swSrc),
+        'rain droplet layer and its image assets are fully removed');
+      assert(/fx\s*=\s*['"]rain['"]/.test(appSrc) && /this\.kind === 'rain'/.test(appSrc),
+        'ambient rain animation remains available without the droplet overlay');
+      assert(/@media \(max-width: 520px\)[\s\S]*maplibregl-ctrl-attrib/.test(cssSrc) &&
+             /font-size:\s*8px/.test(cssSrc) && /white-space:\s*nowrap/.test(cssSrc),
+        'mobile map attribution has a compact single-line layout');
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
       assert(/\.search-form input\s*\{[^}]*cursor:\s*text/s.test(cssSrc), 'search input uses a text cursor');
@@ -459,6 +466,10 @@ setTimeout(() => {
       const releaseWorkflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'android-release.yml'), 'utf8');
       assert(releaseWorkflow.includes('assembleRelease') && releaseWorkflow.includes('KEYSTORE_BASE64') && releaseWorkflow.includes('upload-artifact'),
              '.github/workflows/android-release.yml exists and builds signed release APK');
+      const releaseTemplate = fs.readFileSync(path.join(root, 'android-release-workflow.template.yml'), 'utf8');
+      assert(releaseTemplate.includes('actions/checkout@v5') && releaseTemplate.includes('assembleRelease') &&
+             releaseTemplate.includes('apksigner') && releaseTemplate.includes('KEYSTORE_BASE64'),
+             'copyable Android release workflow template validates and signs the APK');
     }
     assert(typeof nativeBackHandler === 'function', 'Capacitor back-button listener accepts a direct listener handle');
     assert(q('boot-error').classList.contains('hidden'), 'Capacitor native bridge does not block application startup');
@@ -783,6 +794,14 @@ setTimeout(() => {
     assert(!q('main-menu').classList.contains('open'), 'menu closes after theme pick');
     window.setTheme('adaptive');
 
+    /* The previous map-close probe deliberately enables the short input lock.
+       Reset only the test fixture here; the lock itself is covered separately
+       after the map test below. */
+    {
+      const resetInputLock = document.createElement('script');
+      resetInputLock.textContent = 'state.uiLockUntil = 0;';
+      document.body.appendChild(resetInputLock);
+    }
     /* autocomplete keyboard navigation */
     q('fav-btn').click(); /* add current city to favorites so the list has items */
     q('city-input').focus();
@@ -1233,89 +1252,13 @@ function phase8() {
           setTimeout(() => {
             try {
               assert(q8('location').textContent === 'Москва', 'phase8: typo "Моксва" resolves to Москва on submit: ' + q8('location').textContent);
-              phase9();
-            } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+              finish();
+            } catch (e) { errors.push('phase8 crashed: ' + e.message); finish(); }
           }, 400);
-        } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+        } catch (e) { errors.push('phase8 crashed: ' + e.message); finish(); }
       }, 400);
-    } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+    } catch (e) { errors.push('phase8 crashed: ' + e.message); finish(); }
   }, 300);
-}
-
-/* phase 9: rain-on-glass photo overlay (GlassFX). Must turn on for rain/
-   storm, turn off for clear weather, and stay off in Eco mode no matter what
-   the weather is — mirroring the exact gating already proven for the ambient
-   FX canvas. GlassFX is now a static image layer (day/night WebP photo +
-   CSS opacity), not an animated per-frame canvas — the probes below reflect
-   that (hd.layer instead of hd.canvas, background-image URL instead of a
-   drop count). */
-function phase9() {
-  const { w, doc } = makeWorld();
-  w.fetch = makeFetchStub();
-  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
-  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
-  const q9 = (id) => doc.getElementById(id);
-  setTimeout(() => {
-    try {
-      const probe = doc.createElement('script');
-      probe.textContent = `
-        window.__glassProbe = {};
-        /* the droplet-photo layers are injected once as real DOM children of
-           each .card / .search-form — confirm they actually landed inside
-           the content, not as some detached/global overlay. */
-        window.__glassProbe.hostCount = GlassFX.hosts.length;
-        window.__glassProbe.allInsideCards = GlassFX.hosts.every(hd =>
-          hd.layer.parentElement === hd.host && (hd.host.classList.contains('card') || hd.host.classList.contains('search-form')));
-        window.__glassProbe.noGlobalCanvas = document.getElementById('glass-fx-canvas') === null;
-
-        /* currentWeatherCode() prefers the minutely nowcast when present —
-           drop it so the hourly weathercode below actually drives the theme. */
-        state.minutely = null;
-        /* force a rainy "now" slot: weathercode 63 = moderate rain */
-        state.weather.hourly.weathercode[state.nowIdx] = 63;
-        state.weather.hourly.weathercode_best_match[state.nowIdx] = 63;
-        state.weather.hourly.precipitation[state.nowIdx] = 2;
-        applyWeatherTheme();
-        window.__glassProbe.rainOn = GlassFX.running && GlassFX.hosts.every(hd => hd.layer.classList.contains('on'));
-        window.__glassProbe.hasBackgroundImage = GlassFX.hosts.every(hd => /rain-glass-(day|night)-(sm|lg)\\.webp/.test(hd.layer.style.backgroundImage));
-
-        /* clear weather must turn it back off */
-        state.weather.hourly.weathercode[state.nowIdx] = 1;
-        state.weather.hourly.weathercode_best_match[state.nowIdx] = 1;
-        applyWeatherTheme();
-        window.__glassProbe.clearOff = !GlassFX.running && GlassFX.hosts.every(hd => !hd.layer.classList.contains('on'));
-
-        /* storm should also enable it */
-        state.weather.hourly.weathercode[state.nowIdx] = 95;
-        state.weather.hourly.weathercode_best_match[state.nowIdx] = 95;
-        applyWeatherTheme();
-        window.__glassProbe.stormOn = GlassFX.running;
-
-        /* Eco mode must force it off even while it's actively storming */
-        state.effects = 'eco';
-        applyEffects();
-        window.__glassProbe.ecoOff = !GlassFX.running && document.documentElement.getAttribute('data-perf') === 'eco';
-
-        /* leaving Eco with the storm still active must bring it back */
-        state.effects = 'auto';
-        state._perfLow = false;
-        applyEffects();
-        window.__glassProbe.backOnAfterEco = GlassFX.running;
-      `;
-      doc.body.appendChild(probe);
-      const gp = w.__glassProbe || {};
-      assert(gp.hostCount > 0, 'phase9: droplet photo layers are injected into content cards');
-      assert(gp.allInsideCards === true, 'phase9: every droplet photo layer lives inside its own card/search-bar (no global overlay)');
-      assert(gp.noGlobalCanvas === true, 'phase9: there is no full-viewport #glass-fx-canvas anymore');
-      assert(gp.rainOn === true, 'phase9: glass droplet overlay turns on for rain');
-      assert(gp.hasBackgroundImage === true, 'phase9: the rain-on-glass photo is actually applied when rain starts');
-      assert(gp.clearOff === true, 'phase9: glass droplet overlay turns off for clear weather');
-      assert(gp.stormOn === true, 'phase9: glass droplet overlay turns on for storms too');
-      assert(gp.ecoOff === true, 'phase9: Eco mode force-disables the glass overlay even during a storm');
-      assert(gp.backOnAfterEco === true, 'phase9: leaving Eco mode restores the overlay for ongoing rain');
-      finish();
-    } catch (e) { errors.push('phase9 crashed: ' + e.message); finish(); }
-  }, 900);
 }
 
 function finish() {
