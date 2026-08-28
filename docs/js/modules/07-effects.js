@@ -327,7 +327,17 @@ const GlassFX = {
     hd.canvas.width = Math.max(1, Math.round(w * dpr));
     hd.canvas.height = Math.max(1, Math.round(h * dpr));
     hd.ctx = hd.canvas.getContext('2d');
-    if (hd.ctx) hd.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (hd.ctx) {
+      hd.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      /* Resizing a canvas (setting .width/.height) resets the whole 2D
+         context to its defaults, so smoothing must be re-applied every
+         time. 'high' quality resampling is what keeps the shared droplet
+         sprite (rasterized once at a fixed resolution) looking soft and
+         crisp instead of muddy/blocky when drawImage() scales it down to
+         the handful of on-screen pixels a drop actually occupies. */
+      hd.ctx.imageSmoothingEnabled = true;
+      hd.ctx.imageSmoothingQuality = 'high';
+    }
   },
   resize() {
     if (!this.inited) return;
@@ -346,7 +356,13 @@ const GlassFX = {
      top, and two small specular catchlights — the double-highlight is what
      actually reads as "glass" rather than a flat dot. */
   buildDropSprite() {
-    const S = 64;
+    /* Rasterized well above the largest size it's ever drawn at (a drop's
+       on-screen diameter tops out around size=d.r*2.6 ~= 10-ish CSS px,
+       up to ~2x that in device pixels on a hi-dpi screen) so drawImage()
+       is always downscaling into more detail than it needs rather than
+       stretching a coarse source up — that's what avoids the pixelated /
+       blocky look while still costing nothing per-frame (built once). */
+    const S = 160;
     const c = document.createElement('canvas');
     c.width = c.height = S;
     const ctx = c.getContext('2d');
@@ -394,8 +410,29 @@ const GlassFX = {
       r: 1 + Math.random() * 3, /* radius 1-4px -> visible diameter ~2-8px */
       alpha: 0.4 + Math.random() * 0.45,
       stretch: streaked ? (2.2 + Math.random() * 3.5) : 0, /* static tail length multiplier */
-      sliding: false, slideSpeed: 0, slideLife: 0, trail: 0
+      sliding: false, slideSpeed: 0, slideLife: 0, trail: 0,
+      /* Per-drop wobble signature: two layered sine waves (different phase,
+         seed and frequency per drop) that get sampled along the tail's
+         vertical extent to bend it into a gentle, unique S-curve instead of
+         a straight/identical line for every drop — mimicking how a real
+         bead of water drifts sideways over tiny imperfections in glass.
+         Cheap: just two sin() calls per sample point, no history arrays. */
+      wobblePhase: Math.random() * Math.PI * 2,
+      wobbleSeed: Math.random() * Math.PI * 2,
+      wobbleAmp1: 0.5 + Math.random() * 1.2,
+      wobbleAmp2: 0.25 + Math.random() * 0.7,
+      wobbleFreq1: 0.05 + Math.random() * 0.05,
+      wobbleFreq2: 0.1 + Math.random() * 0.09,
+      wobbleDist: 0, lastWobbleOffset: 0
     };
+  },
+  /* Horizontal drift at a given distance `dy` above the drop's current
+     position. Using distance-along-the-tail (rather than stored history
+     points) as the sampling axis means the wavy path can be recomputed on
+     the fly for any drop, at any frame, with zero extra memory. */
+  wobbleOffset(d, dy) {
+    return Math.sin(d.wobblePhase + dy * d.wobbleFreq1) * d.wobbleAmp1 +
+           Math.sin(d.wobbleSeed + dy * d.wobbleFreq2) * d.wobbleAmp2;
   },
   buildHost(hd) {
     if (!hd.w && !hd.h) this.resizeHost(hd);
@@ -438,24 +475,60 @@ const GlassFX = {
     this.raf = requestAnimationFrame((t) => this.loop(t));
   },
   pause() { cancelAnimationFrame(this.raf); },
+  /* Builds the wavy centerline of a tail as a short list of {x,y} points
+     from the drop's base up to tailLen, each nudged sideways by
+     wobbleOffset(). Capped at a handful of points (never stored between
+     frames) so it stays essentially free next to the drawImage() calls
+     that dominate this loop. */
+  tailPath(d, size, tailLen) {
+    const steps = 5; /* enough segments to read as a smooth curve, cheap to build every frame */
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const f = i / steps;
+      const dy = f * (tailLen - size * 0.3) + size * 0.3; /* distance above d.y */
+      pts.push({ x: d.x + this.wobbleOffset(d, dy), y: d.y - dy });
+    }
+    return pts;
+  },
+  /* Strokes/fills a smooth curve through a small point list using
+     quadraticCurveTo with midpoints as control anchors — the standard cheap
+     trick for turning a jittered poly-line into a soft continuous curve
+     without needing full bezier fitting. */
+  strokeThrough(ctx, pts) {
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) {
+      const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+    }
+    const last = pts[pts.length - 1];
+    ctx.lineTo(last.x, last.y);
+  },
   drawTail(ctx, d, size, tailLen, strength) {
-    const g = ctx.createLinearGradient(d.x, d.y - tailLen, d.x, d.y - size * 0.3);
+    const path = this.tailPath(d, size, tailLen);
+    const top = path[path.length - 1], base = path[0];
+    const g = ctx.createLinearGradient(base.x, base.y, top.x, top.y);
     g.addColorStop(0, 'rgba(180,205,235,0)');
     g.addColorStop(0.6, `rgba(190,212,240,${0.16 * strength})`);
     g.addColorStop(1, `rgba(210,228,248,${0.3 * strength})`);
+    /* build the wobbly ribbon by walking up one side of the path and back
+       down a slightly offset copy of the other, so the tail has real width
+       (not just a stroked line) while still following the curve. */
+    const half = Math.max(0.6, d.r * 0.42);
+    const n = path.length;
+    const leftSide = path.map((p, i) => ({ x: p.x - half * (0.5 - 0.15 * (i / (n - 1))), y: p.y }));
+    const rightSide = path.map((p, i) => ({ x: p.x + half * (0.35 + 0.1 * (i / (n - 1))), y: p.y })).reverse();
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.moveTo(d.x - d.r * 0.5, d.y - size * 0.3);
-    ctx.quadraticCurveTo(d.x - d.r * 0.15, d.y - tailLen, d.x, d.y - tailLen);
-    ctx.quadraticCurveTo(d.x + d.r * 0.15, d.y - tailLen, d.x + d.r * 0.5, d.y - size * 0.3);
+    this.strokeThrough(ctx, leftSide);
+    this.strokeThrough(ctx, rightSide);
     ctx.closePath();
     ctx.fill();
-    /* thin bright core streak down the middle of the tail — refraction highlight */
+    /* thin bright core streak following the same wobble — refraction highlight */
     ctx.strokeStyle = `rgba(255,255,255,${0.35 * strength})`;
     ctx.lineWidth = Math.max(0.5, d.r * 0.22);
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(d.x, d.y - tailLen * 0.92);
-    ctx.lineTo(d.x, d.y - size * 0.45);
+    this.strokeThrough(ctx, path);
     ctx.stroke();
   },
   drawDrop(ctx, d) {
@@ -483,9 +556,21 @@ const GlassFX = {
       ctx.clearRect(0, 0, hd.w, hd.h);
       for (const d of hd.drops) {
         if (!d.sliding) {
-          if (Math.random() < 0.0018) { d.sliding = true; d.slideSpeed = 14 + Math.random() * 16; d.slideLife = 0.35 + Math.random() * 0.55; d.trail = 1; }
+          if (Math.random() < 0.0018) {
+            d.sliding = true; d.slideSpeed = 14 + Math.random() * 16; d.slideLife = 0.35 + Math.random() * 0.55; d.trail = 1;
+            d.wobbleDist = 0; d.lastWobbleOffset = 0; /* reset the drift tracker for this slide */
+          }
         } else {
           d.y += d.slideSpeed * dt;
+          d.wobbleDist += d.slideSpeed * dt;
+          /* the bead itself drifts sideways as it descends — not just the
+             tail behind it — by riding the same wobble curve the tail is
+             drawn with, applied as an incremental delta so the drop never
+             jumps when the slide starts/stops. Same 2-sine cost as the
+             tail, just once per drop per frame. */
+          const off = this.wobbleOffset(d, d.wobbleDist);
+          d.x += off - d.lastWobbleOffset;
+          d.lastWobbleOffset = off;
           d.slideSpeed += 12 * dt; /* gentle acceleration, like gravity on a pane */
           d.slideLife -= dt;
           if (d.slideLife <= 0) d.sliding = false;
