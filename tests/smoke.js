@@ -320,6 +320,34 @@ setTimeout(() => {
         'rain droplet layer and its image assets are fully removed');
       assert(/fx\s*=\s*['"]rain['"]/.test(appSrc) && /this\.kind === 'rain'/.test(appSrc),
         'ambient rain animation remains available without the droplet overlay');
+      {
+        const probe = document.createElement('script');
+        probe.textContent = `
+          (() => {
+            const h = state.weather.hourly, i = state.nowIdx;
+            const savedCode = h.weathercode[i];
+            const savedBestMatchCode = h.weathercode_best_match && h.weathercode_best_match[i];
+            const savedMinutely = state.minutely;
+            const savedEffects = state.effects, savedPerfLow = state._perfLow;
+            state.minutely = null;
+            h.weathercode[i] = 63;
+            if (h.weathercode_best_match) h.weathercode_best_match[i] = 63;
+            state.effects = 'full'; state._perfLow = false;
+            applyWeatherTheme();
+            window.__ambientRainProbe = { kind: FX.kind, parts: FX.parts.length, running: FX.running };
+            FX.stop();
+            h.weathercode[i] = savedCode;
+            if (h.weathercode_best_match) h.weathercode_best_match[i] = savedBestMatchCode;
+            state.minutely = savedMinutely;
+            state.effects = savedEffects; state._perfLow = savedPerfLow;
+            applyWeatherTheme();
+          })();
+        `;
+        document.body.appendChild(probe);
+        const rp = window.__ambientRainProbe || {};
+        assert(rp.kind === 'rain' && rp.running === true && rp.parts > 0,
+          'moderate rain starts the ambient rain animation');
+      }
       assert(/@media \(max-width: 520px\)[\s\S]*maplibregl-ctrl-attrib/.test(cssSrc) &&
              /font-size:\s*8px/.test(cssSrc) && /white-space:\s*nowrap/.test(cssSrc),
         'mobile map attribution has a compact single-line layout');
