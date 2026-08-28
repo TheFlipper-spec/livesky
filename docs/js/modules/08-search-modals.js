@@ -416,6 +416,9 @@ function lockAppForConsent() {
 
 function unlockAppAfterConsent() {
   document.documentElement.classList.remove('consent-locked');
+  /* The gate is open (first acceptance or a returning visitor) — the optional
+     install invitation may take its turn now. */
+  if (typeof scheduleInstallPrompt === 'function') scheduleInstallPrompt();
   if (!el.consentModal) return;
   el.consentModal.classList.add('hidden');
   el.consentModal._liveskyLocked = false;
@@ -496,11 +499,10 @@ function acceptLegalConsent() {
      facade now starts a silent background prefetch right here, so the
      mini-map appears essentially like the old eager behaviour. */
   if (window.LiveSkyMap) LiveSkyMap.schedulePrefetch();
-  /* Sequential Step 2: ask for geolocation immediately after ToS. */
+  /* Sequential Step 2: ask for geolocation immediately after ToS.
+     Step 3 (the optional install invitation) is scheduled by
+     unlockAppAfterConsent above, so a returning visitor gets it too. */
   offerPrivacyIfNeeded();
-  /* Optional Step 3: a single, self-retiring install invitation. It waits
-     for the privacy dialog and disappears for good once dismissed. */
-  scheduleInstallPrompt();
 }
 
 /* continuous re-validation: clearing or editing the record re-locks the app */

@@ -1454,12 +1454,42 @@ function phase11() {
             assert(B.q('install-cta').classList.contains('hidden'),
               'phase11: no dead install button where the browser cannot install');
             A.w.close(); B.w.close();
-            finish();
-          } catch (e) { errors.push('phase11 crashed: ' + e.message); finish(); }
+            phase12();
+          } catch (e) { errors.push('phase11 crashed: ' + e.message); phase12(); }
         }, 320);
       }, 200);
     }, 320);
   }, 220);
+}
+
+/* phase 12: a returning visitor (valid consent already stored, no dialog to
+   click) still gets the single install invitation. */
+function phase12() {
+  const { w, doc, q } = bootWorld((win) => {
+    win.localStorage.setItem('livesky:legal_consent', JSON.stringify({
+      accepted: true, version: '3.0', terms: true, privacy: true, ts: Date.now()
+    }));
+    win.localStorage.setItem('livesky:tos_accepted', 'true');
+    win.localStorage.setItem('livesky:privacy_accepted', 'true');
+    win.localStorage.setItem('livesky:legal_accepted', 'true');
+  });
+  const shown = () => !q('install-prompt').classList.contains('hidden') &&
+                      !q('install-prompt').classList.contains('out');
+  setTimeout(() => {
+    try {
+      assert(q('consent-modal').classList.contains('hidden'),
+        'phase12: returning visitor skips the Terms dialog');
+      assert(!shown(), 'phase12: nothing is shown before the browser offers the install flow');
+      fireInstallPrompt(w);
+    } catch (e) { errors.push('phase12 crashed: ' + e.message); }
+    setTimeout(() => {
+      try {
+        assert(shown(), 'phase12: returning visitor gets the install invitation too');
+        w.close();
+        finish();
+      } catch (e) { errors.push('phase12 crashed: ' + e.message); finish(); }
+    }, 320);
+  }, 300);
 }
 
 function finish() {
