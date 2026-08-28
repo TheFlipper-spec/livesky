@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-glassfx-percard';
+const VERSION = 'livesky-v1.4-glassfx-fix';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 

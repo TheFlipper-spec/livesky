@@ -334,12 +334,66 @@ const GlassFX = {
     this.hosts.forEach((hd) => this.resizeHost(hd));
     if (this.running) this.hosts.forEach((hd) => this.buildHost(hd));
   },
+  /* One shared droplet "lens" sprite, pre-rendered once at a fixed, high
+     enough resolution that it stays crisp when drawImage()'d at any of the
+     small on-screen sizes we actually use (2-8px diameter). Reusing a single
+     sprite for every drop on every card means the per-frame cost is just a
+     cheap drawImage() call — no gradients are ever rebuilt during the
+     animation loop, which is what keeps this fast even with several cards
+     animating at once. The look is modeled on a real glass droplet: a soft
+     lens-like body lit from the top-left, a subtle darker meniscus rim along
+     the bottom (implies a tiny shadow/thickness), a thin light rim along the
+     top, and two small specular catchlights — the double-highlight is what
+     actually reads as "glass" rather than a flat dot. */
+  buildDropSprite() {
+    const S = 64;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d');
+    if (!ctx) { this.dropSprite = c; return; }
+    const cx = S / 2, cy = S / 2, R = S / 2 - 3;
+    const g = ctx.createRadialGradient(cx - R * 0.32, cy - R * 0.38, R * 0.12, cx, cy, R);
+    g.addColorStop(0, 'rgba(255,255,255,0.6)');
+    g.addColorStop(0.35, 'rgba(210,228,248,0.42)');
+    g.addColorStop(0.72, 'rgba(150,175,205,0.3)');
+    g.addColorStop(1, 'rgba(70,90,120,0.16)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fill();
+    /* darker meniscus rim, concentrated along the bottom */
+    ctx.strokeStyle = 'rgba(4,8,18,0.55)';
+    ctx.lineWidth = Math.max(1, R * 0.16);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R - ctx.lineWidth / 2, Math.PI * 0.05, Math.PI * 0.95);
+    ctx.stroke();
+    /* thin light rim along the top, catching ambient light */
+    ctx.strokeStyle = 'rgba(255,255,255,0.32)';
+    ctx.lineWidth = Math.max(0.6, R * 0.09);
+    ctx.beginPath();
+    ctx.arc(cx, cy, R - ctx.lineWidth, Math.PI * 1.08, Math.PI * 1.92);
+    ctx.stroke();
+    /* two specular catchlights — the "glassy" double-highlight */
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.beginPath(); ctx.arc(cx - R * 0.32, cy - R * 0.36, R * 0.15, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(cx + R * 0.2, cy - R * 0.05, R * 0.08, 0, Math.PI * 2); ctx.fill();
+    this.dropSprite = c;
+  },
   spawnDrop(hd) {
+    /* Most drops are plain round lenses (radius 1-4px, ~2-8px diameter).
+       A minority spawn already "streaked" — a static elongated tail frozen
+       above them, like a droplet caught mid-slide on real wet glass (see
+       the reference photo: several drops there are long thin vertical
+       comets rather than round dots). These barely move on their own; the
+       occasional active slide (below) is a separate, rarer event. */
+    const streaked = Math.random() < 0.22;
     return {
       x: Math.random() * hd.w,
       y: Math.random() * hd.h,
       r: 1 + Math.random() * 3, /* radius 1-4px -> visible diameter ~2-8px */
-      alpha: 0.32 + Math.random() * 0.4,
+      alpha: 0.4 + Math.random() * 0.45,
+      stretch: streaked ? (2.2 + Math.random() * 3.5) : 0, /* static tail length multiplier */
       sliding: false, slideSpeed: 0, slideLife: 0, trail: 0
     };
   },
@@ -360,6 +414,7 @@ const GlassFX = {
     if (intensity != null) this.intensity = Math.max(0, Math.min(1, intensity));
     if (!this.inited) this.init();
     if (!this.hosts.length) return;
+    if (!this.dropSprite) this.buildDropSprite();
     if (!this.running) {
       this.running = true;
       this.hosts.forEach((hd) => { this.resizeHost(hd); this.buildHost(hd); hd.canvas.classList.add('on'); });
@@ -383,33 +438,37 @@ const GlassFX = {
     this.raf = requestAnimationFrame((t) => this.loop(t));
   },
   pause() { cancelAnimationFrame(this.raf); },
-  drawDrop(ctx, d) {
-    /* short, fast-fading trail above a currently/recently sliding droplet */
-    if (d.trail > 0) {
-      const len = 5 + d.r * 2.2;
-      ctx.strokeStyle = `rgba(200,222,255,${0.24 * d.trail})`;
-      ctx.lineWidth = Math.max(0.5, d.r * 0.3);
-      ctx.beginPath();
-      ctx.moveTo(d.x, d.y - len);
-      ctx.lineTo(d.x, d.y - d.r * 0.6);
-      ctx.stroke();
-    }
-    /* flat semi-transparent body */
+  drawTail(ctx, d, size, tailLen, strength) {
+    const g = ctx.createLinearGradient(d.x, d.y - tailLen, d.x, d.y - size * 0.3);
+    g.addColorStop(0, 'rgba(180,205,235,0)');
+    g.addColorStop(0.6, `rgba(190,212,240,${0.16 * strength})`);
+    g.addColorStop(1, `rgba(210,228,248,${0.3 * strength})`);
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.fillStyle = `rgba(214,230,255,${d.alpha})`;
-    ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+    ctx.moveTo(d.x - d.r * 0.5, d.y - size * 0.3);
+    ctx.quadraticCurveTo(d.x - d.r * 0.15, d.y - tailLen, d.x, d.y - tailLen);
+    ctx.quadraticCurveTo(d.x + d.r * 0.15, d.y - tailLen, d.x + d.r * 0.5, d.y - size * 0.3);
+    ctx.closePath();
     ctx.fill();
-    /* thin darker rim along the bottom — implies a tiny shadow under the drop */
+    /* thin bright core streak down the middle of the tail — refraction highlight */
+    ctx.strokeStyle = `rgba(255,255,255,${0.35 * strength})`;
+    ctx.lineWidth = Math.max(0.5, d.r * 0.22);
     ctx.beginPath();
-    ctx.strokeStyle = `rgba(8,14,26,${d.alpha * 0.5})`;
-    ctx.lineWidth = Math.max(0.5, d.r * 0.32);
-    ctx.arc(d.x, d.y, d.r * 0.8, Math.PI * 0.12, Math.PI * 0.88);
+    ctx.moveTo(d.x, d.y - tailLen * 0.92);
+    ctx.lineTo(d.x, d.y - size * 0.45);
     ctx.stroke();
-    /* small bright highlight, top-left — implies refraction/volume */
-    ctx.beginPath();
-    ctx.fillStyle = `rgba(255,255,255,${Math.min(1, d.alpha + 0.3)})`;
-    ctx.arc(d.x - d.r * 0.35, d.y - d.r * 0.35, Math.max(0.35, d.r * 0.26), 0, Math.PI * 2);
-    ctx.fill();
+  },
+  drawDrop(ctx, d) {
+    const size = d.r * 2.6; /* on-screen draw size for the shared sprite */
+    /* static "already streaked" drops (frozen mid-slide look, per the
+       reference photo) always show a fixed-length tail. */
+    if (d.stretch > 0) this.drawTail(ctx, d, size, size * (1 + d.stretch * 0.5), 0.75);
+    /* a currently/recently ACTIVELY sliding droplet gets its own animated
+       comet tail on top, scaled by how fast it's currently moving. */
+    if (d.trail > 0.02) this.drawTail(ctx, d, size, size * (1.6 + d.slideSpeed * 0.02), d.trail);
+    ctx.globalAlpha = d.alpha;
+    ctx.drawImage(this.dropSprite, d.x - size / 2, d.y - size / 2, size, size);
+    ctx.globalAlpha = 1;
   },
   loop(t) {
     if (!this.running) return;
