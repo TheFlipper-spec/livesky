@@ -172,21 +172,23 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 }
 
 /* Rain-on-glass droplets: a small <canvas class="glass-fx-layer"> is injected
-   INSIDE each .card by GlassFX (07-effects.js) — never as a full-viewport
-   overlay. It is the card's first child, positioned absolutely to fill the
-   card, sitting BEHIND the card's own content (z-index 0, while everything
-   else in a card is z-index 1+) so text/icons always render on top and stay
-   fully legible. Droplets are small and sharp (2-8px), not glowing "bokeh"
+   INSIDE each .card / .search-form by GlassFX (07-effects.js) — never as a
+   full-viewport overlay. It is the host's first child, absolutely positioned
+   to fill it, and painted at z-index:-1 so it sits BEHIND that element's own
+   text/icons/buttons (z-index 0+ or plain static content) and always stays
+   fully legible. This relies on .card / .search-form already forming their
+   own stacking context via `backdrop-filter` (backdrop-filter establishes a
+   new stacking context per spec, same as opacity/transform/filter) — do NOT
+   also add `isolation: isolate` to those rules: stacking an extra render-
+   surface trigger (isolation) on an element that already has backdrop-filter
+   is a known Chromium compositor bug that intermittently paints the element
+   fully white/unblurred for a frame (this is exactly what caused cards to
+   "flash white" during rain/storm once the droplet canvas started animating
+   inside them). Droplets are small and sharp (2-8px), not glowing "bokeh"
    circles. Toggled on/off per-card by GlassFX; canvases are left blank +
    their rAF loop stopped while inactive (clear weather / Eco / off-screen),
    so idle cards cost nothing. */
 .glass-fx-layer {
-  /* z-index: -1 (not 0/1) is deliberate: within the stacking context each
-     .card establishes, a negative z-index child paints right after the
-     card's own background/border but strictly BEFORE any normal (static
-     position) content such as headings, icons or metric tiles — so the
-     canvas can never end up visually on top of text no matter what markup
-     a given card happens to contain. */
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
   width: 100%; height: 100%;
   opacity: 0;
@@ -247,7 +249,6 @@ html[data-perf="eco"] .glass-fx-layer, html[data-perf="low"] .glass-fx-layer { d
 .card {
   position: relative;
   z-index: 1;
-  isolation: isolate; /* contains .glass-fx-layer's z-index:-1 inside this card */
   background: var(--surface);
   border: 1px solid var(--stroke);
   border-radius: var(--radius-lg);
@@ -295,13 +296,7 @@ html[data-perf="eco"] .glass-fx-layer, html[data-perf="low"] .glass-fx-layer { d
 
 .search-wrap { position: relative; flex: 1 1 320px; max-width: 560px; min-width: 260px; }
 .search-form {
-  /* isolation: isolate forces this box to be a genuine stacking context (it
-     has no explicit z-index otherwise, so a naive position:relative alone
-     would NOT contain the .glass-fx-layer's z-index:-1 — the canvas would
-     escape to the header's stacking context and paint behind the search
-     bar's own background instead of just behind its icon/input/buttons). */
   position: relative;
-  isolation: isolate;
   display: flex; align-items: center; gap: 4px;
   height: 48px; padding: 0 8px 0 16px;
   background: var(--surface-input);
