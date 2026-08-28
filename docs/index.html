@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=45" />
+  <link rel="stylesheet" href="css/app.css?v=46" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -163,51 +163,165 @@
 
       <div class="header-actions">
         <div class="relative">
-          <button class="hbtn" id="menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="Меню" title="Меню">
+          <button class="hbtn hbtn-settings" id="menu-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="main-menu" aria-label="Настройки" title="Настройки">
             <i class="ph ph-sliders-horizontal"></i>
+            <span class="hbtn-label" data-translate="settings">Настройки</span>
           </button>
-          <div class="dropdown" id="main-menu">
-            <div class="dd-group-label" data-translate="language">Язык</div>
-            <button class="dd-item" data-lang="ru"><img class="lang-flag" src="assets/flags/ru.svg" alt="" loading="lazy"><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="en"><img class="lang-flag" src="assets/flags/gb.svg" alt="" loading="lazy"><span data-translate="lang_en">English</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="es"><img class="lang-flag" src="assets/flags/es.svg" alt="" loading="lazy"><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
 
-            <div class="dd-group-label"><span data-translate="theme_group">Тема</span> · <span id="theme-label"></span></div>
-            <button class="dd-item" data-theme-pick="adaptive"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-theme-pick="dark"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-theme-pick="light"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check dd-check"></i></button>
+          <!-- Settings panel — anchored card on desktop, bottom sheet on phones.
+               Everything is grouped into short, scannable sections so the
+               panel never turns into one long undifferentiated list. -->
+          <div class="sp-backdrop" id="menu-backdrop"></div>
+          <div class="settings-panel" id="main-menu" role="dialog" aria-label="Настройки">
+            <div class="sp-grab" id="sp-grab" aria-hidden="true"></div>
 
-            <div class="dd-group-label" data-translate="units">Единицы</div>
-            <select class="dd-select" id="units-select">
-              <option value="metric">Metric (°C, km/h)</option>
-              <option value="imperial">Imperial (°F, mph)</option>
-            </select>
+            <div class="sp-head">
+              <span class="sp-head-ico"><i class="ph-fill ph-sliders-horizontal"></i></span>
+              <div class="sp-head-text">
+                <h2 class="sp-title" data-translate="settings">Настройки</h2>
+                <p class="sp-sub"><span data-translate="theme_group">Тема</span> · <span id="theme-label"></span></p>
+              </div>
+              <button class="sp-close" id="menu-close" type="button" aria-label="Закрыть"><i class="ph-bold ph-x"></i></button>
+            </div>
 
-            <div class="dd-group-label" data-translate="source">Модель данных</div>
-            <select class="dd-select" id="model-select">
-              <option value="auto">Auto (Best Match)</option>
-              <option value="ecmwf_ifs025">ECMWF (Europe)</option>
-              <option value="gfs_seamless">GFS (Global)</option>
-              <option value="icon_seamless">ICON (DWD)</option>
-            </select>
+            <div class="sp-body" id="sp-body">
+              <section class="sp-group">
+                <div class="sp-group-head"><i class="ph-fill ph-translate"></i><span data-translate="language">Язык</span></div>
+                <div class="sp-seg" role="group" aria-label="Язык">
+                  <button class="sp-seg-btn" type="button" data-lang="ru"><img class="lang-flag" src="assets/flags/ru.svg" alt="" loading="lazy"><span data-translate="lang_ru">Русский</span></button>
+                  <button class="sp-seg-btn" type="button" data-lang="en"><img class="lang-flag" src="assets/flags/gb.svg" alt="" loading="lazy"><span data-translate="lang_en">English</span></button>
+                  <button class="sp-seg-btn" type="button" data-lang="es"><img class="lang-flag" src="assets/flags/es.svg" alt="" loading="lazy"><span data-translate="lang_es">Español</span></button>
+                </div>
+              </section>
 
-            <div class="dd-group-label"><span data-translate="effects_group">Производительность</span></div>
-            <select class="dd-select" id="effects-select">
-              <option value="auto" data-translate="effects_auto">Авто (по FPS)</option>
-              <option value="full" data-translate="effects_full">Максимум</option>
-              <option value="eco" data-translate="effects_eco">Эконом</option>
-            </select>
+              <section class="sp-group">
+                <div class="sp-group-head"><i class="ph-fill ph-palette"></i><span data-translate="theme_group">Тема</span></div>
+                <div class="sp-theme-grid" role="group" aria-label="Тема">
+                  <button class="sp-theme" type="button" data-theme-pick="adaptive">
+                    <span class="sp-theme-ico"><i class="ph-duotone ph-cloud-sun"></i></span>
+                    <span class="sp-theme-name" data-translate="theme_adaptive">Адаптивная</span>
+                    <i class="ph-bold ph-check-circle sp-theme-check"></i>
+                  </button>
+                  <button class="sp-theme" type="button" data-theme-pick="dark">
+                    <span class="sp-theme-ico"><i class="ph-duotone ph-moon"></i></span>
+                    <span class="sp-theme-name" data-translate="theme_dark">Тёмная</span>
+                    <i class="ph-bold ph-check-circle sp-theme-check"></i>
+                  </button>
+                  <button class="sp-theme" type="button" data-theme-pick="light">
+                    <span class="sp-theme-ico"><i class="ph-duotone ph-sun"></i></span>
+                    <span class="sp-theme-name" data-translate="theme_light">Светлая</span>
+                    <i class="ph-bold ph-check-circle sp-theme-check"></i>
+                  </button>
+                </div>
+              </section>
 
-            <div class="dd-group-label" data-translate="actions">Действия</div>
-            <button class="dd-item hidden" id="install-item"><i class="ph ph-download-simple"></i><span data-translate="install_app">Установить приложение</span></button>
-            <button class="dd-item" id="notif-item"><i id="notif-ico" class="ph ph-bell"></i><span id="notif-label" data-translate="notif_enable">Погодные уведомления</span></button>
-            <button class="dd-item" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location">Моё местоположение</span></button>
-            <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
-            <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
+              <section class="sp-group">
+                <div class="sp-group-head"><i class="ph-fill ph-cloud-sun"></i><span data-translate="data_group">Данные прогноза</span></div>
+                <div class="sp-fields">
+                  <label class="sp-field">
+                    <span class="sp-field-label" data-translate="units">Единицы</span>
+                    <select class="sp-select" id="units-select">
+                      <option value="metric">Metric (°C, km/h)</option>
+                      <option value="imperial">Imperial (°F, mph)</option>
+                    </select>
+                  </label>
+                  <label class="sp-field">
+                    <span class="sp-field-label" data-translate="source">Модель данных</span>
+                    <select class="sp-select" id="model-select">
+                      <option value="auto">Auto (Best Match)</option>
+                      <option value="ecmwf_ifs025">ECMWF (Europe)</option>
+                      <option value="gfs_seamless">GFS (Global)</option>
+                      <option value="icon_seamless">ICON (DWD)</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
 
-            <div class="dd-group-label" data-translate="legal_info">Юридическая информация</div>
-            <a class="dd-item" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
-            <a class="dd-item" href="legal/privacy.html" target="_blank" rel="noopener"><i class="ph ph-shield-check"></i><span data-translate="privacy_policy">Политика конфиденциальности</span></a>
+              <section class="sp-group">
+                <div class="sp-group-head"><i class="ph-fill ph-gauge"></i><span data-translate="effects_group">Производительность</span></div>
+                <div class="sp-fields">
+                  <label class="sp-field">
+                    <span class="sp-field-label" data-translate="effects_quality">Качество эффектов</span>
+                    <select class="sp-select" id="effects-select">
+                      <option value="auto" data-translate="effects_auto">Авто (по FPS)</option>
+                      <option value="full" data-translate="effects_full">Максимум</option>
+                      <option value="eco" data-translate="effects_eco">Эконом</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="sp-group">
+                <div class="sp-group-head"><i class="ph-fill ph-lightning"></i><span data-translate="actions">Действия</span></div>
+                <div class="sp-rows">
+                  <button class="sp-row" id="notif-item" type="button" role="switch" aria-checked="false">
+                    <span class="sp-row-ico"><i id="notif-ico" class="ph ph-bell"></i></span>
+                    <span class="sp-row-text">
+                      <span class="sp-row-title" data-translate="notif_row_title">Погодные уведомления</span>
+                      <span class="sp-row-sub" id="notif-label" data-translate="notif_state_off">Выключено</span>
+                    </span>
+                    <span class="sp-switch" aria-hidden="true"></span>
+                  </button>
+                  <button class="sp-row" id="geo-item" type="button">
+                    <span class="sp-row-ico"><i class="ph ph-navigation-arrow"></i></span>
+                    <span class="sp-row-text">
+                      <span class="sp-row-title" data-translate="my_location">Моё местоположение</span>
+                      <span class="sp-row-sub" data-translate="my_location_hint">Определить город по GPS</span>
+                    </span>
+                    <i class="ph-bold ph-caret-right sp-row-go"></i>
+                  </button>
+                  <button class="sp-row" id="fs-item" type="button">
+                    <span class="sp-row-ico"><i id="fs-icon" class="ph ph-corners-out"></i></span>
+                    <span class="sp-row-text">
+                      <span class="sp-row-title" data-translate="fullscreen">Полный экран</span>
+                      <span class="sp-row-sub" data-translate="fullscreen_hint">Скрыть интерфейс браузера</span>
+                    </span>
+                    <i class="ph-bold ph-caret-right sp-row-go"></i>
+                  </button>
+                  <button class="sp-row" id="refresh-item" type="button">
+                    <span class="sp-row-ico"><i class="ph ph-arrow-clockwise"></i></span>
+                    <span class="sp-row-text">
+                      <span class="sp-row-title" data-translate="refresh_data">Обновить данные</span>
+                      <span class="sp-row-sub" data-translate="refresh_data_hint">Запросить свежий прогноз</span>
+                    </span>
+                    <i class="ph-bold ph-caret-right sp-row-go"></i>
+                  </button>
+                </div>
+              </section>
+
+              <!-- Install row only appears where the browser can really install
+                   LiveSky, and disappears forever once the app is installed. -->
+              <section class="sp-group hidden" id="install-group">
+                <div class="sp-group-head"><i class="ph-fill ph-download-simple"></i><span data-translate="install_group">Приложение</span></div>
+                <div class="sp-rows">
+                  <button class="sp-row sp-row-accent" id="install-item" type="button">
+                    <span class="sp-row-ico"><i class="ph ph-download-simple"></i></span>
+                    <span class="sp-row-text">
+                      <span class="sp-row-title" data-translate="install_app">Установить приложение</span>
+                      <span class="sp-row-sub" data-translate="install_hint">Быстрый запуск и работа офлайн</span>
+                    </span>
+                    <i class="ph-bold ph-caret-right sp-row-go"></i>
+                  </button>
+                </div>
+              </section>
+
+              <section class="sp-group">
+                <div class="sp-group-head"><i class="ph-fill ph-shield-check"></i><span data-translate="legal_info">Юридическая информация</span></div>
+                <div class="sp-rows">
+                  <a class="sp-row" href="legal/terms.html" target="_blank" rel="noopener">
+                    <span class="sp-row-ico"><i class="ph ph-file-text"></i></span>
+                    <span class="sp-row-text"><span class="sp-row-title" data-translate="terms_service">Пользовательское соглашение</span></span>
+                    <i class="ph-bold ph-arrow-up-right sp-row-go"></i>
+                  </a>
+                  <a class="sp-row" href="legal/privacy.html" target="_blank" rel="noopener">
+                    <span class="sp-row-ico"><i class="ph ph-shield-check"></i></span>
+                    <span class="sp-row-text"><span class="sp-row-title" data-translate="privacy_policy">Политика конфиденциальности</span></span>
+                    <i class="ph-bold ph-arrow-up-right sp-row-go"></i>
+                  </a>
+                </div>
+                <p class="sp-foot"><span data-translate="sp_version">Версия</span> <span id="sp-version">1.3</span></p>
+              </section>
+            </div>
           </div>
         </div>
       </div>
@@ -604,24 +718,51 @@
     <i class="ph-fill ph-wifi-slash"></i><span data-translate="offline_banner">Нет соединения — показываем последний прогноз из кеша</span>
   </div>
 
+  <!-- ==== PWA install invitation (one-time, bottom) ====
+       Appears once, shortly after the Terms gate unlocks the app, and only
+       where installation is actually possible (Chromium's beforeinstallprompt
+       or iOS Safari's "Add to Home Screen"). It auto-hides if ignored and is
+       never shown again once dismissed — and never when LiveSky already runs
+       as an installed app or inside the native Android shell. -->
+  <div class="install-prompt hidden" id="install-prompt" role="dialog" aria-labelledby="install-prompt-title" aria-describedby="install-prompt-text">
+    <div class="ip-card">
+      <button class="ip-close" id="install-close" type="button" aria-label="Закрыть"><i class="ph-bold ph-x"></i></button>
+      <div class="ip-ico"><i class="ph-fill ph-wind"></i></div>
+      <div class="ip-copy">
+        <h2 class="ip-title" id="install-prompt-title" data-translate="install_title">LiveSky всегда под рукой</h2>
+        <p class="ip-text" id="install-prompt-text" data-translate="install_text">Установите приложение: запуск с главного экрана, офлайн-доступ и быстрые обновления.</p>
+        <ol class="ip-steps hidden" id="install-steps">
+          <li><span data-translate="install_ios_step1">Нажмите «Поделиться» в меню Safari</span></li>
+          <li><span data-translate="install_ios_step2">Выберите «На экран «Домой»»</span></li>
+        </ol>
+      </div>
+      <div class="ip-actions">
+        <button class="ip-btn ip-btn-primary" id="install-cta" type="button">
+          <i class="ph-bold ph-download-simple"></i><span data-translate="install_cta">Установить</span>
+        </button>
+        <button class="ip-btn ip-btn-ghost" id="install-later" type="button"><span data-translate="install_later">Не сейчас</span></button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=35"></script>
+  <script src="js/i18n.js?v=36"></script>
   <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones.
        The map/radar module (js/modules/11-map-radar.js) is intentionally NOT
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=5"></script>
+  <script src="js/modules/01-core.js?v=6"></script>
   <script src="js/modules/02-weather-data.js?v=3"></script>
   <script src="js/modules/03-rendering.js?v=3"></script>
   <script src="js/modules/04-chart.js?v=2"></script>
   <script src="js/modules/05-hourly-alerts.js?v=2"></script>
   <script src="js/modules/06-air.js?v=3"></script>
   <script src="js/modules/07-effects.js?v=7"></script>
-  <script src="js/modules/08-search-modals.js?v=6"></script>
+  <script src="js/modules/08-search-modals.js?v=7"></script>
   <script src="js/modules/09-lifecycle.js?v=3"></script>
-  <script src="js/modules/10-bootstrap.js?v=6"></script>
+  <script src="js/modules/10-bootstrap.js?v=7"></script>
 </body>
 </html>

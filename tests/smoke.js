@@ -456,9 +456,14 @@ setTimeout(() => {
       const appGradle = fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8');
       assert(appGradle.includes('signingConfigs') && appGradle.includes('KEYSTORE_PASSWORD') && appGradle.includes('KEYSTORE_BASE64'),
              'android/app/build.gradle contains release signingConfigs with environment variables');
-      const releaseWorkflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'android-release.yml'), 'utf8');
+      /* The signed-release workflow ships as either the automatic or the
+         manual dispatch variant — both must build and publish a signed APK. */
+      const wfCandidates = ['.github/workflows/android-release.yml', '.github/workflows/android-release-manual.yml'];
+      const wfPath = wfCandidates.map(p => path.join(root, p)).find(p => fs.existsSync(p));
+      assert(!!wfPath, 'a signed Android release workflow exists under .github/workflows');
+      const releaseWorkflow = fs.readFileSync(wfPath, 'utf8');
       assert(releaseWorkflow.includes('assembleRelease') && releaseWorkflow.includes('KEYSTORE_BASE64') && releaseWorkflow.includes('upload-artifact'),
-             '.github/workflows/android-release.yml exists and builds signed release APK');
+             path.relative(root, wfPath) + ' builds and publishes a signed release APK');
     }
     assert(typeof nativeBackHandler === 'function', 'Capacitor back-button listener accepts a direct listener handle');
     assert(q('boot-error').classList.contains('hidden'), 'Capacitor native bridge does not block application startup');
@@ -583,6 +588,43 @@ setTimeout(() => {
     }
     assert(q('map-card').querySelector('.map-placeholder') !== null, 'map placeholder exists behind tiles');
     assert(q('geo-item') !== null, 'geolocation moved into the unified menu');
+
+    /* ---- Settings panel: structured, grouped, mobile-ready ---- */
+    {
+      const panel = q('main-menu');
+      assert(panel !== null && panel.classList.contains('settings-panel'), 'settings panel exists');
+      assert(panel.querySelectorAll('.sp-group').length >= 5,
+        'settings panel is split into scannable groups: ' + panel.querySelectorAll('.sp-group').length);
+      assert(panel.querySelectorAll('.sp-group-head').length >= 5, 'every settings group is labelled');
+      assert(panel.querySelector('#units-select') && panel.querySelector('#model-select') &&
+             panel.querySelector('#effects-select'), 'settings keep units / model / effects controls');
+      assert(panel.querySelectorAll('.sp-select').length === 3, 'all three selects are styled consistently');
+      assert(panel.querySelector('.sp-seg [data-lang="en"]') !== null, 'language is a compact segmented control');
+      assert(panel.querySelector('.sp-theme[data-theme-pick="light"]') !== null, 'themes are preview cards');
+      assert(q('notif-item') && q('notif-item').getAttribute('role') === 'switch' &&
+             q('notif-item').getAttribute('aria-checked') === 'false',
+        'notifications row is an accessible switch reflecting its state');
+      assert(q('notif-label').textContent.length > 0, 'notifications switch has a state hint');
+      assert(q('menu-close') !== null && q('menu-backdrop') !== null && q('sp-grab') !== null,
+        'settings panel has a close button, a scrim and a sheet handle');
+
+      const css = fs.readFileSync(path.join(DOCS, 'css', 'app.css'), 'utf8');
+      const sheet = (css.match(/@media \(max-width: 640px\) \{([\s\S]*?)\n\}/) || [])[1] || '';
+      assert(/\.settings-panel \{[^}]*position: fixed/.test(sheet) && /\.settings-panel \{[^}]*bottom: 0/.test(sheet),
+        'phones: settings panel becomes a fixed bottom sheet');
+      assert(/\.sp-grab \{[^}]*display: block/.test(sheet), 'phones: bottom sheet shows a drag handle');
+      assert(/\.sp-backdrop \{[^}]*display: block/.test(sheet), 'phones: bottom sheet dims the page behind it');
+      assert(/\.sp-select \{[^}]*min-height: 48px/.test(sheet), 'phones: selects keep a 48px tap target');
+      assert(/\.sp-row \{[^}]*min-height: 56px/.test(sheet), 'phones: rows keep a 56px tap target');
+      assert(/\.sp-body \{[^}]*env\(safe-area-inset-bottom\)/.test(sheet), 'phones: settings respect the safe area');
+      assert(/\.install-prompt \{[^}]*width: calc\(100vw - 24px\)/.test(sheet), 'phones: install invitation is full width');
+    }
+
+    /* ---- Install invitation: one-shot, never while the gate is up ---- */
+    assert(q('install-prompt') !== null, 'install invitation element exists');
+    assert(q('install-prompt').classList.contains('hidden'), 'install invitation starts hidden');
+    assert(q('install-group').classList.contains('hidden'),
+      'install row stays hidden when the browser offers no install flow');
     assert(q('loader') !== null && q('loader').querySelector('.loader-orb') !== null, 'premium loader orb exists');
     assert(q('loader').querySelector('.loader-bar') !== null, 'loader progress bar exists');
     {
@@ -1274,9 +1316,150 @@ function phase9() {
       assert(gp.hasResize === true,   'phase9: GlassFX stub has resize()');
       assert(gp.noLayers === true,    'phase9: no .glass-fx-layer DOM nodes injected (effect removed)');
       assert(gp.notRunning === true,  'phase9: GlassFX.running is false (stub, not active)');
-      finish();
-    } catch (e) { errors.push('phase9 crashed: ' + e.message); finish(); }
+      phase10();
+    } catch (e) { errors.push('phase9 crashed: ' + e.message); phase10(); }
   }, 900);
+}
+
+/* Fire a Chromium-style install prompt into a world. */
+function fireInstallPrompt(w) {
+  const ev = new w.Event('beforeinstallprompt');
+  ev.preventDefault = () => {};
+  ev.prompt = () => { w.__installPrompted = (w.__installPrompted || 0) + 1; };
+  ev.userChoice = Promise.resolve({ outcome: 'dismissed' });
+  w.dispatchEvent(ev);
+  return ev;
+}
+function bootWorld(setup) {
+  const { w, doc } = makeWorld();
+  w.LIVE_INSTALL_SHOW_DELAY_MS = 60;
+  w.fetch = makeFetchStub();
+  if (typeof setup === 'function') setup(w, doc);
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  return { w, doc, q: (id) => doc.getElementById(id) };
+}
+
+/* phase 10: the PWA install invitation — never before the Terms gate, only
+   where installing is possible, auto-retiring and never nagging once the
+   user has dismissed it. */
+function phase10() {
+  const { w, doc, q } = bootWorld();
+  const shown = () => !q('install-prompt').classList.contains('hidden') &&
+                      !q('install-prompt').classList.contains('out');
+  setTimeout(() => {
+    try {
+      /* 1) While the ToS dialog is up, the invitation must stay away. */
+      fireInstallPrompt(w);
+      assert(!shown(), 'phase10: no install invitation while the Terms gate is locked');
+      q('consent-accept-btn').click();
+      if (!q('privacy-modal').classList.contains('hidden')) q('privacy-accept-btn').click();
+    } catch (e) { errors.push('phase10 crashed: ' + e.message); }
+    setTimeout(() => {
+      try {
+        assert(shown(), 'phase10: install invitation appears after the Terms are accepted');
+        assert(!q('install-group').classList.contains('hidden'),
+          'phase10: settings expose the install row while the app is installable');
+        assert(q('install-cta') && !q('install-cta').classList.contains('hidden'),
+          'phase10: Chromium gets a real install button');
+        assert(q('install-steps').classList.contains('hidden'),
+          'phase10: iOS-only instructions stay hidden on Chromium');
+
+        /* 2) Tapping «Install» calls the native prompt and retires the banner. */
+        q('install-cta').click();
+        assert(w.__installPrompted === 1, 'phase10: the install button triggers the browser prompt');
+        assert(!shown(), 'phase10: the invitation retires as soon as the user acts on it');
+
+        /* 3) Declining the browser prompt keeps the invitation quiet. */
+        fireInstallPrompt(w);
+        setTimeout(() => {
+          try {
+            assert(!shown(), 'phase10: declining the browser prompt keeps the invitation quiet');
+
+            /* 4) A later visit may invite once more — and a closed invitation
+                  is retired for good (never nagging on every launch). */
+            w.localStorage.setItem('livesky:install_prompt', JSON.stringify({ shows: 1, last: 0 }));
+            fireInstallPrompt(w);
+            setTimeout(() => {
+              try {
+                assert(shown(), 'phase10: a later visit may invite once more');
+                q('install-close').click();
+                setTimeout(() => {
+                  try {
+                    assert(!shown(), 'phase10: closing the invitation hides it');
+                    const rec = JSON.parse(w.localStorage.getItem('livesky:install_prompt') || '{}');
+                    assert(rec.dismissed === true, 'phase10: dismissal is remembered');
+                    fireInstallPrompt(w);
+                    setTimeout(() => {
+                      try {
+                        assert(!shown(), 'phase10: a dismissed invitation never comes back');
+                        w.close();
+                        phase11();
+                      } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
+                    }, 280);
+                  } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
+                }, 420);
+              } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
+            }, 260);
+          } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
+        }, 260);
+      } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
+    }, 320);
+  }, 220);
+}
+
+/* phase 11: the invitation must stay away when LiveSky already runs as an
+   installed app, and iOS Safari gets instructions instead of a dead button. */
+function phase11() {
+  /* 1) already installed: standalone display mode */
+  const A = bootWorld((w) => {
+    w.matchMedia = (query) => ({
+      matches: /display-mode/.test(String(query)),
+      media: String(query),
+      addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}
+    });
+  });
+  setTimeout(() => {
+    try {
+      fireInstallPrompt(A.w);
+      A.q('consent-accept-btn').click();
+      if (!A.q('privacy-modal').classList.contains('hidden')) A.q('privacy-accept-btn').click();
+    } catch (e) { errors.push('phase11 crashed: ' + e.message); }
+    setTimeout(() => {
+      const visible = !A.q('install-prompt').classList.contains('hidden');
+      try {
+        assert(!visible, 'phase11: no install invitation when the app is already installed');
+        assert(A.q('install-group').classList.contains('hidden'),
+          'phase11: no install row in settings for an installed app');
+      } catch (e) { errors.push('phase11 crashed: ' + e.message); }
+
+      /* 2) iOS Safari: no native prompt → show the two-step hint instead */
+      const B = bootWorld((w) => {
+        Object.defineProperty(w.navigator, 'userAgent', {
+          value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1',
+          configurable: true
+        });
+      });
+      setTimeout(() => {
+        try {
+          B.q('consent-accept-btn').click();
+          if (!B.q('privacy-modal').classList.contains('hidden')) B.q('privacy-accept-btn').click();
+        } catch (e) { errors.push('phase11 crashed: ' + e.message); }
+        setTimeout(() => {
+          try {
+            const prompt = B.q('install-prompt');
+            assert(!prompt.classList.contains('hidden'), 'phase11: iOS Safari gets the install hint');
+            assert(!B.q('install-steps').classList.contains('hidden'),
+              'phase11: iOS Safari shows «Share → Add to Home Screen» steps');
+            assert(B.q('install-cta').classList.contains('hidden'),
+              'phase11: no dead install button where the browser cannot install');
+            A.w.close(); B.w.close();
+            finish();
+          } catch (e) { errors.push('phase11 crashed: ' + e.message); finish(); }
+        }, 320);
+      }, 200);
+    }, 320);
+  }, 220);
 }
 
 function finish() {

@@ -330,11 +330,12 @@ function updateNotifItem() {
   if (!el.notifItem) return;
   const on = state.notif;
   if (el.notifIco) el.notifIco.className = 'ph ' + (on ? 'ph-bell-ringing' : 'ph-bell');
+  /* The row is a switch: the title stays put, the sub-line mirrors the state. */
+  el.notifItem.setAttribute('aria-checked', on ? 'true' : 'false');
   if (el.notifLabel) {
-    el.notifLabel.dataset.translate = on ? 'notif_enabled' : 'notif_enable';
-    el.notifLabel.textContent = t(on ? 'notif_enabled' : 'notif_enable');
+    el.notifLabel.dataset.translate = on ? 'notif_state_on' : 'notif_state_off';
+    el.notifLabel.textContent = t(on ? 'notif_state_on' : 'notif_state_off');
   }
-  el.notifItem.classList.toggle('selected', on);
 }
 function setNotificationsEnabled() {
   state.notif = true;

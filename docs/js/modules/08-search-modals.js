@@ -498,6 +498,9 @@ function acceptLegalConsent() {
   if (window.LiveSkyMap) LiveSkyMap.schedulePrefetch();
   /* Sequential Step 2: ask for geolocation immediately after ToS. */
   offerPrivacyIfNeeded();
+  /* Optional Step 3: a single, self-retiring install invitation. It waits
+     for the privacy dialog and disappears for good once dismissed. */
+  scheduleInstallPrompt();
 }
 
 /* continuous re-validation: clearing or editing the record re-locks the app */
@@ -565,6 +568,8 @@ function hidePrivacyDialog() {
     document.body.classList.remove('no-scroll');
   }
   releaseFocus(el.privacyModal);
+  /* the gate is clear — the install invitation may now take its turn */
+  if (typeof scheduleInstallPrompt === 'function') scheduleInstallPrompt();
 }
 
 function requestPrivacyConsent(onGranted) {
@@ -1358,9 +1363,43 @@ function setTheme(theme) {
 function setMenuOpen(open) {
   if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
   if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
+  /* Every open starts at the top of the scroll area. */
+  if (open && el.spBody) el.spBody.scrollTop = 0;
+  /* Scrim behind the bottom sheet (phones) */
+  if (el.menuBackdrop) el.menuBackdrop.classList.toggle('show', open);
   /* Prevent scrolling behind the menu on mobile */
   if (open) document.body.classList.add('menu-scroll-lock');
   else document.body.classList.remove('menu-scroll-lock');
+}
+
+/* Phones: drag the sheet's handle down to dismiss it. */
+function initSheetDrag() {
+  if (!el.spGrab || !el.mainMenu || typeof window.PointerEvent !== 'function') return;
+  let startY = null;
+  const reset = () => {
+    if (!el.mainMenu) return;
+    el.mainMenu.style.transition = '';
+    el.mainMenu.style.transform = '';
+    startY = null;
+  };
+  on(el.spGrab, 'pointerdown', (e) => {
+    startY = e.clientY;
+    el.mainMenu.style.transition = 'none';
+    if (el.spGrab.setPointerCapture) { try { el.spGrab.setPointerCapture(e.pointerId); } catch (err) {} }
+  });
+  on(el.spGrab, 'pointermove', (e) => {
+    if (startY == null) return;
+    const dy = Math.max(0, e.clientY - startY);
+    el.mainMenu.style.transform = `translateY(${dy}px)`;
+  });
+  const end = (e) => {
+    if (startY == null) return;
+    const dy = Math.max(0, (e.clientY || 0) - startY);
+    reset();
+    if (dy > 90) setMenuOpen(false);
+  };
+  on(el.spGrab, 'pointerup', end);
+  on(el.spGrab, 'pointercancel', () => reset());
 }
 function syncMenuChecks() {
   if (!el.mainMenu) return;
@@ -1386,6 +1425,14 @@ function applyTranslations() {
   if (el.modelSelect) [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
   const unitsLabels = { metric: 'units_metric', imperial: 'units_imperial' };
   if (el.unitsSelect) [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });
+  /* the header button carries a visible label in some layouts */
+  if (el.menuBtn) {
+    const label = t('settings');
+    el.menuBtn.setAttribute('aria-label', label);
+    el.menuBtn.setAttribute('title', label);
+  }
+  const versionNode = document.getElementById('sp-version');
+  if (versionNode) versionNode.textContent = APP_VERSION;
   syncMenuChecks();
 }
 
@@ -1470,14 +1517,15 @@ function bindEvents() {
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
     const themeBtn = e.target.closest('[data-theme-pick]');
     if (themeBtn) { setTheme(themeBtn.dataset.themePick); setMenuOpen(false); return; }
-    /* All other clicks inside menu just close it after a short delay */
-    const isSelect = e.target.closest('.dd-select');
+    /* Selects (and their labels) stay open while being used. */
+    const isSelect = e.target.closest('.sp-select, .sp-field');
     if (!isSelect) {
-      /* Only close on non-select clicks (selects need to stay open for interaction) */
       clearTimeout(state._menuCloseTimer);
       state._menuCloseTimer = setTimeout(() => setMenuOpen(false), 800);
     }
   });
+  on(el.menuClose, 'click', () => setMenuOpen(false));
+  on(el.menuBackdrop, 'click', () => setMenuOpen(false));
   on(el.modelSelect, 'change', () => {
     state.model = el.modelSelect.value;
     store.set('livesky:model', state.model);
@@ -1508,6 +1556,11 @@ function bindEvents() {
   });
   on(el.installItem, 'click', promptInstall);
   on(el.notifItem, 'click', () => { setMenuOpen(false); toggleNotifications(); });
+
+  /* one-time install invitation */
+  on(el.installCta, 'click', promptInstall);
+  on(el.installClose, 'click', () => hideInstallPrompt(true));
+  on(el.installLater, 'click', () => hideInstallPrompt(true));
 
   /* ---- lazy map / radar entry points -------------------------------------
      The whole map subsystem (MapLibre GL + 11-map-radar.js) is fetched on the
@@ -1600,6 +1653,8 @@ function bindEvents() {
     if (!el.menuBtn.contains(e.target) && !el.mainMenu.contains(e.target)) setMenuOpen(false);
   });
 
+  initSheetDrag();
+
   document.addEventListener('keydown', (e) => {
     /* while the legal gate is up no shortcut may reach the application */
     if (consentLocked()) {
@@ -1613,6 +1668,7 @@ function bindEvents() {
     if (e.key === 'Escape') {
       if (el.mapModal.classList.contains('open')) { LiveSkyMap.close(); return; }
       if (el.modal.classList.contains('open')) { closeModal(); return; }
+      if (installVisible) { hideInstallPrompt(true); return; }
       setMenuOpen(false);
       closeAutocomplete();
       return;
@@ -1695,31 +1751,192 @@ function registerServiceWorker() {
     navigator.serviceWorker.register('sw.js').catch(() => { /* non-critical */ });
   });
 }
+
+/* ---- One-time install invitation ----------------------------------------
+   The banner is a single, unobtrusive invitation at the bottom of the screen:
+
+   · it appears only AFTER the Terms gate unlocks the app;
+   · only where installing is actually possible — Chromium fires
+     beforeinstallprompt, iOS Safari offers «Add to Home Screen» (we then show
+     the two-step hint instead of a button the browser cannot honour);
+   · never when LiveSky already runs as an installed app (standalone display
+     mode / iOS home screen) or inside the native Android shell;
+   · it slides away on its own if ignored, and a dismissed invitation never
+     comes back — no nagging on every visit. */
+const INSTALL_KEY = 'livesky:install_prompt';
+/* Tests (and embeds) can shorten the delay — see tests/smoke.js phase10. */
+const INSTALL_SHOW_DELAY_MS = window.LIVE_INSTALL_SHOW_DELAY_MS != null
+  ? window.LIVE_INSTALL_SHOW_DELAY_MS : 1600;     /* after the gate unlocks */
+const INSTALL_AUTO_HIDE_MS = 14000;              /* ignored → slides away */
+const INSTALL_REPEAT_MS = 7 * 24 * 3600 * 1000;  /* ignored → at most once a week */
+const INSTALL_MAX_SHOWS = 2;                     /* and never more than twice */
+
+const installTimers = { show: null, hide: null };
+let installVisible = false;
+let installRearms = 0; /* bounds the "wait for the privacy dialog" re-arming */
+
+function installState() {
+  const s = store.get(INSTALL_KEY, null);
+  return s && typeof s === 'object' ? s : {};
+}
+function writeInstallState(patch) {
+  const next = Object.assign(installState(), patch);
+  store.set(INSTALL_KEY, next);
+  return next;
+}
+
+/* Running as an installed app? Standalone display mode, iOS home screen,
+   a TWA/Capacitor shell, or a recorded appinstalled event. */
+function isStandaloneDisplay() {
+  try {
+    if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+    if (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches) return true;
+    if (window.matchMedia && window.matchMedia('(display-mode: minimal-ui)').matches) return true;
+  } catch (e) { /* matchMedia/display-mode unsupported → assume a browser tab */ }
+  if (window.navigator && window.navigator.standalone === true) return true;
+  return false;
+}
+function isAppInstalled() {
+  if (isNativeApp()) return true;
+  const s = installState();
+  if (s.installed === true) return true;
+  return isStandaloneDisplay();
+}
+
+/* iOS Safari cannot install a PWA programmatically — it needs the Share →
+   «Add to Home Screen» flow, so the banner shows the steps instead of a CTA.
+   Chromium-based iOS browsers are excluded: they cannot install either. */
+function isIosInstallable() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const ios = /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+  if (!ios) return false;
+  return !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/.test(ua);
+}
+
+/* Is there anything the banner could actually offer? */
+function installSupported() {
+  if (isAppInstalled()) return false;
+  return !!deferredInstallPrompt || isIosInstallable();
+}
+
+function installCanAppear() {
+  if (!el.installPrompt) return false;
+  if (installVisible) return false;
+  if (!installSupported()) return false;
+  /* Never compete with the legal gate: ToS first, geolocation second. */
+  if (typeof consentLocked === 'function' && consentLocked()) return false;
+  if (typeof hasValidConsent === 'function' && !hasValidConsent()) return false;
+  if (typeof privacyDialogOpen === 'function' && privacyDialogOpen()) return false;
+  if (document.hidden) return false;
+  const s = installState();
+  if (s.dismissed === true) return false;          /* explicitly declined → gone for good */
+  if ((s.shows || 0) >= INSTALL_MAX_SHOWS) return false;
+  if (s.last && Date.now() - s.last < INSTALL_REPEAT_MS) return false;
+  return true;
+}
+
+function scheduleInstallPrompt() {
+  if (installTimers.show) return;
+  if (!installCanAppear()) return;
+  installTimers.show = setTimeout(() => {
+    installTimers.show = null;
+    /* The privacy dialog may still be up (or the tab sent to the background)
+       — re-arm a bounded number of times instead of losing the invitation. */
+    if (!installCanAppear()) {
+      if (!installVisible && installRearms < 20) { installRearms++; scheduleInstallPrompt(); }
+      return;
+    }
+    installRearms = 0;
+    openInstallPrompt();
+  }, INSTALL_SHOW_DELAY_MS);
+}
+
+function openInstallPrompt() {
+  if (!el.installPrompt || installVisible) return;
+  const iosHint = !deferredInstallPrompt && isIosInstallable();
+  if (el.installSteps) el.installSteps.classList.toggle('hidden', !iosHint);
+  if (el.installCta) el.installCta.classList.toggle('hidden', iosHint);
+  if (el.installLater) el.installLater.classList.remove('hidden');
+
+  el.installPrompt.classList.remove('hidden');
+  el.installPrompt.classList.remove('out');
+  installVisible = true;
+  document.body.classList.add('install-prompt-open');
+  /* Keep toasts (and the bottom of the page) clear of the banner. */
+  const h = el.installPrompt.offsetHeight || 0;
+  document.body.style.setProperty('--install-prompt-h', (h + 14) + 'px');
+
+  const s = installState();
+  writeInstallState({ shows: (s.shows || 0) + 1, last: Date.now() });
+
+  clearTimeout(installTimers.hide);
+  installTimers.hide = setTimeout(() => hideInstallPrompt(false), INSTALL_AUTO_HIDE_MS);
+}
+
+function hideInstallPrompt(dismissed) {
+  clearTimeout(installTimers.hide);
+  installTimers.hide = null;
+  if (!el.installPrompt || !installVisible) return;
+  installVisible = false;
+  el.installPrompt.classList.add('out');
+  document.body.classList.remove('install-prompt-open');
+  document.body.style.removeProperty('--install-prompt-h');
+  setTimeout(() => {
+    if (installVisible) return; /* re-opened in the meantime */
+    el.installPrompt.classList.add('hidden');
+    el.installPrompt.classList.remove('out');
+  }, 320);
+  if (dismissed) writeInstallState({ dismissed: true, shows: INSTALL_MAX_SHOWS, last: Date.now() });
+}
+
+function markInstalled() {
+  deferredInstallPrompt = null;
+  writeInstallState({ installed: true, dismissed: true });
+  hideInstallPrompt(false);
+  updateInstallItem();
+}
+
 function updateInstallItem() {
-  if (el.installItem) el.installItem.classList.toggle('hidden', !deferredInstallPrompt);
+  const show = installSupported();
+  if (el.installGroup) el.installGroup.classList.toggle('hidden', !show);
+  if (el.installItem) el.installItem.classList.toggle('hidden', !show);
 }
 function promptInstall() {
-  if (!deferredInstallPrompt) return;
+  if (!deferredInstallPrompt) {
+    /* No native dialog (iOS Safari): the banner itself explains the way. */
+    if (isIosInstallable() && !isAppInstalled()) {
+      setMenuOpen(false);
+      if (installVisible) hideInstallPrompt(true);
+      else openInstallPrompt();
+    }
+    return;
+  }
+  hideInstallPrompt(true); /* the banner has done its job */
   const p = deferredInstallPrompt;
-  p.prompt();
-  p.userChoice && p.userChoice.then(() => { deferredInstallPrompt = null; updateInstallItem(); });
+  deferredInstallPrompt = null;
+  updateInstallItem();
+  try {
+    p.prompt();
+  } catch (e) { /* a rejected prompt must never break the UI */ }
+  if (p.userChoice && typeof p.userChoice.then === 'function') {
+    p.userChoice.then((choice) => {
+      if (choice && choice.outcome === 'accepted') markInstalled();
+      else writeInstallState({ last: Date.now() }); /* refused → stay quiet for now */
+    }).catch(() => {});
+  }
 }
 function initInstallPrompt() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredInstallPrompt = e;
     updateInstallItem();
+    scheduleInstallPrompt(); /* fires immediately if the gate is already open */
   });
-  window.addEventListener('appinstalled', () => {
-    deferredInstallPrompt = null;
-    updateInstallItem();
-  });
-  /* Show install button even without beforeinstallprompt as a hint */
-  if (!deferredInstallPrompt && !isNativeApp()) {
-    setTimeout(() => {
-      if (el.installItem) el.installItem.classList.remove('hidden');
-    }, 3000);
-  }
+  window.addEventListener('appinstalled', markInstalled);
+  if (isStandaloneDisplay()) writeInstallState({ installed: true });
+  updateInstallItem();
 }
 
 /* ---------------- Offline / online banner --------------- */
