@@ -59,7 +59,7 @@ function applyWeatherTheme() {
     root.style.setProperty('--accent-2', '#06b6d4');
     ['--blob-1', '--blob-2', '--blob-3'].forEach((v, k) => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    FX.stop(); stopStorm(); GlassFX.stop();
+    FX.stop(); stopStorm();
     state.accent = '#7c3aed'; state.accent2 = '#06b6d4';
     return;
   }
@@ -69,7 +69,7 @@ function applyWeatherTheme() {
     root.style.setProperty('--accent-2', '#818cf8');
     ['--blob-1', '--blob-2', '--blob-3'].forEach(v => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    FX.stop(); stopStorm(); GlassFX.stop();
+    FX.stop(); stopStorm();
     state.accent = '#38bdf8'; state.accent2 = '#818cf8';
     return;
   }
@@ -96,17 +96,10 @@ function applyWeatherTheme() {
   else if (type === 'fog') fx = 'fog';
   else if (type === 'cloudy') fx = 'clouds';
 
-  if (effectsReduced()) { FX.stop(); stopStorm(); GlassFX.stop(); }
+  if (effectsReduced()) { FX.stop(); stopStorm(); }
   else {
     FX.start(fx);
     if (type === 'storm') startStorm(); else stopStorm();
-    /* Glass droplets only make sense for actual rain/storm — picks the
-       day/night photo variant from the same `night` flag already computed
-       above, and reuses the intensity FX already derived from live
-       precipitation data (only affects the tint strength now, not a
-       particle count). */
-    if (type === 'rain' || type === 'storm') { GlassFX.intensity = FX.intensity; GlassFX.start(night); }
-    else GlassFX.stop();
   }
 }
 
@@ -144,7 +137,7 @@ const FX = {
     const n = Math.max(1, Math.round(base * this.intensity));
     for (let i = 0; i < n; i++) {
       if (this.kind === 'rain') {
-        /* More intense = faster, thicker, more opaque drops */
+        /* More intense rain is faster, thicker, and more opaque. */
         const len = 14 + Math.random() * (18 + this.intensity * 12);
         const sp = 780 + Math.random() * (420 + this.intensity * 200);
         const a = 0.12 + this.intensity * (0.15 + Math.random() * 0.18);
@@ -163,7 +156,7 @@ const FX = {
   /* Update intensity in real-time (0-1 scale, 0=light rain, 1=downpour) */
   setIntensity(val) {
     this.intensity = Math.max(0, Math.min(1, val || 0.5));
-    /* If running, rebuild with new intensity */
+    /* Rain and snow density react to live precipitation data. */
     if (this.running && (this.kind === 'rain' || this.kind === 'snow')) {
       this.build();
     }
@@ -275,126 +268,4 @@ const FX = {
     }
     this.raf = requestAnimationFrame((tt) => this.loop(tt));
   }
-};
-
-/* ---------- Rain-on-glass droplets (per-card, not a full-screen overlay) ----------
-   Rewritten after user feedback: the first version was a single full-viewport
-   canvas with large soft "bokeh" sprites on top of everything, which read as
-   glowing balls obscuring the UI. This version instead injects one small
-   <canvas class="glass-fx-layer"> INSIDE each content card/the search bar,
-   positioned to fill that card and painted at z-index: -1 *within the card's
-   own stacking context* (see CSS) — that guarantees the canvas always paints
-   after the card's background but strictly before the card's own text/icons,
-   so droplets sit behind the interface, never over it, no matter what markup
-   a given card contains.
-   Droplets themselves are small and sharp (≈2-8px), not glowing circles: a
-   flat semi-transparent fill, a thin darker rim along the bottom (implies
-   the glass casts a tiny shadow under the drop) and a small bright highlight
-   top-left (implies refraction) — three cheap primitive draws per drop, no
-   gradients rebuilt per frame. Most droplets stay put or barely creep; a
-   small fraction occasionally slide down and leave a short, fast-fading
-   trail, then rejoin the resting population.
-   Performance: a single requestAnimationFrame loop drives every card's
-   canvas; canvases that are currently detached from the document (a
-   SECTION_MANAGER-unloaded chart/hourly/daily/lifestyle card scrolled far
-   away) are skipped for free via a cheap `isConnected` check. Droplet count
-   per card scales with that card's own pixel area, not a fixed global count,
-   so small cards (search bar, sun/AQI tiles) get a handful and the hero gets
-   more — total drops on screen stay modest. Fully stopped (canvases cleared,
-   rAF cancelled) in Eco mode / on detected low-power devices via the exact
-   same effectsReduced()/applyEffects() gate as the ambient FX canvas, with a
-   CSS `display:none` on [data-perf="eco"/"low"] as a second safety net. */
-/* ---------- rain-on-glass droplet overlay (GlassFX) ----------
-   Previously this painted animated droplets on a per-card <canvas> every
-   frame (spawn/slide/trail simulation + drawImage() of a pre-rendered
-   sprite). That was replaced with two static, real macro photos of rain on
-   glass (one day variant, one night variant — see docs/assets/img/
-   rain-glass-{day,night}-{sm,lg}.webp) shown as a lightweight CSS
-   background behind each card's own content, cross-faded in/out with
-   opacity. This is dramatically cheaper on real devices: no rAF loop, no
-   per-frame canvas work, nothing to redraw on scroll/resize beyond picking
-   which already-cached image URL applies — the browser decodes each image
-   once and the GPU just composites an existing layer, the same as any
-   other background-image. Each photo is exported at two sizes (~560px and
-   ~1440px wide) so phones only ever download the ~16-18KB small variant
-   while desktops get the ~64-66KB large one — both are shared by ALL
-   cards on the page (one background-image URL per size/theme, cached once
-   by the browser, not duplicated per host). */
-const GlassFX = {
-  HOST_SELECTOR: '.card, .search-form',
-  hosts: [], running: false, inited: false, night: false, intensity: 0.5,
-  IMG: {
-    day: { sm: 'assets/img/rain-glass-day-sm.webp', lg: 'assets/img/rain-glass-day-lg.webp' },
-    night: { sm: 'assets/img/rain-glass-night-sm.webp', lg: 'assets/img/rain-glass-night-lg.webp' }
-  },
-  /* Discovers every card / search-bar host once and injects a plain <div>
-     as its very first child (so it paints first, i.e. furthest back). Safe
-     to call repeatedly — already-equipped hosts are skipped. */
-  init() {
-    if (this.inited) return;
-    document.querySelectorAll(this.HOST_SELECTOR).forEach((host) => {
-      if (host.querySelector(':scope > .glass-fx-layer')) return;
-      const layer = document.createElement('div');
-      layer.className = 'glass-fx-layer';
-      layer.setAttribute('aria-hidden', 'true');
-      host.insertBefore(layer, host.firstChild);
-      this.hosts.push({ host, layer });
-    });
-    this.inited = true;
-  },
-  /* Only two size tiers exist; picking one is a single comparison, cheap
-     enough to redo on every resize without debouncing. Matches the app's
-     own ~720px mobile/tablet breakpoint (see app.css @media rules) so the
-     background swap lines up with other layout changes rather than firing
-     at an arbitrary width. */
-  pickSize() { return (window.innerWidth || 1024) <= 720 ? 'sm' : 'lg'; },
-  applyImage() {
-    const size = this.pickSize();
-    const url = `url("${this.IMG[this.night ? 'night' : 'day'][size]}")`;
-    if (this._appliedUrl === url) return; /* avoid redundant style writes */
-    this._appliedUrl = url;
-    this.hosts.forEach((hd) => { hd.layer.style.backgroundImage = url; });
-  },
-  /* Heavier rain nudges the tint a little darker/stronger via a CSS custom
-     property — no assets or per-frame work involved, just one inline style
-     write per intensity change (which itself only fires a few times a
-     minute at most, driven by live weather data). */
-  applyIntensity() {
-    const extra = Math.max(0, Math.min(1, this.intensity)) * 0.14;
-    const base = this.night ? 0.4 : 0.3;
-    this.hosts.forEach((hd) => hd.layer.style.setProperty('--fx-opacity', String(base + extra)));
-  },
-  setIntensity(val) {
-    this.intensity = val == null ? 0.5 : val;
-    if (this.running) this.applyIntensity();
-  },
-  start(night) {
-    if (!this.inited) this.init();
-    if (!this.hosts.length) return;
-    this.night = !!night;
-    this.running = true;
-    this.applyImage();
-    this.applyIntensity();
-    this.hosts.forEach((hd) => {
-      hd.layer.classList.toggle('fx-night', this.night);
-      hd.layer.classList.toggle('fx-day', !this.night);
-      hd.layer.classList.add('on');
-    });
-  },
-  stop() {
-    if (!this.running) return;
-    this.running = false;
-    this.hosts.forEach((hd) => hd.layer.classList.remove('on'));
-  },
-  /* Re-picks the size tier if the viewport crossed the sm/lg breakpoint
-     (e.g. rotating a tablet). No canvases to resize any more. */
-  resize() {
-    if (!this.inited || !this.running) return;
-    this.applyImage();
-  },
-  /* Nothing to pause/resume — kept as no-ops so existing call sites
-     (visibilitychange handlers, etc.) don't need to know the effect
-     stopped being frame-driven. */
-  resume() {},
-  pause() {}
 };
