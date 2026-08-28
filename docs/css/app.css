@@ -171,6 +171,65 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   background: radial-gradient(120% 90% at 50% 10%, transparent 55%, var(--vignette) 100%);
 }
 
+/* Rain-on-glass droplets: a plain <div class="glass-fx-layer"> is injected
+   INSIDE each .card / .search-form by GlassFX (07-effects.js) — never as a
+   full-viewport overlay. It is the host's first child, absolutely positioned
+   to fill it, and painted at z-index:-1 so it sits BEHIND that element's own
+   text/icons/buttons (z-index 0+ or plain static content) and always stays
+   fully legible.
+   This used to be an animated <canvas> redrawing droplets every frame; it is
+   now a single static photo of real rain droplets on glass (one compressed
+   WebP per day/night, ~16-65KB, GlassFX picks the small ~17KB variant on
+   narrow viewports and the ~65KB one otherwise, same URL reused by every
+   card so the browser only downloads/decodes each file once), shown/hidden
+   with a CSS opacity transition. That is a lot cheaper on real devices:
+   zero JS work per frame, zero canvas compositing, the browser decodes the
+   image once and the GPU just cross-fades an already-rendered layer — vs.
+   requestAnimationFrame + drawImage()/gradients running continuously on
+   every rainy card.
+   The `--fx-tint` gradient overlays the photo so it always reads as "this
+   card's glass", not a random stock photo, and its opacity is capped so
+   text/icons/buttons drawn on top of the card remain fully readable in
+   every theme. Do NOT add `isolation: isolate` to .card/.search-form: an
+   extra render-surface trigger (isolation) stacked on an element that
+   already has backdrop-filter is a known Chromium compositor bug that
+   intermittently paints the element fully white for a frame. */
+.glass-fx-layer {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  width: 100%; height: 100%;
+  opacity: 0;
+  transition: opacity 0.7s ease-in-out;
+  border-radius: inherit;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  will-change: opacity;
+}
+/* Soft tint + a bottom-up fade so the photo never fights with a card's own
+   text — it reads as "wet glass" behind the content, not a busy background
+   image. Kept as a pseudo-element (not another DOM node) so it costs nothing
+   beyond one extra paint layer that the browser already has to composite
+   for the backdrop-filter blur. */
+.glass-fx-layer::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, var(--fx-tint-1, rgba(6,10,20,0.55)) 0%, var(--fx-tint-2, rgba(6,10,20,0.72)) 100%);
+}
+/* Overall layer opacity is owned by GlassFX (inline `--fx-opacity`, derived
+   from live rain intensity) — the 0.34 here is only the fallback used for
+   the brief instant before JS has set it. */
+.glass-fx-layer.on { opacity: var(--fx-opacity, 0.34); }
+/* GlassFX toggles these two modifier classes to match the photo actually
+   loaded (day vs. night variant) with a matching tint — this only ever runs
+   in the "adaptive" theme (rain/storm stop the overlay entirely in the
+   fixed Light/Dark themes), so the tint always corresponds to the real
+   photo underneath. */
+.glass-fx-layer.fx-day { --fx-tint-1: rgba(18,30,48,0.32); --fx-tint-2: rgba(18,30,48,0.52); }
+.glass-fx-layer.fx-night { --fx-tint-1: rgba(4,7,16,0.5); --fx-tint-2: rgba(4,7,16,0.72); }
+/* Eco / low-power: never show droplets, even if a stray class lingers. */
+html[data-perf="eco"] .glass-fx-layer, html[data-perf="low"] .glass-fx-layer { display: none !important; }
+
+
 /* lightning flash overlay */
 #flash {
   position: fixed; inset: 0; z-index: 60; pointer-events: none;
@@ -268,11 +327,13 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 
 .search-wrap { position: relative; flex: 1 1 320px; max-width: 560px; min-width: 260px; }
 .search-form {
+  position: relative;
   display: flex; align-items: center; gap: 4px;
   height: 48px; padding: 0 8px 0 16px;
   background: var(--surface-input);
   border: 1px solid var(--stroke);
   border-radius: 999px;
+  overflow: hidden;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   transition: border-color 0.25s, box-shadow 0.25s, background 0.25s;
@@ -337,6 +398,9 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 }
 .ac-item .ac-remove:hover { background: rgba(248, 113, 113, 0.15); color: var(--danger); }
 .ac-empty { padding: 14px; text-align: center; color: var(--text-3); font-size: 13px; }
+.ac-corrected-hint {
+  color: var(--accent); text-transform: none; letter-spacing: normal; font-weight: 700; font-size: 12px;
+}
 
 .header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .hbtn {
@@ -700,6 +764,8 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 
 /* aqi */
 .aqi-card { padding: 20px 22px 18px; }
+.aqi-card.aqi-error #aqi-value, .aqi-card.aqi-error #aqi-label { color: var(--text-4); }
+.aqi-card.aqi-error .aqi-ring-fg { opacity: 0.35; }
 .aqi-main { display: flex; align-items: center; gap: 18px; }
 .aqi-ring-box { position: relative; width: 108px; height: 108px; flex: none; }
 .aqi-ring-box svg { width: 100%; height: 100%; transform: rotate(-90deg); }
@@ -1166,6 +1232,44 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .life-card p { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 .life-card .life-go { margin-left: auto; color: var(--text-4); font-size: 18px; transition: transform 0.25s, color 0.25s; }
 .life-card:hover .life-go { transform: translateX(4px); color: var(--accent); }
+
+/* ---------- LifeSky "right now" mini-scores (inside the Weather analysis modal) ---------- */
+.life-now-title {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-4); margin: 18px 0 10px; display: flex; align-items: center; gap: 6px;
+}
+.life-now-title i { font-size: 13px; color: var(--accent); }
+.life-now-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 8px; }
+.life-now-card {
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 7px;
+  padding: 13px 8px 12px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  cursor: pointer;
+  transition: transform 0.22s, background 0.22s, border-color 0.22s;
+}
+.life-now-card:hover { transform: translateY(-3px); background: var(--surface-3); border-color: var(--stroke-strong); }
+.life-now-card:active { transform: scale(0.97); }
+.life-now-ico {
+  width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; font-size: 18px; flex: none;
+}
+.life-now-card .life-now-label { font-size: 11.5px; font-weight: 700; color: var(--text-2); }
+.life-now-score {
+  font-family: var(--font-display); font-size: 18px; font-weight: 700;
+  font-variant-numeric: tabular-nums; line-height: 1;
+}
+.life-now-tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 20px;
+}
+.life-now-hint { font-size: 11px; color: var(--text-4); text-align: center; margin-bottom: 4px; }
+@media (max-width: 390px) {
+  .life-now-grid { gap: 6px; }
+  .life-now-card { padding: 10px 4px 9px; }
+  .life-now-ico { width: 32px; height: 32px; font-size: 16px; }
+  .life-now-score { font-size: 15px; }
+}
 
 /* ---------- Modal ---------- */
 .modal-overlay {
@@ -2109,7 +2213,7 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .footer-link i { color: var(--text-3); font-size: 16px; }
 .footer-copy { font-size: 11.5px; color: var(--text-3); line-height: 1.9; }
 .footer-copy a, .footer-copy a:hover { color: var(--text-3); }
-/* Data-source attribution (Open-Meteo CC BY 4.0 · RainViewer · OSM/CARTO) —
+/* Data-source attribution (Open-Meteo CC BY 4.0 · RainViewer · OSM/OpenFreeMap) —
    small and unobtrusive, but always present and readable. */
 .footer-attribution {
   font-size: 11px;
