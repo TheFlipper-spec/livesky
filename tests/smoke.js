@@ -1242,10 +1242,13 @@ function phase8() {
   }, 300);
 }
 
-/* phase 9: rain-on-glass droplet overlay (GlassFX). Must turn on for rain/
+/* phase 9: rain-on-glass photo overlay (GlassFX). Must turn on for rain/
    storm, turn off for clear weather, and stay off in Eco mode no matter what
    the weather is — mirroring the exact gating already proven for the ambient
-   FX canvas. */
+   FX canvas. GlassFX is now a static image layer (day/night WebP photo +
+   CSS opacity), not an animated per-frame canvas — the probes below reflect
+   that (hd.layer instead of hd.canvas, background-image URL instead of a
+   drop count). */
 function phase9() {
   const { w, doc } = makeWorld();
   w.fetch = makeFetchStub();
@@ -1257,12 +1260,12 @@ function phase9() {
       const probe = doc.createElement('script');
       probe.textContent = `
         window.__glassProbe = {};
-        /* the droplet canvases are injected once as real DOM children of
+        /* the droplet-photo layers are injected once as real DOM children of
            each .card / .search-form — confirm they actually landed inside
            the content, not as some detached/global overlay. */
         window.__glassProbe.hostCount = GlassFX.hosts.length;
         window.__glassProbe.allInsideCards = GlassFX.hosts.every(hd =>
-          hd.canvas.parentElement === hd.host && (hd.host.classList.contains('card') || hd.host.classList.contains('search-form')));
+          hd.layer.parentElement === hd.host && (hd.host.classList.contains('card') || hd.host.classList.contains('search-form')));
         window.__glassProbe.noGlobalCanvas = document.getElementById('glass-fx-canvas') === null;
 
         /* currentWeatherCode() prefers the minutely nowcast when present —
@@ -1273,14 +1276,14 @@ function phase9() {
         state.weather.hourly.weathercode_best_match[state.nowIdx] = 63;
         state.weather.hourly.precipitation[state.nowIdx] = 2;
         applyWeatherTheme();
-        window.__glassProbe.rainOn = GlassFX.running && GlassFX.hosts.every(hd => hd.canvas.classList.contains('on'));
-        window.__glassProbe.dropCount = GlassFX.hosts.reduce((n, hd) => n + hd.drops.length, 0);
+        window.__glassProbe.rainOn = GlassFX.running && GlassFX.hosts.every(hd => hd.layer.classList.contains('on'));
+        window.__glassProbe.hasBackgroundImage = GlassFX.hosts.every(hd => /rain-glass-(day|night)-(sm|lg)\\.webp/.test(hd.layer.style.backgroundImage));
 
         /* clear weather must turn it back off */
         state.weather.hourly.weathercode[state.nowIdx] = 1;
         state.weather.hourly.weathercode_best_match[state.nowIdx] = 1;
         applyWeatherTheme();
-        window.__glassProbe.clearOff = !GlassFX.running && GlassFX.hosts.every(hd => !hd.canvas.classList.contains('on'));
+        window.__glassProbe.clearOff = !GlassFX.running && GlassFX.hosts.every(hd => !hd.layer.classList.contains('on'));
 
         /* storm should also enable it */
         state.weather.hourly.weathercode[state.nowIdx] = 95;
@@ -1301,11 +1304,11 @@ function phase9() {
       `;
       doc.body.appendChild(probe);
       const gp = w.__glassProbe || {};
-      assert(gp.hostCount > 0, 'phase9: droplet canvases are injected into content cards');
-      assert(gp.allInsideCards === true, 'phase9: every droplet canvas lives inside its own card/search-bar (no global overlay)');
+      assert(gp.hostCount > 0, 'phase9: droplet photo layers are injected into content cards');
+      assert(gp.allInsideCards === true, 'phase9: every droplet photo layer lives inside its own card/search-bar (no global overlay)');
       assert(gp.noGlobalCanvas === true, 'phase9: there is no full-viewport #glass-fx-canvas anymore');
       assert(gp.rainOn === true, 'phase9: glass droplet overlay turns on for rain');
-      assert(gp.dropCount > 0, 'phase9: droplets are actually built when rain starts');
+      assert(gp.hasBackgroundImage === true, 'phase9: the rain-on-glass photo is actually applied when rain starts');
       assert(gp.clearOff === true, 'phase9: glass droplet overlay turns off for clear weather');
       assert(gp.stormOn === true, 'phase9: glass droplet overlay turns on for storms too');
       assert(gp.ecoOff === true, 'phase9: Eco mode force-disables the glass overlay even during a storm');
