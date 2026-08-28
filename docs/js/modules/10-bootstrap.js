@@ -437,7 +437,7 @@ function init() {
   initNativeBridge();
   checkLegalConsent();
   initReveal();
-  GlassFX.init(); /* inject the rain-on-glass photo layer inside each card/search-bar, once */
+
   applyEffects();
   SECTION_MANAGER.init();
   showLoader();
