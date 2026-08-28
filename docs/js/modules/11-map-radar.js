@@ -12,29 +12,23 @@
    bound here exactly once, when the module first executes.
    ============================================================ */
 
-/* ---------------- maps (MapLibre GL, reliable raster tiles) ---------------- */
+/* ---------------- maps (MapLibre GL, free no-key vector basemap) ---------------- */
 let mapInst = null, mapMarkEl = null, smallMapFallback = false;
 /* The fullscreen map instance is created lazily inside openFullMap(); the
    pending flag keeps a rapid double-tap from creating two MapLibre views. */
 let fullMapInst = null, fullMapPending = false, fullMarkEl = null, fullMapFallback = false;
 let tempLat = null, tempLon = null;
 
-/* Raster tiles proven to load reliably (CARTO). Four explicit subdomains
-   because MapLibre does not expand the {s} token itself. */
-function cartoTiles(theme) {
-  const variant = theme === 'light' ? 'light_all' : 'dark_all';
-  return ['a', 'b', 'c', 'd'].map(s => `https://${s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`);
-}
+/* Free, no-API-key vector basemap (OpenFreeMap — public instance, unlimited
+   requests, no registration, no watermark). CARTO's raster basemaps now
+   require a paid API key and stamp unauthenticated requests with an
+   "API KEY REQUIRED" watermark, so they are no longer usable here. */
 function mapStyle() {
-  return {
-    version: 8,
-    sources: {
-      raster: { type: 'raster', tiles: cartoTiles(state.theme), tileSize: 256, attribution: '© OpenStreetMap contributors © CARTO' }
-    },
-    layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
-  };
+  return state.theme === 'light'
+    ? 'https://tiles.openfreemap.org/styles/positron'
+    : 'https://tiles.openfreemap.org/styles/dark';
 }
-/* last-resort fallback: OSM standard tiles */
+/* last-resort fallback if the vector style ever fails to load: plain OSM raster tiles. */
 function osmStyle() {
   return {
     version: 8,
@@ -44,6 +38,7 @@ function osmStyle() {
     layers: [{ id: 'raster', type: 'raster', source: 'raster' }]
   };
 }
+
 function makePinEl() {
   const d = document.createElement('div');
   d.className = 'map-pin';
@@ -171,9 +166,11 @@ async function applyMapLocation() {
   const lat = tempLat, lon = tempLon;
   tempLat = null; tempLon = null;
   closeFullMap();
+  const seq = ++state.locSeq; /* a manual map pick always wins over any slower, older request */
   state.lat = lat; state.lon = lon;
   showLoader();
   await reverseGeo(state.lat, state.lon);
+  if (seq !== state.locSeq) return; /* the user already moved on to a different city */
   toast(t('toast_loc_set'), 'success');
   fetchWeather();
 }

@@ -392,23 +392,26 @@ setTimeout(() => {
       [...fontsCssSrc.matchAll(/url\(\.\/(files\/[\w.-]+)\)/g)].forEach((m) =>
         assert(fs.existsSync(path.join(DOCS, 'assets', 'fonts', m[1])), 'font file bundled: ' + m[1]));
 
-      /* ---- Attribution (CC BY 4.0 / RainViewer / OSM / CARTO) ---- */
+      /* ---- Attribution (CC BY 4.0 / RainViewer / OSM / OpenFreeMap) ---- */
       assert(/footer-attribution/.test(html) &&
              /href="https:\/\/open-meteo\.com\/"/.test(html) &&
              /creativecommons\.org\/licenses\/by\/4\.0/.test(html) &&
              /rainviewer\.com/.test(html) &&
              /openstreetmap\.org\/copyright/.test(html) &&
-             /carto\.com\/attributions/.test(html),
+             /openfreemap\.org/.test(html),
              'footer carries the mandatory provider attribution with clickable links');
       const attribCtrlCount = (allSrc.match(/attributionControl:\s*\{\s*compact:\s*true\s*\}/g) || []).length;
-      assert(attribCtrlCount >= 2, 'both MapLibre views show compact OSM/CARTO attribution');
+      assert(attribCtrlCount >= 2, 'both MapLibre views show compact OSM/OpenFreeMap attribution');
+      assert(!/cartocdn\.com/.test(allSrc) && !/carto\.com\/attributions/.test(html),
+             'no more unkeyed CARTO raster basemap requests (avoids the API KEY REQUIRED watermark)');
 
       /* ---- Privacy policy matches the real architecture ---- */
       assert(privacyHtml.includes('В целях обеспечения отказоустойчивости сервиса') &&
-             privacyHtml.includes('резервными провайдерами') &&
-             privacyHtml.includes('BigDataCloud') && privacyHtml.includes('CARTO') &&
+             privacyHtml.includes('резервным провайдером') &&
+             privacyHtml.includes('BigDataCloud') &&
              privacyMd.includes('В целях обеспечения отказоустойчивости сервиса') && privacyMd.includes('BigDataCloud'),
-             'privacy policy discloses fallback geodata providers (BigDataCloud, CARTO)');
+             'privacy policy discloses the fallback geodata provider (BigDataCloud)');
+
       assert(privacyHtml.includes('localStorage / Cache API') &&
              privacyHtml.includes('очистку данных сайта в настройках браузера') &&
              privacyMd.includes('localStorage / Cache API') && privacyMd.includes('очистку данных сайта в настройках браузера'),
@@ -850,6 +853,23 @@ setTimeout(() => {
     assert(q('modal').classList.contains('open'), 'advice modal opens');
     assert(document.body.classList.contains('no-scroll'), 'body scroll locked on modal');
     assert(q('modal-body').innerHTML.includes('Что надеть'), 'advice modal has wear note');
+    /* LifeSky "right now" mini-scores inside the Weather analysis modal */
+    assert(q('modal-body').querySelector('.life-now-grid') !== null, 'advice modal shows the LifeSky right-now block');
+    const lifeNowCards = q('modal-body').querySelectorAll('.life-now-card[data-life-now]');
+    assert(lifeNowCards.length === 3, 'LifeSky right-now block has exactly 3 activity cards');
+    const lifeNowTypes = Array.from(lifeNowCards).map((n) => n.dataset.lifeNow).sort().join(',');
+    assert(lifeNowTypes === 'car,run,walk', 'LifeSky right-now cards cover run/car/walk: ' + lifeNowTypes);
+    lifeNowCards.forEach((node) => {
+      const scoreText = node.querySelector('.life-now-score').textContent;
+      const score = Number(scoreText);
+      assert(!isNaN(score) && score >= 0 && score <= 100, 'LifeSky right-now card has a valid 0-100 score: ' + scoreText);
+      assert(node.querySelector('.life-now-tag').textContent.trim().length > 0, 'LifeSky right-now card shows a score label');
+    });
+    /* Clicking a right-now card must open that activity's detail screen for the current hour. */
+    lifeNowCards[0].click();
+    assert(q('modal-body').querySelector('#life-back') !== null, 'LifeSky right-now card opens the activity detail screen');
+    assert(q('modal-body').textContent.includes(String(new Date().toLocaleDateString || '')) || q('modal-body').querySelector('.m-grid') !== null,
+      'LifeSky right-now detail screen renders the metrics grid');
     q('modal-close').click();
     assert(!q('modal').classList.contains('open'), 'modal closes');
     assert(!document.body.classList.contains('no-scroll'), 'body scroll unlocked after close');
@@ -1159,13 +1179,143 @@ function phase7() {
               const mp = w.__prefetchMapProbe || {};
               assert(mp.miniMapReady === true, 'phase7: mini-map initialised in the background (old eager behaviour)');
               assert(mp.fullscreenOpen === false, 'phase7: fullscreen map not created by the prefetch');
-              finish();
-            } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+              phase8();
+            } catch (e) { errors.push('phase7 crashed: ' + e.message); phase8(); }
           }, 120);
-        } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+        } catch (e) { errors.push('phase7 crashed: ' + e.message); phase8(); }
       }, 220);
-    } catch (e) { errors.push('phase7 crashed: ' + e.message); finish(); }
+    } catch (e) { errors.push('phase7 crashed: ' + e.message); phase8(); }
   }, 300);
+}
+
+/* phase 8: fuzzy / wrong-keyboard-layout city search. The geocoding stub here
+   mimics the real Open-Meteo API's behavior — it only matches a normalized
+   prefix of a known city name and returns nothing for garbled queries — so
+   the test actually exercises the client-side layout-swap + typo-transposition
+   correction logic, not just a mock that always succeeds. */
+function phase8() {
+  const { w, doc } = makeWorld();
+  const KNOWN = [{ name: 'Москва', latitude: 55.75, longitude: 37.62, country_code: 'RU', admin1: 'Москва', country: 'Россия' }];
+  w.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/v1/forecast')) return { ok: true, json: async () => genForecast() };
+    if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
+    if (u.includes('geocoding-api')) {
+      const m = /[?&]name=([^&]+)/.exec(u);
+      const q = decodeURIComponent(m ? m[1] : '').toLowerCase();
+      const results = KNOWN.filter(c => c.name.toLowerCase().startsWith(q));
+      return { ok: true, json: async () => ({ results }) };
+    }
+    if (u.includes('rainviewer.com')) return { ok: true, json: async () => ({ host: 'https://tilecache.rainviewer.com', radar: { past: [], nowcast: [] }, generated: Math.floor(Date.now() / 1000) }) };
+    throw new Error('unhandled url: ' + u);
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q8 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      if (q8('consent-accept-btn')) q8('consent-accept-btn').click(); /* unlock the app for interaction */
+      if (q8('privacy-accept-btn')) q8('privacy-accept-btn').click();
+      /* 1) wrong keyboard layout: "Vjcrdf" is "Москва" typed with an EN layout selected */
+      q8('city-input').value = 'Vjcrdf';
+      q8('city-input').dispatchEvent(new w.Event('input'));
+      setTimeout(() => {
+        try {
+          const list = q8('autocomplete-list');
+          assert(!list.classList.contains('hidden'), 'phase8: layout-corrected search shows suggestions');
+          assert(list.querySelector('.ac-item .ac-name') && list.querySelector('.ac-item .ac-name').textContent === 'Москва',
+            'phase8: "Vjcrdf" (wrong-layout typing) resolves to Москва');
+          assert(list.querySelector('.ac-corrected-hint') !== null, 'phase8: UI is transparent that the query was auto-corrected');
+
+          /* 2) typo tolerance via form submit: "Моксва" is a transposition typo of "Москва" */
+          q8('city-input').value = 'Моксва';
+          q8('search-form').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+          setTimeout(() => {
+            try {
+              assert(q8('location').textContent === 'Москва', 'phase8: typo "Моксва" resolves to Москва on submit: ' + q8('location').textContent);
+              phase9();
+            } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+          }, 400);
+        } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+      }, 400);
+    } catch (e) { errors.push('phase8 crashed: ' + e.message); phase9(); }
+  }, 300);
+}
+
+/* phase 9: rain-on-glass photo overlay (GlassFX). Must turn on for rain/
+   storm, turn off for clear weather, and stay off in Eco mode no matter what
+   the weather is — mirroring the exact gating already proven for the ambient
+   FX canvas. GlassFX is now a static image layer (day/night WebP photo +
+   CSS opacity), not an animated per-frame canvas — the probes below reflect
+   that (hd.layer instead of hd.canvas, background-image URL instead of a
+   drop count). */
+function phase9() {
+  const { w, doc } = makeWorld();
+  w.fetch = makeFetchStub();
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q9 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const probe = doc.createElement('script');
+      probe.textContent = `
+        window.__glassProbe = {};
+        /* the droplet-photo layers are injected once as real DOM children of
+           each .card / .search-form — confirm they actually landed inside
+           the content, not as some detached/global overlay. */
+        window.__glassProbe.hostCount = GlassFX.hosts.length;
+        window.__glassProbe.allInsideCards = GlassFX.hosts.every(hd =>
+          hd.layer.parentElement === hd.host && (hd.host.classList.contains('card') || hd.host.classList.contains('search-form')));
+        window.__glassProbe.noGlobalCanvas = document.getElementById('glass-fx-canvas') === null;
+
+        /* currentWeatherCode() prefers the minutely nowcast when present —
+           drop it so the hourly weathercode below actually drives the theme. */
+        state.minutely = null;
+        /* force a rainy "now" slot: weathercode 63 = moderate rain */
+        state.weather.hourly.weathercode[state.nowIdx] = 63;
+        state.weather.hourly.weathercode_best_match[state.nowIdx] = 63;
+        state.weather.hourly.precipitation[state.nowIdx] = 2;
+        applyWeatherTheme();
+        window.__glassProbe.rainOn = GlassFX.running && GlassFX.hosts.every(hd => hd.layer.classList.contains('on'));
+        window.__glassProbe.hasBackgroundImage = GlassFX.hosts.every(hd => /rain-glass-(day|night)-(sm|lg)\\.webp/.test(hd.layer.style.backgroundImage));
+
+        /* clear weather must turn it back off */
+        state.weather.hourly.weathercode[state.nowIdx] = 1;
+        state.weather.hourly.weathercode_best_match[state.nowIdx] = 1;
+        applyWeatherTheme();
+        window.__glassProbe.clearOff = !GlassFX.running && GlassFX.hosts.every(hd => !hd.layer.classList.contains('on'));
+
+        /* storm should also enable it */
+        state.weather.hourly.weathercode[state.nowIdx] = 95;
+        state.weather.hourly.weathercode_best_match[state.nowIdx] = 95;
+        applyWeatherTheme();
+        window.__glassProbe.stormOn = GlassFX.running;
+
+        /* Eco mode must force it off even while it's actively storming */
+        state.effects = 'eco';
+        applyEffects();
+        window.__glassProbe.ecoOff = !GlassFX.running && document.documentElement.getAttribute('data-perf') === 'eco';
+
+        /* leaving Eco with the storm still active must bring it back */
+        state.effects = 'auto';
+        state._perfLow = false;
+        applyEffects();
+        window.__glassProbe.backOnAfterEco = GlassFX.running;
+      `;
+      doc.body.appendChild(probe);
+      const gp = w.__glassProbe || {};
+      assert(gp.hostCount > 0, 'phase9: droplet photo layers are injected into content cards');
+      assert(gp.allInsideCards === true, 'phase9: every droplet photo layer lives inside its own card/search-bar (no global overlay)');
+      assert(gp.noGlobalCanvas === true, 'phase9: there is no full-viewport #glass-fx-canvas anymore');
+      assert(gp.rainOn === true, 'phase9: glass droplet overlay turns on for rain');
+      assert(gp.hasBackgroundImage === true, 'phase9: the rain-on-glass photo is actually applied when rain starts');
+      assert(gp.clearOff === true, 'phase9: glass droplet overlay turns off for clear weather');
+      assert(gp.stormOn === true, 'phase9: glass droplet overlay turns on for storms too');
+      assert(gp.ecoOff === true, 'phase9: Eco mode force-disables the glass overlay even during a storm');
+      assert(gp.backOnAfterEco === true, 'phase9: leaving Eco mode restores the overlay for ongoing rain');
+      finish();
+    } catch (e) { errors.push('phase9 crashed: ' + e.message); finish(); }
+  }, 900);
 }
 
 function finish() {

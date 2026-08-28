@@ -18,6 +18,99 @@ function updateFavIcon() {
   el.favBtn.classList.toggle('fav-on', isFav);
 }
 
+/* ---------------- fuzzy / wrong-keyboard-layout city search ---------------- */
+/* Open-Meteo's geocoding API does normalized prefix matching (case- and
+   diacritic-insensitive) but no fuzzy/typo correction and no keyboard-layout
+   awareness — a garbled query like "Vjcrdf" (Москва typed with an EN layout
+   selected) or "Моксва" (a typo of Москва) simply returns zero results.
+   These helpers add two cheap, deterministic client-side correction passes
+   that only kick in when the *raw* query draws a blank:
+     1) a full keyboard-layout remap (Cyrillic ЙЦУКЕН <-> Latin QWERTY,
+        matched by physical key position) — fixes "wrong layout" typing.
+     2) single adjacent-letter transpositions + single-letter deletions of
+        the (possibly remapped) query — fixes the most common typos, e.g.
+        "Моксва" -> "Москва". This is intentionally scoped to these two
+        patterns rather than a full fuzzy/Levenshtein search over every
+        possible edit, to keep the number of extra network requests small
+        and the behavior predictable. */
+const EN_TO_RU_KEYMAP = {
+  q: 'й', w: 'ц', e: 'у', r: 'к', t: 'е', y: 'н', u: 'г', i: 'ш', o: 'щ', p: 'з', '[': 'х', ']': 'ъ', '`': 'ё',
+  a: 'ф', s: 'ы', d: 'в', f: 'а', g: 'п', h: 'р', j: 'о', k: 'л', l: 'д', ';': 'ж', "'": 'э',
+  z: 'я', x: 'ч', c: 'с', v: 'м', b: 'и', n: 'т', m: 'ь', ',': 'б', '.': 'ю'
+};
+const RU_TO_EN_KEYMAP = Object.fromEntries(Object.entries(EN_TO_RU_KEYMAP).map(([en, ru]) => [ru, en]));
+
+function convertKeyboardLayout(str, map) {
+  let out = '';
+  for (const ch of str) {
+    const lower = ch.toLowerCase();
+    const mapped = map[lower];
+    if (mapped == null) { out += ch; continue; }
+    out += (ch === lower) ? mapped : mapped.toUpperCase();
+  }
+  return out;
+}
+function hasCyrillic(s) { return /[а-яёА-ЯЁ]/.test(s); }
+function hasLatin(s) { return /[a-zA-Z]/.test(s); }
+/* Only remap "pure" single-script queries — mixed scripts or queries that
+   already contain both alphabets are left untouched to avoid nonsense. */
+function layoutSwapCandidate(q) {
+  const cyr = hasCyrillic(q), lat = hasLatin(q);
+  if (lat && !cyr) return convertKeyboardLayout(q, EN_TO_RU_KEYMAP);
+  if (cyr && !lat) return convertKeyboardLayout(q, RU_TO_EN_KEYMAP);
+  return null;
+}
+function typoVariants(q) {
+  const out = new Set();
+  for (let i = 0; i < q.length - 1; i++) {
+    if (q[i] === q[i + 1]) continue;
+    out.add(q.slice(0, i) + q[i + 1] + q[i] + q.slice(i + 2)); /* adjacent transposition */
+  }
+  for (let i = 0; i < q.length; i++) {
+    out.add(q.slice(0, i) + q.slice(i + 1)); /* single-letter deletion */
+  }
+  out.delete(q);
+  return [...out];
+}
+function buildCorrectionCandidates(q) {
+  const list = [];
+  const swapped = layoutSwapCandidate(q);
+  if (swapped && swapped.toLowerCase() !== q.toLowerCase()) list.push(swapped);
+  if (q.length >= 4 && q.length <= 24) {
+    typoVariants(q).forEach(c => list.push(c));
+    if (swapped) typoVariants(swapped).forEach(c => list.push(c));
+  }
+  const seen = new Set([q.toLowerCase()]);
+  return list.filter(c => {
+    const k = c.toLowerCase();
+    if (!c || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 14); /* cap extra requests per search */
+}
+async function geocodeQuery(q, count) {
+  const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`, 8000);
+  const d = await r.json();
+  return d.results || [];
+}
+/* Tries the query as typed first; only if that comes back empty does it
+   fire off the (small, capped) set of correction candidates in parallel
+   and use the first one that actually resolves. Returns which corrected
+   string (if any) produced the results, so the UI can be transparent
+   about the fact that it auto-corrected the query. */
+async function geocodeSmart(q, count) {
+  const direct = await geocodeQuery(q, count);
+  if (direct.length) return { results: direct, corrected: null };
+  const candidates = buildCorrectionCandidates(q);
+  if (!candidates.length) return { results: [], corrected: null };
+  const settled = await Promise.all(candidates.map(async (cand) => {
+    try { return { cand, results: await geocodeQuery(cand, count) }; }
+    catch (e) { return { cand, results: [] }; }
+  }));
+  const hit = settled.find(s => s.results.length);
+  return hit ? { results: hit.results, corrected: hit.cand } : { results: [], corrected: null };
+}
+
 /* ---------------- search ---------------- */
 let searchTimer = null;
 function saveRecent() {
@@ -27,6 +120,7 @@ function saveRecent() {
   store.set('livesky:recent', state.recent);
 }
 function selectCity(c, isFav) {
+  state.locSeq++; /* a manual pick always wins over any slower, older request in flight */
   state.lat = c.lat; state.lon = c.lon;
   state.locationName = c.name;
   state.countryCode = c.country || '';
@@ -131,10 +225,8 @@ async function handleInput() {
   searchTimer = setTimeout(async () => {
     if (el.input.value.trim() !== q) return; /* query changed while waiting */
     try {
-      const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=${state.lang}&format=json`, 8000);
-      const d = await r.json();
+      const { results, corrected } = await geocodeSmart(q, 6);
       if (seq !== acSeq || el.input.value.trim() !== q) return; /* stale response */
-      const results = d.results || [];
       acIndex = -1;
       el.autoList.innerHTML = '';
       if (!results.length) {
@@ -143,6 +235,12 @@ async function handleInput() {
         empty.textContent = t('no_results');
         el.autoList.appendChild(empty);
       } else {
+        if (corrected) {
+          const hint = document.createElement('div');
+          hint.className = 'ac-list-title ac-corrected-hint';
+          hint.textContent = t('search_corrected').replace('{q}', corrected);
+          el.autoList.appendChild(hint);
+        }
         results.forEach(c => {
           const div = document.createElement('div');
           div.className = 'ac-item';
@@ -163,14 +261,15 @@ async function handleSearch(e) {
   const q = el.input.value.trim();
   if (!q) return;
   closeAutocomplete();
+  const seq = ++state.locSeq; /* claim this as the newest location request in flight */
   try {
-    const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=${state.lang}&format=json`, 10000);
-    const d = await r.json();
-    if (!d.results || !d.results.length) {
+    const { results, corrected } = await geocodeSmart(q, 1);
+    if (seq !== state.locSeq) return; /* the user already moved on to a newer city */
+    if (!results.length) {
       toast(t('toast_city_not_found'), 'error');
       return;
     }
-    const c = d.results[0];
+    const c = results[0];
     state.lat = c.latitude; state.lon = c.longitude;
     state.locationName = c.name;
     state.countryCode = c.country_code || '';
@@ -179,6 +278,7 @@ async function handleSearch(e) {
     el.input.value = '';
     el.searchClear.classList.add('hidden');
     el.input.blur();
+    if (corrected) toast(t('search_corrected').replace('{q}', corrected), 'info');
     fetchWeather();
   } catch (e) {
     /* Note: handleSearch expects an Event (uses e.preventDefault() on the first line),
@@ -804,10 +904,59 @@ function showAdvice() {
       <span class="row-main"><b>${it[2]}</b></span>
     </div>`).join('');
 
+  const lifeNowBlock = renderLifeNowBlock(h, i);
+
   const body = `
     <div style="display:flex;flex-direction:column;gap:9px;margin-bottom:14px">${list}</div>
-    <div class="m-note"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${wear}</p></div>`;
+    <div class="m-note"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${wear}</p></div>
+    ${lifeNowBlock}`;
   openModal(state.locationName, t('analysis_title') + ' · ' + fmtTempDeg(temp) + ' · ' + wmoLabel(code), body);
+  bindLifeNowCards(i);
+}
+
+/* ---------------- LifeSky "right now" mini-scores (inside Weather analysis) --------- */
+const LIFE_NOW_TYPES = [
+  { type: 'run', icon: 'ph-sneaker-move', color: '#34d399', bg: 'rgba(52,211,153,.14)' },
+  { type: 'car', icon: 'ph-car', color: '#60a5fa', bg: 'rgba(96,165,250,.14)' },
+  { type: 'walk', icon: 'ph-footprints', color: '#fb923c', bg: 'rgba(251,146,60,.14)' }
+];
+/* Renders the compact 3-card "score right now" strip. Falls back to an empty
+   string (rather than throwing) if the hourly slot has no usable data yet,
+   so a partially-loaded forecast never breaks the rest of the modal. */
+function renderLifeNowBlock(h, i) {
+  if (!h || !h.time || i == null || i < 0 || i >= h.time.length) return '';
+  const scoreFns = { run: scoreRun, car: scoreCarWash, walk: scoreWalk };
+  const titles = { run: t('life_run_title'), car: t('life_car_title'), walk: t('life_walk_title') };
+  let cards = '';
+  for (const cfg of LIFE_NOW_TYPES) {
+    let score = 0;
+    try { score = scoreFns[cfg.type](h, i); } catch (e) { score = 0; }
+    const color = score >= 70 ? '#34d399' : score >= 40 ? '#fbbf24' : '#f87171';
+    cards += `
+      <div class="life-now-card" data-life-now="${cfg.type}" role="button" tabindex="0" aria-label="${escHtml(titles[cfg.type])} · ${score}/100">
+        <div class="life-now-ico" style="background:${cfg.bg};color:${cfg.color}"><i class="ph-fill ${cfg.icon}"></i></div>
+        <span class="life-now-label">${escHtml(titles[cfg.type])}</span>
+        <span class="life-now-score" style="color:${color}">${score}</span>
+        <span class="life-now-tag" style="background:${color}1a;color:${color}">${escHtml(scoreLabel(score))}</span>
+      </div>`;
+  }
+  return `
+    <div class="life-now-title"><i class="ph-fill ph-heartbeat"></i><span>${escHtml(t('life_now_title'))}</span></div>
+    <div class="life-now-grid">${cards}</div>
+    <p class="life-now-hint">${escHtml(t('life_now_tap'))}</p>`;
+}
+/* Wires the "right now" cards to drill straight into that activity's detail
+   view for the current hour (same detail screen the 7-day list uses). */
+function bindLifeNowCards(nowIndex) {
+  const nodes = el.modalBody.querySelectorAll('.life-now-card[data-life-now]');
+  nodes.forEach(node => {
+    const type = node.dataset.lifeNow;
+    const open = () => showLifeSkySlot(nowIndex, type);
+    node.addEventListener('click', open);
+    node.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    });
+  });
 }
 
 /* ---------------- lifestyle ---------------- */
@@ -1233,7 +1382,7 @@ function applyTranslations() {
     node.textContent = t(key);
   });
   /* select options */
-  const modelLabels = { auto: 'source_model_auto', ecmwf_ifs04: 'source_model_ecmwf', gfs_seamless: 'source_model_gfs', icon_seamless: 'source_model_icon' };
+  const modelLabels = { auto: 'source_model_auto', ecmwf_ifs025: 'source_model_ecmwf', gfs_seamless: 'source_model_gfs', icon_seamless: 'source_model_icon' };
   if (el.modelSelect) [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
   const unitsLabels = { metric: 'units_metric', imperial: 'units_imperial' };
   if (el.unitsSelect) [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });
@@ -1477,6 +1626,7 @@ function bindEvents() {
 
   window.addEventListener('resize', () => {
     FX.resize();
+    GlassFX.resize();
     /* Recalc aspect-corrected rain hatch when the plot size changes. */
     clearTimeout(window.__chartHatchT);
     window.__chartHatchT = setTimeout(() => {
@@ -1490,6 +1640,7 @@ function bindEvents() {
       clockTick();
       liveTick(true);
       FX.resume();
+      GlassFX.resume();
       if (state.effects === 'auto') PERF.start();
       /* On return: refresh if data is older than 2 minutes so rain that just
          stopped is reflected immediately. */
@@ -1500,6 +1651,7 @@ function bindEvents() {
         cancelAnimationFrame(FX.raf);
         FX.running = false;
       }
+      GlassFX.pause();
       PERF.stop();
       if (window.LiveSkyMap) LiveSkyMap.radarPause();
     }

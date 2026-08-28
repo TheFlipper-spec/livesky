@@ -101,6 +101,12 @@ const state = {
   nowIdx: 0, todayIdx: 16, minutelyIdx: 0,
   favorites: store.get('livesky:favorites', []),
   recent: store.get('livesky:recent', []),
+  /* Bumped by every action that changes the current city (manual search,
+     autocomplete pick, map pick, geolocation). A slower, older action (most
+     commonly a geolocation fix that resolves after the user already searched
+     for a different city) checks this before applying its result, so it can
+     never silently overwrite a newer, user-initiated location change. */
+  locSeq: 0,
   elevation: null, lastFetchTs: Date.now(),
   loading: 0, slowTimer: null, uiLockUntil: 0, favOpenTimer: null,
   lastTemp: null, currentIcon: null,
@@ -466,7 +472,7 @@ function regionModel() {
   /* North America */
   if (lat >= 15 && lat <= 72 && lon >= -170 && lon <= -50) return 'gfs_seamless';
   /* Europe incl. European part of Russia */
-  if (lat >= 30 && lat <= 72 && lon >= -25 && lon <= 55) return 'ecmwf_ifs04';
+  if (lat >= 30 && lat <= 72 && lon >= -25 && lon <= 55) return 'ecmwf_ifs025';
   return null; /* fall back to pure best_match everywhere else */
 }
 /* Smooth "right now" value between two hourly slices, so the current temperature

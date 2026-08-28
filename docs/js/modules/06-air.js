@@ -86,7 +86,13 @@ function airLevelBar(val, good, bad, color) {
 }
 
 function showAirDetails() {
-  if (!state.air) return;
+  if (!state.air) {
+    /* The card tapped before data ever loaded, or after it failed — tell the
+       user instead of doing nothing (the click used to be a silent no-op,
+       which looked exactly like a broken air-quality block). */
+    toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
+    return;
+  }
   const idx = airNowIdx();
   if (idx < 0) return;
   const h = state.air.hourly;

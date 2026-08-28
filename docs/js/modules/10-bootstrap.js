@@ -24,7 +24,7 @@
    no-op until the subsystem has loaded. The facade never bypasses
    the Terms of Service gate. */
 window.LiveSkyMap = (function () {
-  const MODULE_URL = 'js/modules/11-map-radar.js?v=3';
+  const MODULE_URL = 'js/modules/11-map-radar.js?v=5';
   const MAPLIBRE_URL = 'assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1';
   const MAPLIBRE_CSS_URL = 'assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1';
   const LOAD_TIMEOUT_MS = 20000;
@@ -418,7 +418,8 @@ function init() {
   if (!I18N[state.lang]) state.lang = 'ru';
   if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';
   if (!['metric', 'imperial'].includes(state.units)) state.units = 'metric';
-  if (!['auto', 'ecmwf_ifs04', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
+  if (state.model === 'ecmwf_ifs04') state.model = 'ecmwf_ifs025'; /* migrate the old, now-deprecated model id */
+  if (!['auto', 'ecmwf_ifs025', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
   if (!['auto', 'full', 'eco'].includes(state.effects)) state.effects = 'auto';
 
   document.documentElement.dataset.theme = state.theme;
@@ -436,6 +437,7 @@ function init() {
   initNativeBridge();
   checkLegalConsent();
   initReveal();
+  GlassFX.init(); /* inject the rain-on-glass photo layer inside each card/search-bar, once */
   applyEffects();
   SECTION_MANAGER.init();
   showLoader();

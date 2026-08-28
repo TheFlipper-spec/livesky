@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.3-lazy-map';
+const VERSION = 'livesky-v1.4-glassfx-photo';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -122,7 +122,11 @@ const SHELL_ASSETS = [
   './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff',
   './assets/flags/ru.svg',
   './assets/flags/gb.svg',
-  './assets/flags/es.svg'
+  './assets/flags/es.svg',
+  './assets/img/rain-glass-day-sm.webp',
+  './assets/img/rain-glass-day-lg.webp',
+  './assets/img/rain-glass-night-sm.webp',
+  './assets/img/rain-glass-night-lg.webp'
 ];
 
 /* Open-Meteo hosts whose responses we mirror into the forecast cache
