@@ -216,9 +216,9 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   background: linear-gradient(180deg, var(--fx-tint-1, rgba(6,10,20,0.55)) 0%, var(--fx-tint-2, rgba(6,10,20,0.72)) 100%);
 }
 /* Overall layer opacity is owned by GlassFX (inline `--fx-opacity`, derived
-   from live rain intensity) — the 0.34 here is only the fallback used for
+   from live rain intensity) — the 0.22 here is only the fallback used for
    the brief instant before JS has set it. */
-.glass-fx-layer.on { opacity: var(--fx-opacity, 0.34); }
+.glass-fx-layer.on { opacity: var(--fx-opacity, 0.22); }
 /* GlassFX toggles these two modifier classes to match the photo actually
    loaded (day vs. night variant) with a matching tint — this only ever runs
    in the "adaptive" theme (rain/storm stop the overlay entirely in the

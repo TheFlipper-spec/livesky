@@ -355,13 +355,12 @@ const GlassFX = {
     this._appliedUrl = url;
     this.hosts.forEach((hd) => { hd.layer.style.backgroundImage = url; });
   },
-  /* Heavier rain nudges the tint a little darker/stronger via a CSS custom
-     property — no assets or per-frame work involved, just one inline style
-     write per intensity change (which itself only fires a few times a
-     minute at most, driven by live weather data). */
+  /* Keep the rain-on-glass texture deliberately understated. Heavier rain
+     still increases its visibility, but within a restrained range, so the
+     droplets support the weather state rather than competing with card content. */
   applyIntensity() {
-    const extra = Math.max(0, Math.min(1, this.intensity)) * 0.14;
-    const base = this.night ? 0.4 : 0.3;
+    const extra = Math.max(0, Math.min(1, this.intensity)) * 0.08;
+    const base = this.night ? 0.24 : 0.18;
     this.hosts.forEach((hd) => hd.layer.style.setProperty('--fx-opacity', String(base + extra)));
   },
   setIntensity(val) {
