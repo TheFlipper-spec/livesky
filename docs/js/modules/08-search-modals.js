@@ -1626,7 +1626,6 @@ function bindEvents() {
 
   window.addEventListener('resize', () => {
     FX.resize();
-    GlassFX.resize();
     /* Recalc aspect-corrected rain hatch when the plot size changes. */
     clearTimeout(window.__chartHatchT);
     window.__chartHatchT = setTimeout(() => {
@@ -1640,7 +1639,6 @@ function bindEvents() {
       clockTick();
       liveTick(true);
       FX.resume();
-      GlassFX.resume();
       if (state.effects === 'auto') PERF.start();
       /* On return: refresh if data is older than 2 minutes so rain that just
          stopped is reflected immediately. */
@@ -1651,7 +1649,6 @@ function bindEvents() {
         cancelAnimationFrame(FX.raf);
         FX.running = false;
       }
-      GlassFX.pause();
       PERF.stop();
       if (window.LiveSkyMap) LiveSkyMap.radarPause();
     }

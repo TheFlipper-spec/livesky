@@ -283,7 +283,7 @@ function applyEffects() {
   const eco = state.effects === 'eco';
   const low = eco || (state.effects === 'auto' && state._perfLow);
   document.documentElement.setAttribute('data-perf', low ? (eco ? 'eco' : 'low') : '');
-  if (low) { FX.stop(); stopStorm(); GlassFX.stop(); }
+  if (low) { FX.stop(); stopStorm(); }
   else if (state.weather) applyWeatherTheme();
 }
 function syncEffectsSelect() {
