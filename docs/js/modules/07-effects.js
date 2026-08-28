@@ -100,9 +100,12 @@ function applyWeatherTheme() {
   else {
     FX.start(fx);
     if (type === 'storm') startStorm(); else stopStorm();
-    /* Glass droplets only make sense for actual rain/storm — reuses the same
-       intensity value FX already computed from live precipitation data. */
-    if (type === 'rain' || type === 'storm') GlassFX.start(FX.intensity);
+    /* Glass droplets only make sense for actual rain/storm — picks the
+       day/night photo variant from the same `night` flag already computed
+       above, and reuses the intensity FX already derived from live
+       precipitation data (only affects the tint strength now, not a
+       particle count). */
+    if (type === 'rain' || type === 'storm') { GlassFX.intensity = FX.intensity; GlassFX.start(night); }
     else GlassFX.stop();
   }
 }
@@ -301,286 +304,97 @@ const FX = {
    rAF cancelled) in Eco mode / on detected low-power devices via the exact
    same effectsReduced()/applyEffects() gate as the ambient FX canvas, with a
    CSS `display:none` on [data-perf="eco"/"low"] as a second safety net. */
+/* ---------- rain-on-glass droplet overlay (GlassFX) ----------
+   Previously this painted animated droplets on a per-card <canvas> every
+   frame (spawn/slide/trail simulation + drawImage() of a pre-rendered
+   sprite). That was replaced with two static, real macro photos of rain on
+   glass (one day variant, one night variant — see docs/assets/img/
+   rain-glass-{day,night}-{sm,lg}.webp) shown as a lightweight CSS
+   background behind each card's own content, cross-faded in/out with
+   opacity. This is dramatically cheaper on real devices: no rAF loop, no
+   per-frame canvas work, nothing to redraw on scroll/resize beyond picking
+   which already-cached image URL applies — the browser decodes each image
+   once and the GPU just composites an existing layer, the same as any
+   other background-image. Each photo is exported at two sizes (~560px and
+   ~1440px wide) so phones only ever download the ~16-18KB small variant
+   while desktops get the ~64-66KB large one — both are shared by ALL
+   cards on the page (one background-image URL per size/theme, cached once
+   by the browser, not duplicated per host). */
 const GlassFX = {
   HOST_SELECTOR: '.card, .search-form',
-  hosts: [], raf: 0, running: false, last: 0, intensity: 0.5, inited: false,
-
-  /* Discovers every card / search-bar host once and injects its canvas as
-     the very first child (so it paints first, i.e. furthest back). Safe to
-     call repeatedly — already-equipped hosts are skipped. */
+  hosts: [], running: false, inited: false, night: false, intensity: 0.5,
+  IMG: {
+    day: { sm: 'assets/img/rain-glass-day-sm.webp', lg: 'assets/img/rain-glass-day-lg.webp' },
+    night: { sm: 'assets/img/rain-glass-night-sm.webp', lg: 'assets/img/rain-glass-night-lg.webp' }
+  },
+  /* Discovers every card / search-bar host once and injects a plain <div>
+     as its very first child (so it paints first, i.e. furthest back). Safe
+     to call repeatedly — already-equipped hosts are skipped. */
   init() {
-    const found = document.querySelectorAll(this.HOST_SELECTOR);
-    found.forEach((host) => {
-      if (host.querySelector(':scope > canvas.glass-fx-layer')) return;
-      const canvas = document.createElement('canvas');
-      canvas.className = 'glass-fx-layer';
-      canvas.setAttribute('aria-hidden', 'true');
-      host.insertBefore(canvas, host.firstChild);
-      this.hosts.push({ host, canvas, ctx: null, w: 0, h: 0, drops: [] });
+    if (this.inited) return;
+    document.querySelectorAll(this.HOST_SELECTOR).forEach((host) => {
+      if (host.querySelector(':scope > .glass-fx-layer')) return;
+      const layer = document.createElement('div');
+      layer.className = 'glass-fx-layer';
+      layer.setAttribute('aria-hidden', 'true');
+      host.insertBefore(layer, host.firstChild);
+      this.hosts.push({ host, layer });
     });
     this.inited = true;
   },
-  resizeHost(hd) {
-    const w = hd.host.clientWidth || 0, h = hd.host.clientHeight || 0;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    hd.w = w; hd.h = h;
-    hd.canvas.width = Math.max(1, Math.round(w * dpr));
-    hd.canvas.height = Math.max(1, Math.round(h * dpr));
-    hd.ctx = hd.canvas.getContext('2d');
-    if (hd.ctx) {
-      hd.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      /* Resizing a canvas (setting .width/.height) resets the whole 2D
-         context to its defaults, so smoothing must be re-applied every
-         time. 'high' quality resampling is what keeps the shared droplet
-         sprite (rasterized once at a fixed resolution) looking soft and
-         crisp instead of muddy/blocky when drawImage() scales it down to
-         the handful of on-screen pixels a drop actually occupies. */
-      hd.ctx.imageSmoothingEnabled = true;
-      hd.ctx.imageSmoothingQuality = 'high';
-    }
+  /* Only two size tiers exist; picking one is a single comparison, cheap
+     enough to redo on every resize without debouncing. Matches the app's
+     own ~720px mobile/tablet breakpoint (see app.css @media rules) so the
+     background swap lines up with other layout changes rather than firing
+     at an arbitrary width. */
+  pickSize() { return (window.innerWidth || 1024) <= 720 ? 'sm' : 'lg'; },
+  applyImage() {
+    const size = this.pickSize();
+    const url = `url("${this.IMG[this.night ? 'night' : 'day'][size]}")`;
+    if (this._appliedUrl === url) return; /* avoid redundant style writes */
+    this._appliedUrl = url;
+    this.hosts.forEach((hd) => { hd.layer.style.backgroundImage = url; });
   },
-  resize() {
-    if (!this.inited) return;
-    this.hosts.forEach((hd) => this.resizeHost(hd));
-    if (this.running) this.hosts.forEach((hd) => this.buildHost(hd));
-  },
-  /* One shared droplet "lens" sprite, pre-rendered once at a fixed, high
-     enough resolution that it stays crisp when drawImage()'d at any of the
-     small on-screen sizes we actually use (2-8px diameter). Reusing a single
-     sprite for every drop on every card means the per-frame cost is just a
-     cheap drawImage() call — no gradients are ever rebuilt during the
-     animation loop, which is what keeps this fast even with several cards
-     animating at once. The look is modeled on a real glass droplet: a soft
-     lens-like body lit from the top-left, a subtle darker meniscus rim along
-     the bottom (implies a tiny shadow/thickness), a thin light rim along the
-     top, and two small specular catchlights — the double-highlight is what
-     actually reads as "glass" rather than a flat dot. */
-  buildDropSprite() {
-    /* Rasterized well above the largest size it's ever drawn at (a drop's
-       on-screen diameter tops out around size=d.r*2.6 ~= 10-ish CSS px,
-       up to ~2x that in device pixels on a hi-dpi screen) so drawImage()
-       is always downscaling into more detail than it needs rather than
-       stretching a coarse source up — that's what avoids the pixelated /
-       blocky look while still costing nothing per-frame (built once). */
-    const S = 160;
-    const c = document.createElement('canvas');
-    c.width = c.height = S;
-    const ctx = c.getContext('2d');
-    if (!ctx) { this.dropSprite = c; return; }
-    const cx = S / 2, cy = S / 2, R = S / 2 - 3;
-    const g = ctx.createRadialGradient(cx - R * 0.32, cy - R * 0.38, R * 0.12, cx, cy, R);
-    g.addColorStop(0, 'rgba(255,255,255,0.6)');
-    g.addColorStop(0.35, 'rgba(210,228,248,0.42)');
-    g.addColorStop(0.72, 'rgba(150,175,205,0.3)');
-    g.addColorStop(1, 'rgba(70,90,120,0.16)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.fill();
-    /* darker meniscus rim, concentrated along the bottom */
-    ctx.strokeStyle = 'rgba(4,8,18,0.55)';
-    ctx.lineWidth = Math.max(1, R * 0.16);
-    ctx.beginPath();
-    ctx.arc(cx, cy, R - ctx.lineWidth / 2, Math.PI * 0.05, Math.PI * 0.95);
-    ctx.stroke();
-    /* thin light rim along the top, catching ambient light */
-    ctx.strokeStyle = 'rgba(255,255,255,0.32)';
-    ctx.lineWidth = Math.max(0.6, R * 0.09);
-    ctx.beginPath();
-    ctx.arc(cx, cy, R - ctx.lineWidth, Math.PI * 1.08, Math.PI * 1.92);
-    ctx.stroke();
-    /* two specular catchlights — the "glassy" double-highlight */
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.beginPath(); ctx.arc(cx - R * 0.32, cy - R * 0.36, R * 0.15, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.beginPath(); ctx.arc(cx + R * 0.2, cy - R * 0.05, R * 0.08, 0, Math.PI * 2); ctx.fill();
-    this.dropSprite = c;
-  },
-  spawnDrop(hd) {
-    /* Most drops are plain round lenses (radius 1-4px, ~2-8px diameter).
-       A minority spawn already "streaked" — a static elongated tail frozen
-       above them, like a droplet caught mid-slide on real wet glass (see
-       the reference photo: several drops there are long thin vertical
-       comets rather than round dots). These barely move on their own; the
-       occasional active slide (below) is a separate, rarer event. */
-    const streaked = Math.random() < 0.22;
-    return {
-      x: Math.random() * hd.w,
-      y: Math.random() * hd.h,
-      r: 1 + Math.random() * 3, /* radius 1-4px -> visible diameter ~2-8px */
-      alpha: 0.4 + Math.random() * 0.45,
-      stretch: streaked ? (2.2 + Math.random() * 3.5) : 0, /* static tail length multiplier */
-      sliding: false, slideSpeed: 0, slideLife: 0, trail: 0,
-      /* Per-drop wobble signature: two layered sine waves (different phase,
-         seed and frequency per drop) that get sampled along the tail's
-         vertical extent to bend it into a gentle, unique S-curve instead of
-         a straight/identical line for every drop — mimicking how a real
-         bead of water drifts sideways over tiny imperfections in glass.
-         Cheap: just two sin() calls per sample point, no history arrays. */
-      wobblePhase: Math.random() * Math.PI * 2,
-      wobbleSeed: Math.random() * Math.PI * 2,
-      wobbleAmp1: 0.5 + Math.random() * 1.2,
-      wobbleAmp2: 0.25 + Math.random() * 0.7,
-      wobbleFreq1: 0.05 + Math.random() * 0.05,
-      wobbleFreq2: 0.1 + Math.random() * 0.09,
-      wobbleDist: 0, lastWobbleOffset: 0
-    };
-  },
-  /* Horizontal drift at a given distance `dy` above the drop's current
-     position. Using distance-along-the-tail (rather than stored history
-     points) as the sampling axis means the wavy path can be recomputed on
-     the fly for any drop, at any frame, with zero extra memory. */
-  wobbleOffset(d, dy) {
-    return Math.sin(d.wobblePhase + dy * d.wobbleFreq1) * d.wobbleAmp1 +
-           Math.sin(d.wobbleSeed + dy * d.wobbleFreq2) * d.wobbleAmp2;
-  },
-  buildHost(hd) {
-    if (!hd.w && !hd.h) this.resizeHost(hd);
-    /* density scales with the card's own area + current rain intensity;
-       clamped so even the hero (largest card) stays visually restrained. */
-    const area = hd.w * hd.h;
-    const n = Math.max(3, Math.min(30, Math.round((area / 9000) * (0.4 + this.intensity * 0.9))));
-    hd.drops = [];
-    for (let i = 0; i < n; i++) hd.drops.push(this.spawnDrop(hd));
+  /* Heavier rain nudges the tint a little darker/stronger via a CSS custom
+     property — no assets or per-frame work involved, just one inline style
+     write per intensity change (which itself only fires a few times a
+     minute at most, driven by live weather data). */
+  applyIntensity() {
+    const extra = Math.max(0, Math.min(1, this.intensity)) * 0.14;
+    const base = this.night ? 0.4 : 0.3;
+    this.hosts.forEach((hd) => hd.layer.style.setProperty('--fx-opacity', String(base + extra)));
   },
   setIntensity(val) {
-    this.intensity = Math.max(0, Math.min(1, val == null ? 0.5 : val));
-    if (this.running) this.hosts.forEach((hd) => this.buildHost(hd));
+    this.intensity = val == null ? 0.5 : val;
+    if (this.running) this.applyIntensity();
   },
-  start(intensity) {
-    if (intensity != null) this.intensity = Math.max(0, Math.min(1, intensity));
+  start(night) {
     if (!this.inited) this.init();
     if (!this.hosts.length) return;
-    if (!this.dropSprite) this.buildDropSprite();
-    if (!this.running) {
-      this.running = true;
-      this.hosts.forEach((hd) => { this.resizeHost(hd); this.buildHost(hd); hd.canvas.classList.add('on'); });
-      this.last = performance.now();
-      this.raf = requestAnimationFrame((t) => this.loop(t));
-    }
-  },
-  stop() {
-    if (!this.running && !this.hosts.some(h => h.drops.length)) return;
-    this.running = false;
-    cancelAnimationFrame(this.raf);
+    this.night = !!night;
+    this.running = true;
+    this.applyImage();
+    this.applyIntensity();
     this.hosts.forEach((hd) => {
-      hd.canvas.classList.remove('on');
-      hd.drops = [];
-      if (hd.ctx) hd.ctx.clearRect(0, 0, hd.w, hd.h);
+      hd.layer.classList.toggle('fx-night', this.night);
+      hd.layer.classList.toggle('fx-day', !this.night);
+      hd.layer.classList.add('on');
     });
   },
-  resume() {
+  stop() {
     if (!this.running) return;
-    this.last = performance.now();
-    this.raf = requestAnimationFrame((t) => this.loop(t));
+    this.running = false;
+    this.hosts.forEach((hd) => hd.layer.classList.remove('on'));
   },
-  pause() { cancelAnimationFrame(this.raf); },
-  /* Builds the wavy centerline of a tail as a short list of {x,y} points
-     from the drop's base up to tailLen, each nudged sideways by
-     wobbleOffset(). Capped at a handful of points (never stored between
-     frames) so it stays essentially free next to the drawImage() calls
-     that dominate this loop. */
-  tailPath(d, size, tailLen) {
-    const steps = 5; /* enough segments to read as a smooth curve, cheap to build every frame */
-    const pts = [];
-    for (let i = 0; i <= steps; i++) {
-      const f = i / steps;
-      const dy = f * (tailLen - size * 0.3) + size * 0.3; /* distance above d.y */
-      pts.push({ x: d.x + this.wobbleOffset(d, dy), y: d.y - dy });
-    }
-    return pts;
+  /* Re-picks the size tier if the viewport crossed the sm/lg breakpoint
+     (e.g. rotating a tablet). No canvases to resize any more. */
+  resize() {
+    if (!this.inited || !this.running) return;
+    this.applyImage();
   },
-  /* Strokes/fills a smooth curve through a small point list using
-     quadraticCurveTo with midpoints as control anchors — the standard cheap
-     trick for turning a jittered poly-line into a soft continuous curve
-     without needing full bezier fitting. */
-  strokeThrough(ctx, pts) {
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length - 1; i++) {
-      const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
-      ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
-    }
-    const last = pts[pts.length - 1];
-    ctx.lineTo(last.x, last.y);
-  },
-  drawTail(ctx, d, size, tailLen, strength) {
-    const path = this.tailPath(d, size, tailLen);
-    const top = path[path.length - 1], base = path[0];
-    const g = ctx.createLinearGradient(base.x, base.y, top.x, top.y);
-    g.addColorStop(0, 'rgba(180,205,235,0)');
-    g.addColorStop(0.6, `rgba(190,212,240,${0.16 * strength})`);
-    g.addColorStop(1, `rgba(210,228,248,${0.3 * strength})`);
-    /* build the wobbly ribbon by walking up one side of the path and back
-       down a slightly offset copy of the other, so the tail has real width
-       (not just a stroked line) while still following the curve. */
-    const half = Math.max(0.6, d.r * 0.42);
-    const n = path.length;
-    const leftSide = path.map((p, i) => ({ x: p.x - half * (0.5 - 0.15 * (i / (n - 1))), y: p.y }));
-    const rightSide = path.map((p, i) => ({ x: p.x + half * (0.35 + 0.1 * (i / (n - 1))), y: p.y })).reverse();
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    this.strokeThrough(ctx, leftSide);
-    this.strokeThrough(ctx, rightSide);
-    ctx.closePath();
-    ctx.fill();
-    /* thin bright core streak following the same wobble — refraction highlight */
-    ctx.strokeStyle = `rgba(255,255,255,${0.35 * strength})`;
-    ctx.lineWidth = Math.max(0.5, d.r * 0.22);
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    this.strokeThrough(ctx, path);
-    ctx.stroke();
-  },
-  drawDrop(ctx, d) {
-    const size = d.r * 2.6; /* on-screen draw size for the shared sprite */
-    /* static "already streaked" drops (frozen mid-slide look, per the
-       reference photo) always show a fixed-length tail. */
-    if (d.stretch > 0) this.drawTail(ctx, d, size, size * (1 + d.stretch * 0.5), 0.75);
-    /* a currently/recently ACTIVELY sliding droplet gets its own animated
-       comet tail on top, scaled by how fast it's currently moving. */
-    if (d.trail > 0.02) this.drawTail(ctx, d, size, size * (1.6 + d.slideSpeed * 0.02), d.trail);
-    ctx.globalAlpha = d.alpha;
-    ctx.drawImage(this.dropSprite, d.x - size / 2, d.y - size / 2, size, size);
-    ctx.globalAlpha = 1;
-  },
-  loop(t) {
-    if (!this.running) return;
-    const dt = Math.min(0.05, (t - this.last) / 1000);
-    this.last = t;
-    for (const hd of this.hosts) {
-      /* off-screen / unloaded cards (SECTION_MANAGER detaches them from the
-         document while scrolled far away) cost nothing — skip entirely. */
-      if (!hd.canvas.isConnected) continue;
-      const ctx = hd.ctx;
-      if (!ctx) continue;
-      ctx.clearRect(0, 0, hd.w, hd.h);
-      for (const d of hd.drops) {
-        if (!d.sliding) {
-          if (Math.random() < 0.0018) {
-            d.sliding = true; d.slideSpeed = 14 + Math.random() * 16; d.slideLife = 0.35 + Math.random() * 0.55; d.trail = 1;
-            d.wobbleDist = 0; d.lastWobbleOffset = 0; /* reset the drift tracker for this slide */
-          }
-        } else {
-          d.y += d.slideSpeed * dt;
-          d.wobbleDist += d.slideSpeed * dt;
-          /* the bead itself drifts sideways as it descends — not just the
-             tail behind it — by riding the same wobble curve the tail is
-             drawn with, applied as an incremental delta so the drop never
-             jumps when the slide starts/stops. Same 2-sine cost as the
-             tail, just once per drop per frame. */
-          const off = this.wobbleOffset(d, d.wobbleDist);
-          d.x += off - d.lastWobbleOffset;
-          d.lastWobbleOffset = off;
-          d.slideSpeed += 12 * dt; /* gentle acceleration, like gravity on a pane */
-          d.slideLife -= dt;
-          if (d.slideLife <= 0) d.sliding = false;
-        }
-        if (!d.sliding && d.trail > 0) d.trail = Math.max(0, d.trail - dt * 3.2); /* fades quickly once it stops */
-        if (d.y - d.r > hd.h) { Object.assign(d, this.spawnDrop(hd)); d.y = -d.r; }
-        this.drawDrop(ctx, d);
-      }
-    }
-    this.raf = requestAnimationFrame((tt) => this.loop(tt));
-  }
+  /* Nothing to pause/resume — kept as no-ops so existing call sites
+     (visibilitychange handlers, etc.) don't need to know the effect
+     stopped being frame-driven. */
+  resume() {},
+  pause() {}
 };
-

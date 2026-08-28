@@ -171,33 +171,64 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   background: radial-gradient(120% 90% at 50% 10%, transparent 55%, var(--vignette) 100%);
 }
 
-/* Rain-on-glass droplets: a small <canvas class="glass-fx-layer"> is injected
+/* Rain-on-glass droplets: a plain <div class="glass-fx-layer"> is injected
    INSIDE each .card / .search-form by GlassFX (07-effects.js) — never as a
    full-viewport overlay. It is the host's first child, absolutely positioned
    to fill it, and painted at z-index:-1 so it sits BEHIND that element's own
    text/icons/buttons (z-index 0+ or plain static content) and always stays
-   fully legible. This relies on .card / .search-form already forming their
-   own stacking context via `backdrop-filter` (backdrop-filter establishes a
-   new stacking context per spec, same as opacity/transform/filter) — do NOT
-   also add `isolation: isolate` to those rules: stacking an extra render-
-   surface trigger (isolation) on an element that already has backdrop-filter
-   is a known Chromium compositor bug that intermittently paints the element
-   fully white/unblurred for a frame (this is exactly what caused cards to
-   "flash white" during rain/storm once the droplet canvas started animating
-   inside them). Droplets are small and sharp (2-8px), not glowing "bokeh"
-   circles. Toggled on/off per-card by GlassFX; canvases are left blank +
-   their rAF loop stopped while inactive (clear weather / Eco / off-screen),
-   so idle cards cost nothing. */
+   fully legible.
+   This used to be an animated <canvas> redrawing droplets every frame; it is
+   now a single static photo of real rain droplets on glass (one compressed
+   WebP per day/night, ~16-65KB, GlassFX picks the small ~17KB variant on
+   narrow viewports and the ~65KB one otherwise, same URL reused by every
+   card so the browser only downloads/decodes each file once), shown/hidden
+   with a CSS opacity transition. That is a lot cheaper on real devices:
+   zero JS work per frame, zero canvas compositing, the browser decodes the
+   image once and the GPU just cross-fades an already-rendered layer — vs.
+   requestAnimationFrame + drawImage()/gradients running continuously on
+   every rainy card.
+   The `--fx-tint` gradient overlays the photo so it always reads as "this
+   card's glass", not a random stock photo, and its opacity is capped so
+   text/icons/buttons drawn on top of the card remain fully readable in
+   every theme. Do NOT add `isolation: isolate` to .card/.search-form: an
+   extra render-surface trigger (isolation) stacked on an element that
+   already has backdrop-filter is a known Chromium compositor bug that
+   intermittently paints the element fully white for a frame. */
 .glass-fx-layer {
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
   width: 100%; height: 100%;
   opacity: 0;
-  transition: opacity 0.6s ease-in-out;
+  transition: opacity 0.7s ease-in-out;
   border-radius: inherit;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  will-change: opacity;
 }
-.glass-fx-layer.on { opacity: 1; }
+/* Soft tint + a bottom-up fade so the photo never fights with a card's own
+   text — it reads as "wet glass" behind the content, not a busy background
+   image. Kept as a pseudo-element (not another DOM node) so it costs nothing
+   beyond one extra paint layer that the browser already has to composite
+   for the backdrop-filter blur. */
+.glass-fx-layer::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, var(--fx-tint-1, rgba(6,10,20,0.55)) 0%, var(--fx-tint-2, rgba(6,10,20,0.72)) 100%);
+}
+/* Overall layer opacity is owned by GlassFX (inline `--fx-opacity`, derived
+   from live rain intensity) — the 0.34 here is only the fallback used for
+   the brief instant before JS has set it. */
+.glass-fx-layer.on { opacity: var(--fx-opacity, 0.34); }
+/* GlassFX toggles these two modifier classes to match the photo actually
+   loaded (day vs. night variant) with a matching tint — this only ever runs
+   in the "adaptive" theme (rain/storm stop the overlay entirely in the
+   fixed Light/Dark themes), so the tint always corresponds to the real
+   photo underneath. */
+.glass-fx-layer.fx-day { --fx-tint-1: rgba(18,30,48,0.32); --fx-tint-2: rgba(18,30,48,0.52); }
+.glass-fx-layer.fx-night { --fx-tint-1: rgba(4,7,16,0.5); --fx-tint-2: rgba(4,7,16,0.72); }
 /* Eco / low-power: never show droplets, even if a stray class lingers. */
 html[data-perf="eco"] .glass-fx-layer, html[data-perf="low"] .glass-fx-layer { display: none !important; }
+
 
 /* lightning flash overlay */
 #flash {
