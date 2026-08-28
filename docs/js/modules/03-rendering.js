@@ -65,7 +65,6 @@ function updateFXIntensity() {
   }
 
   FX.setIntensity(intensity);
-  if (FX.kind === 'rain' && GlassFX.running) GlassFX.setIntensity(intensity);
 }
 
 function updateHero() {

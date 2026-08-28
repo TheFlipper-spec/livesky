@@ -1242,77 +1242,38 @@ function phase8() {
   }, 300);
 }
 
-/* phase 9: rain-on-glass photo overlay (GlassFX). Must turn on for rain/
-   storm, turn off for clear weather, and stay off in Eco mode no matter what
-   the weather is — mirroring the exact gating already proven for the ambient
-   FX canvas. GlassFX is now a static image layer (day/night WebP photo +
-   CSS opacity), not an animated per-frame canvas — the probes below reflect
-   that (hd.layer instead of hd.canvas, background-image URL instead of a
-   drop count). */
+/* phase 9: verify GlassFX (rain-on-glass droplet effect) is a no-op stub —
+   the effect was removed; GlassFX must exist as a stub so call sites don't
+   break, but it must never inject DOM layers or animate anything. */
 function phase9() {
   const { w, doc } = makeWorld();
   w.fetch = makeFetchStub();
   const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
   const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
-  const q9 = (id) => doc.getElementById(id);
   setTimeout(() => {
     try {
       const probe = doc.createElement('script');
       probe.textContent = `
         window.__glassProbe = {};
-        /* the droplet-photo layers are injected once as real DOM children of
-           each .card / .search-form — confirm they actually landed inside
-           the content, not as some detached/global overlay. */
-        window.__glassProbe.hostCount = GlassFX.hosts.length;
-        window.__glassProbe.allInsideCards = GlassFX.hosts.every(hd =>
-          hd.layer.parentElement === hd.host && (hd.host.classList.contains('card') || hd.host.classList.contains('search-form')));
-        window.__glassProbe.noGlobalCanvas = document.getElementById('glass-fx-canvas') === null;
-
-        /* currentWeatherCode() prefers the minutely nowcast when present —
-           drop it so the hourly weathercode below actually drives the theme. */
-        state.minutely = null;
-        /* force a rainy "now" slot: weathercode 63 = moderate rain */
-        state.weather.hourly.weathercode[state.nowIdx] = 63;
-        state.weather.hourly.weathercode_best_match[state.nowIdx] = 63;
-        state.weather.hourly.precipitation[state.nowIdx] = 2;
-        applyWeatherTheme();
-        window.__glassProbe.rainOn = GlassFX.running && GlassFX.hosts.every(hd => hd.layer.classList.contains('on'));
-        window.__glassProbe.hasBackgroundImage = GlassFX.hosts.every(hd => /rain-glass-(day|night)-(sm|lg)\\.webp/.test(hd.layer.style.backgroundImage));
-
-        /* clear weather must turn it back off */
-        state.weather.hourly.weathercode[state.nowIdx] = 1;
-        state.weather.hourly.weathercode_best_match[state.nowIdx] = 1;
-        applyWeatherTheme();
-        window.__glassProbe.clearOff = !GlassFX.running && GlassFX.hosts.every(hd => !hd.layer.classList.contains('on'));
-
-        /* storm should also enable it */
-        state.weather.hourly.weathercode[state.nowIdx] = 95;
-        state.weather.hourly.weathercode_best_match[state.nowIdx] = 95;
-        applyWeatherTheme();
-        window.__glassProbe.stormOn = GlassFX.running;
-
-        /* Eco mode must force it off even while it's actively storming */
-        state.effects = 'eco';
-        applyEffects();
-        window.__glassProbe.ecoOff = !GlassFX.running && document.documentElement.getAttribute('data-perf') === 'eco';
-
-        /* leaving Eco with the storm still active must bring it back */
-        state.effects = 'auto';
-        state._perfLow = false;
-        applyEffects();
-        window.__glassProbe.backOnAfterEco = GlassFX.running;
+        /* GlassFX must exist as a stub (no runtime errors) */
+        window.__glassProbe.exists = typeof GlassFX !== 'undefined';
+        /* Stub must expose the required no-op methods */
+        window.__glassProbe.hasStart  = typeof GlassFX.start  === 'function';
+        window.__glassProbe.hasStop   = typeof GlassFX.stop   === 'function';
+        window.__glassProbe.hasResize = typeof GlassFX.resize === 'function';
+        /* No DOM layers should have been injected */
+        window.__glassProbe.noLayers  = document.querySelectorAll('.glass-fx-layer').length === 0;
+        /* GlassFX must not report itself as running */
+        window.__glassProbe.notRunning = !GlassFX.running;
       `;
       doc.body.appendChild(probe);
       const gp = w.__glassProbe || {};
-      assert(gp.hostCount > 0, 'phase9: droplet photo layers are injected into content cards');
-      assert(gp.allInsideCards === true, 'phase9: every droplet photo layer lives inside its own card/search-bar (no global overlay)');
-      assert(gp.noGlobalCanvas === true, 'phase9: there is no full-viewport #glass-fx-canvas anymore');
-      assert(gp.rainOn === true, 'phase9: glass droplet overlay turns on for rain');
-      assert(gp.hasBackgroundImage === true, 'phase9: the rain-on-glass photo is actually applied when rain starts');
-      assert(gp.clearOff === true, 'phase9: glass droplet overlay turns off for clear weather');
-      assert(gp.stormOn === true, 'phase9: glass droplet overlay turns on for storms too');
-      assert(gp.ecoOff === true, 'phase9: Eco mode force-disables the glass overlay even during a storm');
-      assert(gp.backOnAfterEco === true, 'phase9: leaving Eco mode restores the overlay for ongoing rain');
+      assert(gp.exists === true,      'phase9: GlassFX stub exists (no runtime errors)');
+      assert(gp.hasStart === true,    'phase9: GlassFX stub has start()');
+      assert(gp.hasStop === true,     'phase9: GlassFX stub has stop()');
+      assert(gp.hasResize === true,   'phase9: GlassFX stub has resize()');
+      assert(gp.noLayers === true,    'phase9: no .glass-fx-layer DOM nodes injected (effect removed)');
+      assert(gp.notRunning === true,  'phase9: GlassFX.running is false (stub, not active)');
       finish();
     } catch (e) { errors.push('phase9 crashed: ' + e.message); finish(); }
   }, 900);
