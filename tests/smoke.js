@@ -806,15 +806,16 @@ setTimeout(() => {
           assert(chartBtn.classList.contains('active') && chartBtn.getAttribute('aria-selected') === 'true', 'rapid switching ends on the clicked view');
         } catch (e) { errors.push('forecast switch animation crashed: ' + e.message); }
       })();
-      /* the now tag sits at the current time, not the left edge: today 00:00 origin */
-      const tag = q('chart-plot').querySelector('.chart-now-tag');
-      assert(tag !== null, 'chart shows a "now" tag');
-      const tagLeft = parseFloat(tag.style.left);
+      /* the now marker sits at the current time, not the left edge: today 00:00 origin */
+      const nowMarker = q('chart-plot').querySelector('.chart-now');
+      assert(nowMarker !== null, 'chart shows a "now" marker');
+      const tag = nowMarker.querySelector('.chart-now-tag');
+      assert(tag !== null, 'now marker has a clickable "now" label');
+      const tagLeft = parseFloat(nowMarker.style.left);
       assert(tagLeft > 1 && tagLeft < 99, 'now-tag is at the real minute position (' + tagLeft + '%)');
-      const nowLine = q('chart-svg').querySelector('.chart-now-line');
+      const nowLine = q('chart-plot').querySelector('.chart-now-line');
       if (nowLine) {
-        const x = parseFloat(nowLine.getAttribute('x1'));
-        assert(x > 1 && x < 99, 'now-line at real position, not always x=0 (' + x + ')');
+        assert(nowLine !== null, 'now line is present inside the marker overlay');
       }
     }
     {

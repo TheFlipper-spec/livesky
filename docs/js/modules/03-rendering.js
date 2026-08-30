@@ -1,3 +1,11 @@
+/* ============================================================
+   LiveSky Weather Pro — DASHBOARD RENDERING (layer 2)
+   ------------------------------------------------------------
+   Paints the main dashboard from state.weather:
+     • `renderAll` orchestration across sections
+     • hero, metrics, wind tile, sun arc
+   Consumes: kernel, data, chart, hourly/alerts, effects.
+   ============================================================ */
 /* ---------------- rendering ---------------- */
 function renderAll() {
   applyWeatherTheme();

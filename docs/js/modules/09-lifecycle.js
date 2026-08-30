@@ -1,3 +1,10 @@
+/* ============================================================
+   LiveSky Weather Pro — LIFECYCLE & GATING (layer 3)
+   ------------------------------------------------------------
+     • `SECTION_MANAGER` — Smart Visibility (active/unload/mount)
+     • legal consent + privacy/geolocation gate (sequential)
+   Consumes: lower layers; `applyEffects` re-applied on state changes.
+   ============================================================ */
 /* ---------- Section Lifecycle Manager (Smart Visibility) ---------- */
 /*
    Genuine "heavy DOM removed" optimization. Each section lives in one of three
@@ -312,3 +319,257 @@ function syncEffectsSelect() {
   if (typeof syncMenuChecks === 'function') syncMenuChecks();
 }
 
+/* ---------------- legal consent gate ----------------
+   Sequential consent:
+   Stage 1 — Terms of Service (hard block). One button unlocks the app.
+   Stage 2 — Privacy / geolocation (soft block). Shown immediately after
+   ToS, and again just-in-time if the user later taps the geo button.
+   Auto-geolocation runs ONLY after an explicit «Allow».
+
+   The ToS record is validated field by field on every boot and re-validated
+   whenever the tab regains focus or storage changes, so a cleared, tampered
+   or outdated record locks the interface again. */
+const CONSENT_VERSION = '3.0';
+const CONSENT_KEY = 'livesky:legal_consent';
+const TOS_KEY = 'livesky:tos_accepted';
+const PRIVACY_KEY = 'livesky:privacy_accepted';
+const CONSENT_REQUIRED_KEY = 'livesky:legal_consent_required';
+
+function readConsentRecord() {
+  const rec = store.get(CONSENT_KEY, null);
+  if (!rec || typeof rec !== 'object') return null;
+  return rec;
+}
+
+function consentConfirmationRequired() {
+  try { return sessionStorage.getItem(CONSENT_REQUIRED_KEY) === 'true'; }
+  catch (e) { return true; } /* storage uncertainty must never bypass the gate */
+}
+
+/* Migrate the old bundled ToS+Privacy record so existing users are not
+   re-prompted, while keeping the two grants independent going forward. */
+function migrateLegacyConsent() {
+  const rec = readConsentRecord();
+  if (!rec || rec.accepted !== true || rec.version !== '2.1') return;
+  if (rec.terms !== true) return;
+  const next = {
+    accepted: true,
+    version: CONSENT_VERSION,
+    terms: true,
+    privacy: rec.privacy === true,
+    ts: (typeof rec.ts === 'number' && rec.ts > 0) ? rec.ts : Date.now()
+  };
+  store.set(CONSENT_KEY, next);
+  store.set(TOS_KEY, true);
+  store.set('livesky:legal_accepted', true);
+  if (next.privacy) store.set(PRIVACY_KEY, true);
+}
+
+/* strict ToS validation — privacy is intentionally NOT required here */
+function isValidConsentRecord(rec) {
+  if (!rec) return false;
+  if (rec.accepted !== true) return false;
+  if (rec.version !== CONSENT_VERSION) return false;   /* documents updated → ask again */
+  if (rec.terms !== true) return false;
+  if (typeof rec.ts !== 'number' || !isFinite(rec.ts) || rec.ts <= 0) return false;
+  if (rec.ts > Date.now() + 86400000) return false;    /* clock-skew / tampering */
+  return true;
+}
+
+function hasValidConsent() {
+  /* A return from the Terms page always requires a fresh explicit action,
+     even if this browser still contains an older valid ToS record. */
+  if (consentConfirmationRequired()) return false;
+  return isValidConsentRecord(readConsentRecord());
+}
+
+function lockAppForConsent() {
+  privacyOnGranted = null;
+  hidePrivacyDialog();
+  document.documentElement.classList.add('consent-locked');
+  if (!el.consentModal) return;
+  if (el.consentModal.classList.contains('hidden') || !el.consentModal._liveskyLocked) {
+    el.consentModal.classList.remove('hidden');
+    el.consentModal._liveskyLocked = true;
+    document.body.classList.add('no-scroll');
+    syncConsentButton();
+    trapFocus(el.consentModal);
+  }
+}
+
+function unlockAppAfterConsent() {
+  document.documentElement.classList.remove('consent-locked');
+  if (!el.consentModal) return;
+  el.consentModal.classList.add('hidden');
+  el.consentModal._liveskyLocked = false;
+  if (!privacyDialogOpen() && (!el.modal || !el.modal.classList.contains('open'))) {
+    document.body.classList.remove('no-scroll');
+  }
+  releaseFocus(el.consentModal);
+}
+
+function consentLocked() {
+  return document.documentElement.classList.contains('consent-locked') ||
+    !!(el.consentModal && !el.consentModal.classList.contains('hidden'));
+}
+
+/* Single «Accept and continue» button — enabled unless a leftover checkbox is present and unchecked. */
+function syncConsentButton() {
+  const hasBox = !!(el.consentCheckbox);
+  const ok = hasBox ? !!el.consentCheckbox.checked : true;
+  if (el.consentAcceptBtn) {
+    el.consentAcceptBtn.disabled = !ok;
+    el.consentAcceptBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+  }
+  if (ok && el.consentError) el.consentError.classList.add('hidden');
+}
+
+function rejectConsentAttempt() {
+  if (el.consentError) el.consentError.classList.remove('hidden');
+  const card = el.consentModal && el.consentModal.querySelector('.consent-card');
+  if (card) {
+    card.classList.remove('shake');
+    void card.offsetWidth;
+    card.classList.add('shake');
+  }
+  if (el.consentCheckbox && el.consentCheckbox.focus) el.consentCheckbox.focus();
+}
+
+function checkLegalConsent() {
+  migrateLegacyConsent();
+  if (!el.consentModal) return;
+  if (hasValidConsent()) unlockAppAfterConsent();
+  else lockAppForConsent();
+}
+
+function acceptLegalConsent() {
+  if (el.consentCheckbox && !el.consentCheckbox.checked) {
+    rejectConsentAttempt();
+    return;
+  }
+  store.set(CONSENT_KEY, {
+    accepted: true,
+    version: CONSENT_VERSION,
+    terms: true,
+    privacy: hasPrivacyConsent(),
+    ts: Date.now()
+  });
+  store.set(TOS_KEY, true);
+  store.set('livesky:legal_accepted', true);
+
+  /* Verify the new record before clearing the forced-confirmation marker. This
+     prevents an old or failed write from unlocking the page after legal review. */
+  if (!isValidConsentRecord(readConsentRecord())) {
+    rejectConsentAttempt();
+    return;
+  }
+  try { sessionStorage.removeItem(CONSENT_REQUIRED_KEY); }
+  catch (e) {
+    rejectConsentAttempt();
+    return;
+  }
+  if (!hasValidConsent()) {
+    rejectConsentAttempt();
+    return;
+  }
+  unlockAppAfterConsent();
+  /* Basemap tiles stay behind the ToS gate — the map stack is a lazy
+     subsystem and only loads on the first explicit map/radar interaction
+     (see the LiveSkyMap facade in 10-bootstrap.js). On capable devices the
+     facade now starts a silent background prefetch right here, so the
+     mini-map appears essentially like the old eager behaviour. */
+  if (window.LiveSkyMap) LiveSkyMap.schedulePrefetch();
+  /* Sequential Step 2: ask for geolocation immediately after ToS. */
+  offerPrivacyIfNeeded();
+}
+
+/* continuous re-validation: clearing or editing the record re-locks the app */
+function guardLegalConsent() {
+  migrateLegacyConsent();
+  if (!el.consentModal) return;
+  if (!hasValidConsent()) lockAppForConsent();
+}
+
+/* ---------------- privacy / geolocation consent (just-in-time) ---------------- */
+let privacyOnGranted = null;
+
+function privacyDecision() {
+  const v = store.get(PRIVACY_KEY, null);
+  if (v === true) return true;
+  if (v === false) return false;
+  const rec = readConsentRecord();
+  if (rec && rec.version === CONSENT_VERSION && rec.privacy === true) return true;
+  return null;
+}
+
+function hasPrivacyConsent() {
+  return privacyDecision() === true;
+}
+
+function persistPrivacyConsent(allowed) {
+  const ok = allowed !== false;
+  store.set(PRIVACY_KEY, ok);
+  const rec = readConsentRecord();
+  if (rec && typeof rec === 'object') {
+    rec.privacy = ok;
+    store.set(CONSENT_KEY, rec);
+  }
+}
+
+/* After ToS: if privacy is already granted and there is no saved city,
+   auto-request geolocation. If never decided, show the soft-block dialog.
+   An explicit decline leaves the default / last city in place. */
+function offerPrivacyIfNeeded() {
+  if (!hasValidConsent()) return;
+  if (hasPrivacyConsent()) {
+    const last = store.get('livesky:last_city', null);
+    if (!last || last.lat == null) getUserLocation();
+    return;
+  }
+  if (privacyDecision() === false) return;
+  requestPrivacyConsent(() => requestUserPosition());
+}
+
+function privacyDialogOpen() {
+  return !!(el.privacyModal && !el.privacyModal.classList.contains('hidden'));
+}
+
+function showPrivacyDialog() {
+  if (!el.privacyModal) return;
+  el.privacyModal.classList.remove('hidden');
+  document.body.classList.add('no-scroll');
+  trapFocus(el.privacyModal);
+}
+
+function hidePrivacyDialog() {
+  if (!el.privacyModal) return;
+  el.privacyModal.classList.add('hidden');
+  if (!consentLocked() && (!el.modal || !el.modal.classList.contains('open'))) {
+    document.body.classList.remove('no-scroll');
+  }
+  releaseFocus(el.privacyModal);
+}
+
+function requestPrivacyConsent(onGranted) {
+  if (hasPrivacyConsent()) {
+    if (typeof onGranted === 'function') onGranted();
+    return;
+  }
+  if (!el.privacyModal) return;
+  privacyOnGranted = onGranted || null;
+  showPrivacyDialog();
+}
+
+function acceptPrivacyConsent() {
+  persistPrivacyConsent(true);
+  const cont = privacyOnGranted;
+  privacyOnGranted = null;
+  hidePrivacyDialog();
+  if (hasPrivacyConsent() && typeof cont === 'function') cont();
+}
+
+function cancelPrivacyConsent() {
+  persistPrivacyConsent(false);
+  privacyOnGranted = null;
+  hidePrivacyDialog();
+}

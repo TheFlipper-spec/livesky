@@ -1,3 +1,9 @@
+/* ============================================================
+   LiveSky Weather Pro — AIR QUALITY (layer 2)
+   ------------------------------------------------------------
+   Renders the AQI card, its day strip and the detail modal.
+   Consumes: kernel, i18n.
+   ============================================================ */
 /* ---------- air quality (plain-language) ---------- */
 const AQI_LEVELS = [
   { max: 20, color: '#34d399', label: 'aqi_good', emoji: '😊' },

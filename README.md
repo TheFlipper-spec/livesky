@@ -2,7 +2,7 @@
 
 # LiveSky · Weather Pro 🌤
 
-**Версия: 1.3**
+**Версия: 1.4 (альфа)**
 
 [![Live Site](https://img.shields.io/badge/🌤%20Открыть%20сайт-LiveSky-38bdf8?style=for-the-badge&labelColor=0b1120)](https://theflipper-spec.github.io/livesky/)
 [![Android Release](https://img.shields.io/badge/Android-Release%20APK-3ddc84?style=for-the-badge&logo=android&logoColor=white&labelColor=0b1120)](https://github.com/TheFlipper-spec/livesky/releases)

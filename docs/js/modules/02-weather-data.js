@@ -1,3 +1,15 @@
+/* ============================================================
+   LiveSky Weather Pro — DATA SERVICES (layer 1)
+   ------------------------------------------------------------
+   Everything that talks to the outside world and turns raw input
+   into app state:
+     • forecast / air-quality fetching + loader/progress + toasts
+     • clock, number animation, big icon
+     • geolocation (native + web) & reverse geocoding
+     • city search / geocoding with wrong-layout & typo correction
+     • favorites & recent-cities persistence and list rendering
+   Consumes: kernel (state, store, el, t, formatters).
+   ============================================================ */
 /* ---------------- loader / progress / toasts ---------------- */
 let phraseTimer = null;
 let loaderWatchdog = null;
@@ -390,3 +402,295 @@ function requestUserPosition(notify) {
   );
 }
 
+/* ---------------- favorites ---------------- */
+function toggleFavorite() {
+  if (!state.locationName) return;
+  const idx = state.favorites.findIndex(f => f.name === state.locationName && f.lat === state.lat);
+  if (idx > -1) {
+    state.favorites.splice(idx, 1);
+    toast(t('toast_fav_removed'), 'info');
+  } else {
+    state.favorites.push({ name: state.locationName, country: state.countryCode, admin: state.admin, lat: state.lat, lon: state.lon });
+    toast(t('toast_fav_added'), 'success');
+  }
+  store.set('livesky:favorites', state.favorites);
+  updateFavIcon();
+}
+function updateFavIcon() {
+  const isFav = state.favorites.some(f => f.name === state.locationName && f.lat === state.lat);
+  el.favIcon.classList.toggle('ph-fill', isFav);
+  el.favBtn.classList.toggle('fav-on', isFav);
+}
+
+/* ---------------- fuzzy / wrong-keyboard-layout city search ---------------- */
+/* Open-Meteo's geocoding API does normalized prefix matching (case- and
+   diacritic-insensitive) but no fuzzy/typo correction and no keyboard-layout
+   awareness — a garbled query like "Vjcrdf" (Москва typed with an EN layout
+   selected) or "Моксва" (a typo of Москва) simply returns zero results.
+   These helpers add two cheap, deterministic client-side correction passes
+   that only kick in when the *raw* query draws a blank:
+     1) a full keyboard-layout remap (Cyrillic ЙЦУКЕН <-> Latin QWERTY,
+        matched by physical key position) — fixes "wrong layout" typing.
+     2) single adjacent-letter transpositions + single-letter deletions of
+        the (possibly remapped) query — fixes the most common typos, e.g.
+        "Моксва" -> "Москва". This is intentionally scoped to these two
+        patterns rather than a full fuzzy/Levenshtein search over every
+        possible edit, to keep the number of extra network requests small
+        and the behavior predictable. */
+const EN_TO_RU_KEYMAP = {
+  q: 'й', w: 'ц', e: 'у', r: 'к', t: 'е', y: 'н', u: 'г', i: 'ш', o: 'щ', p: 'з', '[': 'х', ']': 'ъ', '`': 'ё',
+  a: 'ф', s: 'ы', d: 'в', f: 'а', g: 'п', h: 'р', j: 'о', k: 'л', l: 'д', ';': 'ж', "'": 'э',
+  z: 'я', x: 'ч', c: 'с', v: 'м', b: 'и', n: 'т', m: 'ь', ',': 'б', '.': 'ю'
+};
+const RU_TO_EN_KEYMAP = Object.fromEntries(Object.entries(EN_TO_RU_KEYMAP).map(([en, ru]) => [ru, en]));
+
+function convertKeyboardLayout(str, map) {
+  let out = '';
+  for (const ch of str) {
+    const lower = ch.toLowerCase();
+    const mapped = map[lower];
+    if (mapped == null) { out += ch; continue; }
+    out += (ch === lower) ? mapped : mapped.toUpperCase();
+  }
+  return out;
+}
+function hasCyrillic(s) { return /[а-яёА-ЯЁ]/.test(s); }
+function hasLatin(s) { return /[a-zA-Z]/.test(s); }
+/* Only remap "pure" single-script queries — mixed scripts or queries that
+   already contain both alphabets are left untouched to avoid nonsense. */
+function layoutSwapCandidate(q) {
+  const cyr = hasCyrillic(q), lat = hasLatin(q);
+  if (lat && !cyr) return convertKeyboardLayout(q, EN_TO_RU_KEYMAP);
+  if (cyr && !lat) return convertKeyboardLayout(q, RU_TO_EN_KEYMAP);
+  return null;
+}
+function typoVariants(q) {
+  const out = new Set();
+  for (let i = 0; i < q.length - 1; i++) {
+    if (q[i] === q[i + 1]) continue;
+    out.add(q.slice(0, i) + q[i + 1] + q[i] + q.slice(i + 2)); /* adjacent transposition */
+  }
+  for (let i = 0; i < q.length; i++) {
+    out.add(q.slice(0, i) + q.slice(i + 1)); /* single-letter deletion */
+  }
+  out.delete(q);
+  return [...out];
+}
+function buildCorrectionCandidates(q) {
+  const list = [];
+  const swapped = layoutSwapCandidate(q);
+  if (swapped && swapped.toLowerCase() !== q.toLowerCase()) list.push(swapped);
+  if (q.length >= 4 && q.length <= 24) {
+    typoVariants(q).forEach(c => list.push(c));
+    if (swapped) typoVariants(swapped).forEach(c => list.push(c));
+  }
+  const seen = new Set([q.toLowerCase()]);
+  return list.filter(c => {
+    const k = c.toLowerCase();
+    if (!c || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  }).slice(0, 14); /* cap extra requests per search */
+}
+async function geocodeQuery(q, count) {
+  const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`, 8000);
+  const d = await r.json();
+  return d.results || [];
+}
+/* Tries the query as typed first; only if that comes back empty does it
+   fire off the (small, capped) set of correction candidates in parallel
+   and use the first one that actually resolves. Returns which corrected
+   string (if any) produced the results, so the UI can be transparent
+   about the fact that it auto-corrected the query. */
+async function geocodeSmart(q, count) {
+  const direct = await geocodeQuery(q, count);
+  if (direct.length) return { results: direct, corrected: null };
+  const candidates = buildCorrectionCandidates(q);
+  if (!candidates.length) return { results: [], corrected: null };
+  const settled = await Promise.all(candidates.map(async (cand) => {
+    try { return { cand, results: await geocodeQuery(cand, count) }; }
+    catch (e) { return { cand, results: [] }; }
+  }));
+  const hit = settled.find(s => s.results.length);
+  return hit ? { results: hit.results, corrected: hit.cand } : { results: [], corrected: null };
+}
+
+/* ---------------- search ---------------- */
+let searchTimer = null;
+function saveRecent() {
+  state.recent = state.recent.filter(r => !(r.name === state.locationName && r.lat === state.lat));
+  state.recent.unshift({ name: state.locationName, country: state.countryCode, admin: state.admin, lat: state.lat, lon: state.lon });
+  state.recent = state.recent.slice(0, 5);
+  store.set('livesky:recent', state.recent);
+}
+function selectCity(c, isFav) {
+  state.locSeq++; /* a manual pick always wins over any slower, older request in flight */
+  state.lat = c.lat; state.lon = c.lon;
+  state.locationName = c.name;
+  state.countryCode = c.country || '';
+  state.admin = c.admin || '';
+  saveRecent();
+  closeAutocomplete();
+  el.input.value = '';
+  el.searchClear.classList.add('hidden');
+  el.input.blur();
+  fetchWeather();
+}
+function closeAutocomplete() {
+  el.autoList.classList.add('hidden');
+  acIndex = -1;
+  acSeq++; /* invalidate any in-flight autocomplete response */
+  clearTimeout(state.favOpenTimer);
+}
+/* keyboard navigation inside autocomplete list */
+let acIndex = -1;
+function acMove(dir) {
+  const items = [...el.autoList.querySelectorAll('.ac-item')];
+  if (!items.length) return;
+  acIndex = Math.min(items.length - 1, Math.max(0, acIndex + dir));
+  items.forEach((it, k) => it.classList.toggle('active', k === acIndex));
+  if (items[acIndex].scrollIntoView) items[acIndex].scrollIntoView({ block: 'nearest' });
+}
+
+function renderFavoritesList() {
+  el.autoList.innerHTML = '';
+  acIndex = -1;
+  const title = document.createElement('div');
+  title.className = 'ac-list-title';
+  title.textContent = t('favorites');
+  el.autoList.appendChild(title);
+  if (!state.favorites.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ac-empty';
+    empty.textContent = t('favorites_empty');
+    el.autoList.appendChild(empty);
+  } else {
+    state.favorites.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'ac-item';
+      div.innerHTML = `
+        ${flagUrl(f.country) ? `<img class="ac-flag" src="${flagUrl(f.country)}" alt="" loading="lazy" onerror="this.remove()">` : '<span class="ac-flag"></span>'}
+        <span><span class="ac-name">${escHtml(f.name)}</span>${f.admin ? `<br><span class="ac-admin">${escHtml(f.admin)}</span>` : ''}</span>
+        <button class="ac-remove" aria-label="Удалить"><i class="ph-bold ph-x"></i></button>`;
+      div.addEventListener('click', (e) => {
+        if (e.target.closest('.ac-remove')) return;
+        selectCity({ lat: f.lat, lon: f.lon, name: f.name, country: f.country, admin: f.admin }, true);
+      });
+      div.querySelector('.ac-remove').addEventListener('click', (e) => {
+        e.stopPropagation();
+        state.favorites = state.favorites.filter(x => !(x.name === f.name && x.lat === f.lat));
+        store.set('livesky:favorites', state.favorites);
+        updateFavIcon();
+        renderFavoritesList();
+      });
+      el.autoList.appendChild(div);
+    });
+  }
+
+  /* recent cities (excluding favorites) */
+  const recents = state.recent.filter(r => !state.favorites.some(f => f.name === r.name && f.lat === r.lat));
+  if (recents.length) {
+    const rTitle = document.createElement('div');
+    rTitle.className = 'ac-list-title';
+    rTitle.textContent = t('recent');
+    el.autoList.appendChild(rTitle);
+    recents.forEach(f => {
+      const div = document.createElement('div');
+      div.className = 'ac-item';
+      div.innerHTML = `
+        ${flagUrl(f.country) ? `<img class="ac-flag" src="${flagUrl(f.country)}" alt="" loading="lazy" onerror="this.remove()">` : '<span class="ac-flag"></span>'}
+        <span><span class="ac-name">${escHtml(f.name)}</span>${f.admin ? `<br><span class="ac-admin">${escHtml(f.admin)}</span>` : ''}</span>
+        <i class="ph ph-clock-counter-clockwise ac-star"></i>`;
+      div.addEventListener('click', () => selectCity({ lat: f.lat, lon: f.lon, name: f.name, country: f.country, admin: f.admin }));
+      el.autoList.appendChild(div);
+    });
+  }
+  el.autoList.classList.remove('hidden');
+}
+
+let acSeq = 0; /* autocomplete generation: stale responses are dropped */
+async function handleInput() {
+  clearTimeout(searchTimer);
+  const q = el.input.value.trim();
+  el.searchClear.classList.toggle('hidden', !el.input.value);
+  if (!q) {
+    renderFavoritesList();
+    return;
+  }
+  if (q.length < 3) {
+    el.autoList.innerHTML = '';
+    el.autoList.classList.add('hidden');
+    return;
+  }
+  const seq = ++acSeq;
+  /* hide stale suggestions immediately — never show results for an old query */
+  el.autoList.innerHTML = '';
+  el.autoList.classList.add('hidden');
+  searchTimer = setTimeout(async () => {
+    if (el.input.value.trim() !== q) return; /* query changed while waiting */
+    try {
+      const { results, corrected } = await geocodeSmart(q, 6);
+      if (seq !== acSeq || el.input.value.trim() !== q) return; /* stale response */
+      acIndex = -1;
+      el.autoList.innerHTML = '';
+      if (!results.length) {
+        const empty = document.createElement('div');
+        empty.className = 'ac-empty';
+        empty.textContent = t('no_results');
+        el.autoList.appendChild(empty);
+      } else {
+        if (corrected) {
+          const hint = document.createElement('div');
+          hint.className = 'ac-list-title ac-corrected-hint';
+          hint.textContent = t('search_corrected').replace('{q}', corrected);
+          el.autoList.appendChild(hint);
+        }
+        results.forEach(c => {
+          const div = document.createElement('div');
+          div.className = 'ac-item';
+          div.innerHTML = `
+            ${flagUrl(c.country_code) ? `<img class="ac-flag" src="${flagUrl(c.country_code)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+            <span><span class="ac-name">${escHtml(c.name)}</span><br><span class="ac-admin">${escHtml([c.admin1, c.country].filter(Boolean).join(', '))}</span></span>`;
+          div.addEventListener('click', () => selectCity({ lat: c.latitude, lon: c.longitude, name: c.name, country: c.country_code, admin: [c.admin1, c.country].filter(Boolean).join(', ') }));
+          el.autoList.appendChild(div);
+        });
+      }
+      el.autoList.classList.remove('hidden');
+        } catch (e) { /* silent */ }
+  }, 280);
+}
+
+async function handleSearch(e) {
+  e.preventDefault();
+  const q = el.input.value.trim();
+  if (!q) return;
+  closeAutocomplete();
+  const seq = ++state.locSeq; /* claim this as the newest location request in flight */
+  try {
+    const { results, corrected } = await geocodeSmart(q, 1);
+    if (seq !== state.locSeq) return; /* the user already moved on to a newer city */
+    if (!results.length) {
+      toast(t('toast_city_not_found'), 'error');
+      return;
+    }
+    const c = results[0];
+    state.lat = c.latitude; state.lon = c.longitude;
+    state.locationName = c.name;
+    state.countryCode = c.country_code || '';
+    state.admin = [c.admin1, c.country].filter(Boolean).join(', ');
+    saveRecent();
+    el.input.value = '';
+    el.searchClear.classList.add('hidden');
+    el.input.blur();
+    if (corrected) toast(t('search_corrected').replace('{q}', corrected), 'info');
+    fetchWeather();
+  } catch (e) {
+    /* Note: handleSearch expects an Event (uses e.preventDefault() on the first line),
+       so the retry callback must not forward the error object. */
+    toast(t('toast_network'), 'error', t('toast_retry'), () => handleSearch());
+  }
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}

@@ -1,6 +1,6 @@
 /* ============================================================
    LiveSky Weather Pro — Design System
-   Premium weather experience · v1.3
+   Premium weather experience · альфа-версия 1.4
    ============================================================ */
 
 /* ---------- Tokens ---------- */
@@ -249,7 +249,14 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   display: flex; align-items: center; gap: 18px;
   flex-wrap: wrap;
   margin-bottom: 26px;
-  animation: fadeDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* IMPORTANT: fill-mode `backwards`, not `both`. A `both`/`forwards` fill keeps
+     the finished animation's transform applied as an identity matrix, and any
+     transform on the header makes it a containing block for its position:fixed
+     descendants (the settings dropdown). That anchored the menu to the header
+     (top of the page) instead of the viewport — on phones the bottom sheet then
+     rendered above the screen. `backwards` applies the start frame only during
+     any delay, then lets the transform drop back to `none`. */
+  animation: fadeDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .brand { display: flex; align-items: center; gap: 13px; cursor: pointer; user-select: none; }
 .brand-logo {
@@ -1143,16 +1150,64 @@ body.menu-open .menu-backdrop { opacity: 1; pointer-events: auto; }
 }
 .chart-plot.is-scrubbing { cursor: grabbing; }
 .chart-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-/* "Now" tag pinned at the real current-time position on the chart (moves with
-   the clock; the tag is an HTML overlay so it is never stretched by the SVG). */
+/* "Now" marker pinned at the real current-time position on the chart (moves
+   with the clock; it is an HTML overlay so it is never distorted by the SVG).
+   A thin gradient line with a live dot on top and a clickable "Сейчас" pill at
+   the bottom. The line/dot are pointer-events:none so the scrub hit-area below
+   still works everywhere except on the pill itself. */
+.chart-now {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 0;
+  z-index: 5; /* above the scrub hit-area, below the guide handle */
+  pointer-events: none;
+}
+.chart-now-line {
+  position: absolute; top: 5%; bottom: 26%; left: 0;
+  width: 2px; transform: translateX(-50%);
+  border-radius: 2px;
+  background: linear-gradient(180deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 60%, transparent) 65%,
+    transparent 100%);
+  box-shadow: 0 0 8px var(--glow-accent), 0 0 2px var(--glow-accent);
+}
+.chart-now-dot {
+  position: absolute; top: 4%; left: 0; transform: translate(-50%, -50%);
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-1);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent),
+              0 0 12px var(--glow-accent);
+}
 .chart-now-tag {
-  position: absolute; bottom: -2px; z-index: 5;
-  transform: translateX(-50%);
-  padding: 2px 7px; border-radius: 99px;
+  position: absolute; bottom: 0; left: 0; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 99px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
   background: linear-gradient(135deg, #38bdf8, #6366f1);
-  color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
-  pointer-events: none; white-space: nowrap;
-  box-shadow: 0 4px 12px -4px rgba(56, 189, 248, 0.7);
+  color: #fff; font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em;
+  text-transform: uppercase; white-space: nowrap;
+  cursor: pointer; pointer-events: auto;
+  box-shadow: 0 4px 14px -4px rgba(56, 189, 248, 0.8);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.chart-now-tag:hover {
+  transform: translateX(-50%) translateY(-1px);
+  box-shadow: 0 6px 18px -4px rgba(56, 189, 248, 0.95);
+  filter: brightness(1.06);
+}
+.chart-now-tag:active { transform: translateX(-50%) translateY(0); }
+.chart-now-tag:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 99px;
+}
+/* Live indicator dot inside the label — soft expanding pulse. */
+.chart-now-tag .now-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: #fff; flex: none;
+  animation: nowDotPulse 1.8s ease-out infinite;
+}
+@keyframes nowDotPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.6); }
+  70% { box-shadow: 0 0 0 6px rgba(255, 255, 255, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0); }
 }
 /* Full-plot hit target for mouse + finger scrubbing (no per-hour columns). */
 .chart-scrub {
@@ -2495,7 +2550,17 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .dropdown.settings-menu {
     position: fixed; top: auto; left: 0; right: 0; bottom: 0;
     width: 100%; max-width: none;
+    /* Cap the sheet inside the visible viewport. The `vh` line is a fallback
+       for WebViews without dynamic/small viewport units (Chromium < 108): if
+       `dvh` is unsupported, `min(86dvh, 680px)` is dropped entirely and the
+       sheet would otherwise inherit the desktop max-height and render too tall
+       — i.e. its top edge ends up ABOVE the screen. dvh then adapts to the
+       on-screen URL bar / keyboard so the sheet never overflows the top. */
+    max-height: min(86vh, 680px);
     max-height: min(86dvh, 680px);
+    /* Anchor the slide-up / any scale to the sheet's bottom edge so nothing
+       can push it above the viewport top while it animates in. */
+    transform-origin: bottom center;
     border-radius: 24px 24px 0 0;
     border-left: none; border-right: none; border-bottom: none;
     padding-bottom: env(safe-area-inset-bottom);
@@ -2512,7 +2577,12 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
     background: var(--stroke-strong); opacity: 0.75;
   }
   .dropdown.settings-menu.open { transform: none; }
-  .dropdown.settings-menu .mm-scroll { max-height: calc(86dvh - 64px); }
+  .dropdown.settings-menu .mm-scroll {
+    /* Same dvh-with-vh-fallback policy as the sheet: keep the scroll body
+       inside the visible viewport on WebViews that lack `dvh`. */
+    max-height: calc(86vh - 64px);
+    max-height: calc(86dvh - 64px);
+  }
   /* narrow phone cells: drop leading icons and shrink flags so labels
      fit on one line instead of ellipsizing */
   .seg-btn { font-size: 10.5px; }
@@ -2601,6 +2671,27 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .radar-toggle { left: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); padding: 11px 14px; }
   .radar-panel { bottom: calc(12px + env(safe-area-inset-bottom)); }
   .toast-wrap { bottom: calc(14px + env(safe-area-inset-bottom)); }
+
+  /* Footer links on phones: instead of unevenly-wrapping pill buttons (3–4
+     ragged rows), lay them out as a tight 2-column grid of compact buttons.
+     5 items → 2 + 2 + the longest (privacy policy) spanning the full row. */
+  .site-footer { padding: 26px 0 6px; }
+  .footer-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .footer-link {
+    justify-content: center;
+    padding: 9px 10px;
+    font-size: 11.5px;
+    gap: 7px;
+    border-radius: 14px;
+  }
+  .footer-link i { font-size: 14px; }
+  /* the final, longest link (privacy policy) spans the whole row */
+  .footer-link:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 @media (max-width: 390px) {

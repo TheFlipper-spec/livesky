@@ -1,3 +1,10 @@
+/* ============================================================
+   LiveSky Weather Pro — HOURLY/DAILY + HAZARD ALERTS (layer 2)
+   ------------------------------------------------------------
+   Renders the hourly and daily forecast strips and detects /
+   scores hazard weather events (rain, snow, wind, heat, fog, UV…).
+   Consumes: kernel (minutelyPrecipInfo, getMinVal).
+   ============================================================ */
 /* ---------- hourly strip ---------- */
 function renderHourly() {
   const h = state.weather.hourly;

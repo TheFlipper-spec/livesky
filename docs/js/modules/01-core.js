@@ -1,4 +1,16 @@
 /* ============================================================
+   LiveSky Weather Pro — KERNEL (layer 0, loaded first)
+   ------------------------------------------------------------
+   The dependency root. Owns app-global infrastructure and pure
+   domain logic that every other layer consumes:
+     • DOM refs (`el`, `$`, `on`), Capacitor `isNativeApp`/`nativePlugin`
+     • `store` (persisted settings), `state` (runtime app state)
+     • i18n access (`t`, `loc`), time/unit formatters, WMO catalogue
+     • rain-merge / minute-precision helpers, `getVal`/`getMinVal`,
+       `regionModel`, `interpHour`, moon phase
+   No module imports before this one.
+   ============================================================ */
+/* ============================================================
    LiveSky Weather Pro — Application Logic
    ============================================================ */
 'use strict';

@@ -1,3 +1,10 @@
+/* ============================================================
+   LiveSky Weather Pro — FORECAST CHART & LIVE LAYER (layer 2)
+   ------------------------------------------------------------
+   The 24h precipitation/temperature chart plus the minute-precision
+   live layer (scrubbing, now-tag, rain markers, live ticker).
+   Consumes: kernel (getVal, rain-merge, interpHour).
+   ============================================================ */
 /* ---------- 24h chart ---------- */
 function smoothPath(pts) {
   if (pts.length < 3) return pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(' ');
@@ -256,7 +263,6 @@ function renderChart() {
     <path d="${area}" fill="url(#areaGrad)"/>
     <g class="chart-rain-layer" clip-path="url(#tempUnderClip)">${rainRects}</g>
     <path d="${line}" fill="none" stroke="url(#lineGrad)" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-    <line class="chart-now-line" x1="${X(nowFrac).toFixed(2)}" y1="5" x2="${X(nowFrac).toFixed(2)}" y2="100" stroke="${state.accent}" stroke-width="0.7" opacity="0.4"/>
     ${bars}`;
 
   chartData = [];
@@ -294,21 +300,44 @@ function renderChart() {
   updateChartNowTag();
 }
 
-/* "Now" tag pinned at the current time position on the chart. */
+/* "Now" marker pinned at the current-time position on the chart: a thin
+   gradient line with a live dot on top and a clickable "Сейчас" pill at the
+   bottom. Clicking (or Enter/Space when focused) scrubs the chart back to the
+   real current time. It is an HTML overlay so it is never distorted by the SVG's
+   non-uniform stretching, and the line itself stays pointer-events:none so the
+   scrub hit area underneath still works everywhere except on the pill. */
+let chartNowBound = false;
 function updateChartNowTag() {
   const plot = el.chartPlot;
   if (!plot || !chartMeta) return;
-  let tag = plot.querySelector('.chart-now-tag');
-  if (!tag) {
-    tag = document.createElement('span');
-    tag.className = 'chart-now-tag';
-    tag.setAttribute('aria-hidden', 'true');
-    plot.appendChild(tag);
+  let now = plot.querySelector('.chart-now');
+  if (!now) {
+    now = document.createElement('div');
+    now.className = 'chart-now';
+    now.innerHTML = '<span class="chart-now-line"></span><span class="chart-now-dot"></span>'
+      + '<button class="chart-now-tag" type="button" aria-label="' + escHtml(t('now')) + '"><i class="now-dot" aria-hidden="true"></i></button>';
+    plot.appendChild(now);
+  }
+  if (!chartNowBound) {
+    chartNowBound = true;
+    const scrubToNow = () => { if (chartMeta) showChartAtFrac(chartMeta.nowFrac); };
+    const tag = now.querySelector('.chart-now-tag');
+    tag.addEventListener('click', (e) => { e.stopPropagation(); scrubToNow(); });
+    tag.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); scrubToNow(); }
+    });
   }
   const f = chartMeta.nowFrac != null ? chartMeta.nowFrac : chartSelFrac;
   const x = (f / chartMeta.hours) * 100;
-  tag.style.left = x.toFixed(2) + '%';
-  tag.textContent = t('now');
+  now.style.left = x.toFixed(2) + '%';
+  const tag = now.querySelector('.chart-now-tag');
+  const label = t('now');
+  /* Repaint the label only when the language actually changed. */
+  if (tag.dataset.label !== label) {
+    tag.dataset.label = label;
+    tag.textContent = label;
+    tag.prepend(Object.assign(document.createElement('i'), { className: 'now-dot', 'aria-hidden': 'true' }));
+  }
 }
 
 /* Small round badges on the temperature line at the mid of each rain band. */
