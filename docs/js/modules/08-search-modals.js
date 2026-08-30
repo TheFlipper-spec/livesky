@@ -864,6 +864,13 @@ function syncSegment(container, attr, value) {
     b.setAttribute('aria-checked', String(sel));
   });
 }
+/* Debounce guard for the menu toggle. On some Android WebViews a single tap can
+   fire two click events on the button; because the toggle reads the current
+   `open` state, the second click would immediately undo the just-changed state
+   (open → instantly closed, "every other tap"). Ignoring a toggle that arrives
+   within 250ms of the previous one absorbs that ghost event without affecting
+   normal taps (a human can't tap twice that fast). */
+let lastMenuToggleAt = 0;
 function setMenuOpen(open) {
   if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
   if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
@@ -1012,6 +1019,9 @@ function bindEvents() {
   /* unified menu: language, theme, units, model, geolocation, fullscreen, refresh */
   on(el.menuBtn, 'click', (e) => {
     e.stopPropagation();
+    const now = Date.now();
+    if (now - lastMenuToggleAt < 250) return; /* absorb ghost double-click from a single tap */
+    lastMenuToggleAt = now;
     setMenuOpen(!el.mainMenu.classList.contains('open'));
   });
   on(el.mainMenu, 'click', (e) => {
