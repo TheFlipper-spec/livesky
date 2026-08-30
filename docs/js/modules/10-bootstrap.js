@@ -1,11 +1,15 @@
 /* ============================================================
    LiveSky Weather Pro — application bootstrap (eager)
    ------------------------------------------------------------
-   This module finishes the boot sequence: it owns the lazy-map
-   loader facade, weather notifications, the Capacitor bridge and
-   the single application init() call. The map/radar subsystem
-   itself (11-map-radar.js) is NOT loaded here — it is fetched on
-   the first real map/radar interaction via window.LiveSkyMap.
+   This module finishes the boot sequence — the single application
+   init() call lives here. It owns the platform / shell concerns:
+     • `window.LiveSkyMap` facade (lazy map/radar loader)
+     • PWA: service worker, install prompt, offline banner
+     • adaptive FPS detector (`PERF`) that tunes effects on Auto
+     • weather notifications (local + web push)
+     • Capacitor / Android native bridge
+   The map/radar subsystem itself (11-map-radar.js) is NOT loaded
+   here — it is fetched on the first real map/radar interaction.
    ============================================================ */
 
 /* ---------------- lazy map / radar subsystem ----------------

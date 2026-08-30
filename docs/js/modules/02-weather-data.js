@@ -1,3 +1,15 @@
+/* ============================================================
+   LiveSky Weather Pro — DATA SERVICES (layer 1)
+   ------------------------------------------------------------
+   Everything that talks to the outside world and turns raw input
+   into app state:
+     • forecast / air-quality fetching + loader/progress + toasts
+     • clock, number animation, big icon
+     • geolocation (native + web) & reverse geocoding
+     • city search / geocoding with wrong-layout & typo correction
+     • favorites & recent-cities persistence and list rendering
+   Consumes: kernel (state, store, el, t, formatters).
+   ============================================================ */
 /* ---------------- loader / progress / toasts ---------------- */
 let phraseTimer = null;
 let loaderWatchdog = null;

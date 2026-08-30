@@ -1,3 +1,10 @@
+/* ============================================================
+   LiveSky Weather Pro — FORECAST CHART & LIVE LAYER (layer 2)
+   ------------------------------------------------------------
+   The 24h precipitation/temperature chart plus the minute-precision
+   live layer (scrubbing, now-tag, rain markers, live ticker).
+   Consumes: kernel (getVal, rain-merge, interpHour).
+   ============================================================ */
 /* ---------- 24h chart ---------- */
 function smoothPath(pts) {
   if (pts.length < 3) return pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(2)} ${p[1].toFixed(2)}`).join(' ');

@@ -1,3 +1,9 @@
+/* ============================================================
+   LiveSky Weather Pro — VISUAL EFFECTS & THEME (layer 2)
+   ------------------------------------------------------------
+   Weather-driven theme/background, canvas FX, storm flashes and
+   the GlassFX layer. Consumes: kernel (state).
+   ============================================================ */
 /* ---------- weather theme / background / effects ---------- */
 const ACCENTS = {
   clear:  { day: ['#fbbf24', '#fb923c'], night: ['#a5b4fc', '#818cf8'] },

@@ -1,3 +1,10 @@
+/* ============================================================
+   LiveSky Weather Pro — LIFECYCLE & GATING (layer 3)
+   ------------------------------------------------------------
+     • `SECTION_MANAGER` — Smart Visibility (active/unload/mount)
+     • legal consent + privacy/geolocation gate (sequential)
+   Consumes: lower layers; `applyEffects` re-applied on state changes.
+   ============================================================ */
 /* ---------- Section Lifecycle Manager (Smart Visibility) ---------- */
 /*
    Genuine "heavy DOM removed" optimization. Each section lives in one of three

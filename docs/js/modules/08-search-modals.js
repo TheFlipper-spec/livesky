@@ -1,3 +1,14 @@
+/* ============================================================
+   LiveSky Weather Pro — INTERACTIVE UI (layer 3)
+   ------------------------------------------------------------
+   Overlays, settings and global event wiring:
+     • accessible modal infrastructure (focus trap)
+     • detail views (hourly / daily / monthly / sun)
+     • advice & lifestyle scoring (run, car-wash, walk)
+     • theme / units / model / effects / language settings & menu
+     • fullscreen, reveal-on-scroll, global key/resize handlers
+   Consumes: all lower layers.
+   ============================================================ */
 /* ---------------- modals ---------------- */
 /* Accessible overlays: trap the Tab key inside the dialog, make the background
    inert, focus the dialog on open and restore focus to the opener on close. */
