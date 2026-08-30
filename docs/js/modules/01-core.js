@@ -4,7 +4,7 @@
 'use strict';
 
 /* Canonical public version of the website and service. */
-const APP_VERSION = '1.3';
+const APP_VERSION = '1.4';
 
 /* ---------------- DOM refs ---------------- */
 const $ = (id) => document.getElementById(id);
@@ -33,16 +33,22 @@ const el = {
   toastWrap: $('toast-wrap'),
   searchForm: $('search-form'), input: $('city-input'), autoList: $('autocomplete-list'),
   favBtn: $('fav-btn'), favIcon: $('fav-icon'), searchClear: $('search-clear'),
-  menuBtn: $('menu-btn'), mainMenu: $('main-menu'), modelSelect: $('model-select'), unitsSelect: $('units-select'), geoItem: $('geo-item'),
+  menuBtn: $('menu-btn'), mainMenu: $('main-menu'), menuClose: $('menu-close'), menuBackdrop: $('menu-backdrop'),
+  modelSeg: $('model-seg'), unitsSeg: $('units-seg'), effectsSeg: $('effects-seg'), geoItem: $('geo-item'),
   themeLabel: $('theme-label'), fsIcon: $('fs-icon'), fsItem: $('fs-item'), refreshItem: $('refresh-item'),
   logoBox: $('logo-box'), brand: $('brand'), adviceBtn: $('advice-btn'), mPrecipLabel: $('m-precip-label'),
-  effectsSelect: $('effects-select'), installItem: $('install-item'), offlineBanner: $('offline-banner'),
+  installItem: $('install-item'), offlineBanner: $('offline-banner'),
   notifItem: $('notif-item'), notifIco: $('notif-ico'), notifLabel: $('notif-label'),
   radarToggle: $('radar-toggle'), radarPanel: $('radar-panel'), radarLoading: $('radar-loading'),
   radarTime: $('radar-time'), radarSlider: $('radar-slider'), radarBack: $('radar-back'),
   radarNext: $('radar-next'), radarPlay: $('radar-play'), radarClose: $('radar-close'),
   radarBadge: $('radar-badge'), radarLive: $('radar-live'), radarOpacity: $('radar-opacity'),
   radarSpeed: $('radar-speed'), radarTicks: $('radar-ticks'),
+  radarEta: $('radar-eta'), radarEtaText: $('radar-eta-text'), radarEtaIco: $('radar-eta-ico'),
+  radarSources: $('radar-sources'), radarSettings: $('radar-settings'), radarAdvanced: $('radar-advanced'),
+  forecastToggle: $('forecast-toggle'), forecastChartBtn: $('forecast-view-chart'),
+  forecastBlocksBtn: $('forecast-view-blocks'), forecastChartPane: $('forecast-view-chart-pane'),
+  forecastBlocksPane: $('forecast-view-blocks-pane'),
   mapRadarBadge: $('map-radar-badge'),
   consentModal: $('consent-modal'), consentAcceptBtn: $('consent-accept-btn'),
   consentCheckbox: $('consent-checkbox'), consentError: $('consent-error'),
@@ -94,6 +100,8 @@ const state = {
   model: store.get('livesky:model', 'auto'),
   effects: store.get('livesky:effects', 'auto'),
   notif: store.get('livesky:notif', false),
+  /* Merged 24h block: 'chart' (temperature graph) or 'blocks' (hourly cards). */
+  forecastView: store.get('livesky:forecast_view', 'chart'),
   lat: 55.7558, lon: 37.6173,
   locationName: 'Москва', countryCode: 'RU', admin: '',
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',

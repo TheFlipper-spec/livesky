@@ -6,7 +6,7 @@
   "scripts": {
     "build:js": "bash scripts/build-js.sh",
     "test": "node tests/smoke.js",
-    "serve": "python3 -m http.server 8000 --bind 0.0.0.0 --directory docs",
+    "serve": "python3 scripts/serve-dev.py",
     "cap:sync": "cap sync android",
     "android:open": "cap open android",
     "android:build": "npm run cap:sync && cd android && ./gradlew assembleDebug",

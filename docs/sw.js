@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-glassfx-photo';
+const VERSION = 'livesky-v1.4-clouds-v21';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -139,8 +139,13 @@ function isForecastApi(url) {
 }
 
 self.addEventListener('install', (event) => {
+  /* Resilient install: if ONE optional asset fails (font/icon/…), the worker
+     must still activate — otherwise the old worker keeps controlling the page
+     forever and serves stale builds (the \"still squares\" bug). */
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting())
+    caches.open(SHELL_CACHE)
+      .then((cache) => cache.addAll(SHELL_ASSETS).catch(() => { /* keep going */ }))
+      .then(() => self.skipWaiting())
   );
 });
 

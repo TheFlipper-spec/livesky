@@ -456,9 +456,9 @@ setTimeout(() => {
       const appGradle = fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8');
       assert(appGradle.includes('signingConfigs') && appGradle.includes('KEYSTORE_PASSWORD') && appGradle.includes('KEYSTORE_BASE64'),
              'android/app/build.gradle contains release signingConfigs with environment variables');
-      const releaseWorkflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'android-release.yml'), 'utf8');
+      const releaseWorkflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'android-release-manual.yml'), 'utf8');
       assert(releaseWorkflow.includes('assembleRelease') && releaseWorkflow.includes('KEYSTORE_BASE64') && releaseWorkflow.includes('upload-artifact'),
-             '.github/workflows/android-release.yml exists and builds signed release APK');
+             '.github/workflows/android-release-manual.yml exists and builds signed release APK');
     }
     assert(typeof nativeBackHandler === 'function', 'Capacitor back-button listener accepts a direct listener handle');
     assert(q('boot-error').classList.contains('hidden'), 'Capacitor native bridge does not block application startup');
@@ -626,6 +626,80 @@ setTimeout(() => {
       window.LiveSkyMap.close();
       assert(!q('map-modal').classList.contains('open'), 'lazy map closes cleanly');
       assert(typeof window.closeFullMap === 'function', 'map globals become available after lazy load');
+
+      /* ---- hybrid precipitation timeline (real interaction) ----
+         RainViewer is stubbed in makeFetchStub (13 past frames + 6 nowcast),
+         GIBS IMERG probes fail against the stub — the module must still build
+         a wall-clock timeline from radar frames and drive the slider. */
+      window.LiveSkyMap.toggleRadar();
+      setTimeout(() => {
+        try {
+          const probe = document.createElement('script');
+          probe.textContent = `window.__radarProbe = {
+            active: RADAR.active,
+            steps: RADAR.timeline.length,
+            sliderMax: +el.radarSlider.max,
+            idx: RADAR.idx,
+            src: RADAR.source,
+            hasBase: !!fullMapInst && !!fullMapInst.getSource('precip-base-a'),
+            baseTiles: fullMapInst && fullMapInst.getSource('precip-base-a') ? fullMapInst.getSource('precip-base-a').tiles : null,
+            radarTiles: fullMapInst && fullMapInst.getSource('precip-radar-a') ? fullMapInst.getSource('precip-radar-a').tiles : null,
+            eta: document.getElementById('radar-eta').classList.contains('hidden'),
+            badge: document.getElementById('radar-badge').textContent
+          };`;
+          document.body.appendChild(probe);
+          const pr = window.__radarProbe || {};
+          assert(pr.active === true, 'radar enabled via facade toggle');
+          assert(pr.steps >= 12, 'wall-clock timeline built from radar frames (' + pr.steps + ' steps)');
+          assert(pr.sliderMax === pr.steps - 1, 'slider max tracks the timeline (' + pr.sliderMax + ' / ' + pr.steps + ')');
+          assert(pr.idx >= 0 && pr.idx <= pr.sliderMax, 'slider lands on a valid step (' + pr.idx + ')');
+          assert(pr.hasBase === true, 'base layer pair created');
+          assert(Array.isArray(pr.baseTiles) && pr.baseTiles.length === 1, 'base layer has one tile template');
+          assert(Array.isArray(pr.radarTiles) && /^precip:\/\/radar\//.test(pr.radarTiles[0]),
+            'radar overlay is served through the precip protocol: ' + (pr.radarTiles || []).join());
+          assert(pr.eta === false, 'ETA line visible above the timeline');
+          assert(pr.badge.length > 0, 'source badge painted: ' + pr.badge);
+          /* settings gear: opacity/speed hide behind it, panel stays slim */
+          const gearProbe = document.createElement('script');
+          gearProbe.textContent = `window.__gearProbe = { before: el.radarAdvanced.classList.contains('hidden') };
+            el.radarSettings.click();
+            window.__gearProbe.after = el.radarAdvanced.classList.contains('hidden');
+            window.__gearProbe.expanded = el.radarSettings.getAttribute('aria-expanded');
+            el.radarSettings.click();`;
+          document.body.appendChild(gearProbe);
+          const gp = window.__gearProbe || {};
+          assert(gp.before === true && gp.after === false, 'opacity/speed hidden by default, gear reveals them');
+          assert(gp.expanded === 'true', 'settings gear reflects aria-expanded');
+          /* source switching: sat hides the radar pair, radar hides the base */
+          const srcProbe = document.createElement('script');
+          srcProbe.textContent = `window.__srcProbe = {};
+            RADAR.setSource('sat');
+            window.__srcProbe.sat = {
+              src: RADAR.source,
+              on: document.querySelector('.radar-source[data-source="sat"]').classList.contains('on'),
+              auto: document.querySelector('.radar-source[data-source="auto"]').classList.contains('on')
+            };
+            RADAR.setSource('radar');
+            window.__srcProbe.radar = { src: RADAR.source, badge: document.getElementById('radar-badge').textContent };
+            RADAR.setSource('auto');
+            window.__srcProbe.back = { src: RADAR.source, on: document.querySelector('.radar-source[data-source="auto"]').classList.contains('on') };`;
+          document.body.appendChild(srcProbe);
+          const sp = window.__srcProbe || {};
+          assert(sp.sat && sp.sat.src === 'sat' && sp.sat.on === true && sp.sat.auto === false, 'sat mode activates its button');
+          assert(sp.radar && sp.radar.src === 'radar' && /Радар|Radar/.test(sp.radar.badge), 'radar mode repaints the badge: ' + sp.radar.badge);
+          assert(sp.back && sp.back.src === 'auto' && sp.back.on === true, 'auto source button state follows setSource()');
+          /* disable removes the layer pairs — no leaks on repeated toggles */
+          window.LiveSkyMap._impl.radarDisable();
+          const clean = document.createElement('script');
+          clean.textContent = `window.__radarClean = { active: RADAR.active, base: !!fullMapInst.getSource('precip-base-a'), radar: !!fullMapInst.getSource('precip-radar-a') };`;
+          document.body.appendChild(clean);
+          const cl = window.__radarClean || {};
+          assert(cl.active === false, 'radar disabled');
+          assert(cl.base === false && cl.radar === false, 'layer pairs removed on disable (no leaks)');
+        } catch (e) { errors.push('hybrid radar probe crashed: ' + e.message); }
+        window.LiveSkyMap._call('radarDisable');
+      }, 900);
+
       /* Facade wrappers must be safe no-ops AND working passthroughs. */
       window.LiveSkyMap.update();
       window.LiveSkyMap.refreshTiles();
@@ -683,6 +757,66 @@ setTimeout(() => {
     assert(/Тяните|минут/i.test(q('chart-swipe-hint').textContent), 'temperature chart has a minute-scrub gesture hint: ' + q('chart-swipe-hint').textContent);
     assert(q('chart-svg').querySelectorAll('path').length >= 2, 'chart svg has paths');
     assert(q('chart-rain-summary') !== null, 'chart rain summary exists');
+    /* Merged forecast card: chart ⇄ hourly blocks toggle */
+    {
+      const card = document.querySelector('[data-section="forecast"]');
+      assert(card !== null, 'chart+hourly merged into ONE forecast section');
+      assert(card.querySelector('#forecast-toggle') !== null, 'forecast toggle exists');
+      const chartBtn = q('forecast-view-chart'), blocksBtn = q('forecast-view-blocks');
+      const chartPane = q('forecast-view-chart-pane'), blocksPane = q('forecast-view-blocks-pane');
+      assert(chartBtn && blocksBtn && chartPane && blocksPane, 'forecast toggle panes/buttons exist');
+      assert(chartBtn.classList.contains('active') && chartBtn.getAttribute('aria-selected') === 'true', 'chart view active by default');
+      assert(!chartPane.classList.contains('hidden') && blocksPane.classList.contains('hidden'), 'chart pane visible, blocks pane hidden by default');
+      blocksBtn.click();
+      assert(blocksBtn.classList.contains('active') && blocksBtn.getAttribute('aria-selected') === 'true', 'blocks button activates on click');
+      /* The switch is animated: the outgoing pane is pinned on top (pane-out)
+         and the incoming one slides in underneath — neither is hard-hidden yet. */
+      assert(chartPane.classList.contains('pane-out') && !chartPane.classList.contains('hidden'), 'chart pane fades out during the switch');
+      assert(!blocksPane.classList.contains('hidden') && blocksPane.classList.contains('pane-in'), 'hours pane slides in during the switch');
+      assert(JSON.parse(window.localStorage.getItem('livesky:forecast_view')) === 'blocks', 'forecast view persisted');
+      /* Poll instead of a fixed delay: the transition finishes at 420ms of
+         animation time, but a busy event loop can delay the timer arbitrarily. */
+      const waitForAnim = (cond, ms) => new Promise((res) => {
+        const t0 = Date.now();
+        const tick = () => {
+          if (cond() || Date.now() - t0 > ms) return res();
+          setTimeout(tick, 40);
+        };
+        tick();
+      });
+      (async () => {
+        try {
+          await waitForAnim(() => chartPane.classList.contains('hidden'), 2500);
+          assert(chartPane.classList.contains('hidden') && !blocksPane.classList.contains('hidden'), 'animation finished: chart hidden, hours pane takes over');
+          assert(!chartPane.classList.contains('pane-out') && !blocksPane.classList.contains('pane-in'), 'animation classes cleaned up');
+          chartBtn.click();
+          assert(chartBtn.classList.contains('active') && chartBtn.getAttribute('aria-selected') === 'true', 'chart button activates on second toggle');
+          assert(blocksPane.classList.contains('pane-out') && !chartPane.classList.contains('hidden'), 'switch back animates too');
+          await waitForAnim(() => blocksPane.classList.contains('hidden'), 2500);
+          assert(!chartPane.classList.contains('hidden') && blocksPane.classList.contains('hidden'), 'chart pane back visible after second toggle');
+          assert(JSON.parse(window.localStorage.getItem('livesky:forecast_view')) === 'chart', 'forecast view persisted back');
+          /* Rapid re-switching must never leave both panes invisible:
+             every in-flight animation state is cleared before a new switch. */
+          blocksBtn.click(); chartBtn.click(); blocksBtn.click(); chartBtn.click();
+          await waitForAnim(() => blocksPane.classList.contains('hidden') && chartPane.classList.contains('hidden') === false, 2500);
+          assert(!chartPane.classList.contains('hidden') && blocksPane.classList.contains('hidden'), 'rapid switching ends with exactly one visible pane');
+          assert(!chartPane.classList.contains('pane-out') && !chartPane.classList.contains('pane-in') &&
+                 !blocksPane.classList.contains('pane-out') && !blocksPane.classList.contains('pane-in'),
+            'no animation classes leaked on either pane after rapid clicks');
+          assert(chartBtn.classList.contains('active') && chartBtn.getAttribute('aria-selected') === 'true', 'rapid switching ends on the clicked view');
+        } catch (e) { errors.push('forecast switch animation crashed: ' + e.message); }
+      })();
+      /* the now tag sits at the current time, not the left edge: today 00:00 origin */
+      const tag = q('chart-plot').querySelector('.chart-now-tag');
+      assert(tag !== null, 'chart shows a "now" tag');
+      const tagLeft = parseFloat(tag.style.left);
+      assert(tagLeft > 1 && tagLeft < 99, 'now-tag is at the real minute position (' + tagLeft + '%)');
+      const nowLine = q('chart-svg').querySelector('.chart-now-line');
+      if (nowLine) {
+        const x = parseFloat(nowLine.getAttribute('x1'));
+        assert(x > 1 && x < 99, 'now-line at real position, not always x=0 (' + x + ')');
+      }
+    }
     {
       const svg = q('chart-svg').innerHTML;
       const hasHatch = /tempUnderClip/.test(svg) && /rainHatch_/.test(svg);
@@ -782,11 +916,44 @@ setTimeout(() => {
     assert(document.documentElement.dataset.theme === 'light', 'theme pick via menu works');
     assert(!q('main-menu').classList.contains('open'), 'menu closes after theme pick');
     window.setTheme('adaptive');
+    /* settings panel: structured segmented controls instead of selects */
+    q('menu-btn').click();
+    assert(q('menu-close') !== null && q('main-menu').querySelector('.mm-head') !== null, 'settings panel has a head with title + close');
+    assert(q('main-menu').querySelectorAll('[data-units]').length === 2 &&
+           q('main-menu').querySelectorAll('[data-model]').length === 4 &&
+           q('main-menu').querySelectorAll('[data-effects]').length === 3,
+      'units/model/effects are segmented controls');
+    assert(q('main-menu').querySelector('[data-units="metric"]').classList.contains('seg-selected'), 'metric marked selected by default');
+    const stateProbe = () => {
+      const p = document.createElement('script');
+      p.textContent = `
+        window.__menuProbe = {
+          units: state.units, model: state.model, effects: state.effects,
+          temp: fmtTempDeg(interpHour(state.weather.hourly, 'temperature_2m', state.nowIdx))
+        };`;
+      document.body.appendChild(p);
+      return window.__menuProbe || {};
+    };
+    const unitsBefore = stateProbe();
+    q('main-menu').querySelector('[data-units="imperial"]').click();
+    const unitsAfter = stateProbe();
+    assert(unitsAfter.units === 'imperial', 'units switch via segments');
+    assert(q('main-menu').querySelector('[data-units="imperial"]').getAttribute('aria-checked') === 'true', 'imperial aria-checked after switch');
+    assert(unitsAfter.temp !== unitsBefore.temp, 'temperatures re-render after units switch: ' + unitsBefore.temp + ' → ' + unitsAfter.temp);
+    q('menu-btn').click();
+    q('main-menu').querySelector('[data-units="metric"]').click();
+    assert(stateProbe().units === 'metric', 'units back to metric via segments');
+    assert(q('main-menu').querySelector('[data-effects="auto"]').classList.contains('seg-selected'), 'effects default shown selected');
+    q('menu-btn').click();
+    q('main-menu').querySelector('[data-effects="eco"]').click();
+    assert(stateProbe().effects === 'eco', 'effects switch via segments');
+    window.setEffects('auto');
 
     /* autocomplete keyboard navigation */
     q('fav-btn').click(); /* add current city to favorites so the list has items */
     q('city-input').focus();
     q('city-input').dispatchEvent(new window.Event('focus'));
+
     assert(!q('autocomplete-list').classList.contains('hidden'), 'autocomplete opens on focus');
     q('city-input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
     assert(q('autocomplete-list').querySelector('.ac-item.active') !== null, 'arrow key highlights autocomplete item');
@@ -853,6 +1020,33 @@ setTimeout(() => {
     assert(q('modal').classList.contains('open'), 'advice modal opens');
     assert(document.body.classList.contains('no-scroll'), 'body scroll locked on modal');
     assert(q('modal-body').innerHTML.includes('Что надеть'), 'advice modal has wear note');
+    /* Smart advice: the precip-map engine adds lines Open-Meteo does not
+       produce (ETA when approaching, clearing when raining) — and stays
+       silent while the nowcast has not run. */
+    {
+      const probe = document.createElement('script');
+      probe.textContent = `(function () {
+        const out = {};
+        out.idle = radarAdviceItem(false, false);
+        const origSample = NOWCAST.sampleNowcast;
+        NOWCAST.active = true;
+        let c1 = 0;
+        NOWCAST.sampleNowcast = () => (c1++ === 0 ? 0.01 : 0.8);
+        out.arrive = radarAdviceItem(false, false);
+        let c2 = 0;
+        NOWCAST.sampleNowcast = () => (c2++ === 0 ? 0.8 : 0.01);
+        out.stops = radarAdviceItem(true, false);
+        NOWCAST.sampleNowcast = origSample;
+        NOWCAST.active = false;
+        window.__radarTipProbe = out;
+      })();`;
+      document.body.appendChild(probe);
+      const rp = window.__radarTipProbe || {};
+      assert(rp.idle === null, 'smart advice silent while the nowcast is idle');
+      assert(Array.isArray(rp.arrive) && /Карта осадков/.test(rp.arrive[2]) && /через/.test(rp.arrive[2]),
+        'smart advice reports precip-map ETA: ' + JSON.stringify(rp.arrive));
+      assert(Array.isArray(rp.stops) && /закончится/.test(rp.stops[2]), 'smart advice reports when rain clears: ' + JSON.stringify(rp.stops));
+    }
     /* LifeSky "right now" mini-scores inside the Weather analysis modal */
     assert(q('modal-body').querySelector('.life-now-grid') !== null, 'advice modal shows the LifeSky right-now block');
     const lifeNowCards = q('modal-body').querySelectorAll('.life-now-card[data-life-now]');
@@ -1019,7 +1213,7 @@ function phase4() {
 
 /* phase 5 (regression, Smart Visibility v2): on a real device the browser's
    IntersectionObserver fires immediately for visible sections and calls
-   SECTION_MANAGER.activate('chart'/'hourly'/'daily') BEFORE the first fetch
+   SECTION_MANAGER.activate('forecast'/'daily') BEFORE the first fetch
    has resolved (state.weather === null). This used to crash with
    "Cannot read properties of null (reading 'hourly')". The manager must:
      1) not throw,
@@ -1039,7 +1233,7 @@ function phase5() {
   const probe = doc.createElement('script');
   probe.textContent = `
     try {
-      const names = ['chart', 'hourly', 'daily'];
+      const names = ['forecast', 'daily'];
       const res = { threw: null, weatherNull: state.weather === null, dirtyBefore: {}, dirtyAfter: {} };
       names.forEach((n) => { res.dirtyBefore[n] = SECTION_MANAGER.sections.get(n).dirty; });
       names.forEach((n) => { const s = SECTION_MANAGER.sections.get(n); SECTION_MANAGER.activate(n, s.el); });
@@ -1051,41 +1245,40 @@ function phase5() {
   const p = w.__sectionProbe || { threw: 'probe did not run' };
   assert(p.threw == null, 'phase5: activate() before first fetch does not throw (' + (p.threw || 'ok') + ')');
   assert(p.weatherNull === true, 'phase5: probe ran while state.weather was still null');
-  assert(p.dirtyBefore && p.dirtyBefore.chart === true, 'phase5: sections start dirty (nothing rendered yet)');
-  assert(p.dirtyAfter && p.dirtyAfter.chart === true && p.dirtyAfter.hourly === true && p.dirtyAfter.daily === true,
+  assert(p.dirtyBefore && p.dirtyBefore.forecast === true, 'phase5: sections start dirty (nothing rendered yet)');
+  assert(p.dirtyAfter && p.dirtyAfter.forecast === true && p.dirtyAfter.daily === true,
     'phase5: sections stay dirty when render is skipped (no data yet)');
 
   releaseFetch(); /* the slow network finally answers */
   setTimeout(() => {
     try {
       const q5 = (id) => doc.getElementById(id);
-      assert(q5('hourly-strip').children.length > 0, 'phase5: hourly section renders once the slow fetch resolves');
+      assert(q5('hourly-strip').children.length > 0, 'phase5: forecast section renders once the slow fetch resolves');
       const probe2 = doc.createElement('script');
       probe2.textContent = `
         window.__sectionProbe2 = {
-          chart: SECTION_MANAGER.sections.get('chart').dirty,
-          hourly: SECTION_MANAGER.sections.get('hourly').dirty,
+          forecast: SECTION_MANAGER.sections.get('forecast').dirty,
           daily: SECTION_MANAGER.sections.get('daily').dirty
         };
       `;
       doc.body.appendChild(probe2);
       const p2 = w.__sectionProbe2 || {};
-      assert(p2.chart === false && p2.hourly === false && p2.daily === false,
+      assert(p2.forecast === false && p2.daily === false,
         'phase5: dirty flags cleared after the sections actually rendered');
 
-      /* Regression: unloading and restoring the chart used to render while its
+      /* Regression: unloading and restoring the forecast used to render while its
          card was detached. The global id lookup then missed the cached summary
          and injected another "No rain" chip on every restore. */
       const probe3 = doc.createElement('script');
       probe3.textContent = `
-        const chartSection = SECTION_MANAGER.sections.get('chart');
-        SECTION_MANAGER.unload('chart', chartSection.el);
-        SECTION_MANAGER.activate('chart', chartSection.el);
-        window.__chartSummaryCount = chartSection.el.querySelectorAll('#chart-rain-summary').length;
+        const forecastSection = SECTION_MANAGER.sections.get('forecast');
+        SECTION_MANAGER.unload('forecast', forecastSection.el);
+        SECTION_MANAGER.activate('forecast', forecastSection.el);
+        window.__chartSummaryCount = forecastSection.el.querySelectorAll('#chart-rain-summary').length;
       `;
       doc.body.appendChild(probe3);
       assert(w.__chartSummaryCount === 1,
-        'phase6: chart restore keeps exactly one rain summary (' + w.__chartSummaryCount + ')');
+        'phase6: forecast restore keeps exactly one rain summary (' + w.__chartSummaryCount + ')');
       phase6();
     } catch (e) { errors.push('phase5 crashed: ' + e.message); phase6(); }
   }, 900);
@@ -1242,6 +1435,68 @@ function phase8() {
   }, 300);
 }
 
+/* phase 10 (i18n regression): switching the language must repaint EVERY block,
+   including sections the SECTION_MANAGER has unloaded (heavy cards swapped for
+   skeletons). applyTranslations() only touches [data-translate] nodes in the
+   live DOM — detached cached cards must be re-rendered on the next activation
+   or they stay in the old language until a hard reload. */
+function phase10() {
+  const { w, doc } = makeWorld();
+  w.fetch = makeFetchStub();
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q10 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      if (q10('consent-accept-btn')) q10('consent-accept-btn').click();
+      if (q10('privacy-accept-btn')) q10('privacy-accept-btn').click();
+      setTimeout(() => {
+        try {
+          const probe = doc.createElement('script');
+          probe.textContent = `
+            const fc = SECTION_MANAGER.sections.get('forecast');
+            const dl = SECTION_MANAGER.sections.get('daily');
+            /* 1) unload both heavy sections (cards get detached+cached) */
+            SECTION_MANAGER.unload('forecast', fc.el);
+            SECTION_MANAGER.unload('daily', dl.el);
+            /* 2) switch language while they are off-screen */
+            setLang('en');
+            window.__i18n = { detached: !!(fc.skeleton && fc.card && dl.skeleton && dl.card),
+              detail: { fcSkel: !!fc.skeleton, fcCard: !!fc.card, dlSkel: !!dl.skeleton, dlCard: !!dl.card,
+                fcState: fc.state, dlState: dl.state, fcDirty: fc.dirty, dlDirty: dl.dirty } };
+            /* 3) scroll them back — cached card must repaint in English */
+            SECTION_MANAGER.activate('forecast', fc.el);
+            SECTION_MANAGER.activate('daily', dl.el);
+            window.__i18n.forecast = {
+              title: document.getElementById('chart-title').textContent,
+              summary: document.getElementById('chart-rain-summary').textContent,
+              hourlyFirst: (document.querySelector('#hourly-strip .h-i') || {}).textContent || (document.querySelector('#hourly-strip') || {}).textContent,
+              axis: document.getElementById('chart-axis').textContent
+            };
+            window.__i18n.dailyFirst = (document.querySelector('#daily-strip .d-i') || {}).textContent || (document.querySelector('#daily-strip') || {}).textContent;
+          `;
+          doc.body.appendChild(probe);
+          const p = w.__i18n || {};
+          assert(p.detached === true, 'phase10: both heavy sections were unloaded before the switch: ' + JSON.stringify(p.detail));
+          assert(/Forecast · 24 hours/.test(p.forecast && p.forecast.title), 'phase10: section title repainted in English: ' + (p.forecast && p.forecast.title));
+          assert(p.forecast && p.forecast.summary && p.forecast.summary.length > 0, 'phase10: chart summary present after re-render');
+          assert(/No rain|Rain/.test(p.forecast && p.forecast.summary), 'phase10: chart summary is English: ' + (p.forecast && p.forecast.summary));
+          assert(p.forecast && p.forecast.axis && p.forecast.axis.length > 0, 'phase10: chart axis repainted');
+          assert(p.forecast && p.forecast.hourlyFirst && p.forecast.hourlyFirst.length > 0, 'phase10: hourly strip repainted');
+          assert(p.dailyFirst && p.dailyFirst.length > 0, 'phase10: daily strip repainted');
+          /* and the currently-rendered air card + radar chrome are not stale */
+          const probe2 = doc.createElement('script');
+          probe2.textContent = 'window.__i18n2 = { air: !!document.getElementById("aqi-card"), footer: document.querySelector(".footer-copy").textContent };';
+          doc.body.appendChild(probe2);
+          const p2 = w.__i18n2 || {};
+          assert(p2.air === true, 'phase10: air card exists after switch');
+          finish();
+        } catch (e) { errors.push('phase10 crashed: ' + e.message); finish(); }
+      }, 700);
+    } catch (e) { errors.push('phase10 crashed: ' + e.message); finish(); }
+  }, 900);
+}
+
 /* phase 9: verify GlassFX (rain-on-glass droplet effect) is a no-op stub —
    the effect was removed; GlassFX must exist as a stub so call sites don't
    break, but it must never inject DOM layers or animate anything. */
@@ -1274,8 +1529,8 @@ function phase9() {
       assert(gp.hasResize === true,   'phase9: GlassFX stub has resize()');
       assert(gp.noLayers === true,    'phase9: no .glass-fx-layer DOM nodes injected (effect removed)');
       assert(gp.notRunning === true,  'phase9: GlassFX.running is false (stub, not active)');
-      finish();
-    } catch (e) { errors.push('phase9 crashed: ' + e.message); finish(); }
+      phase10();
+    } catch (e) { errors.push('phase9 crashed: ' + e.message); phase10(); }
   }, 900);
 }
 

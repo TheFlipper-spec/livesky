@@ -20,13 +20,15 @@ const SECTION_MANAGER = {
   io: null,
   ioUnload: null,
   sections: new Map(),
-  priorities: ['hero', 'chart', 'hourly', 'daily', 'lifestyle'],
+  priorities: ['hero', 'forecast', 'daily', 'lifestyle'],
 
   /* Heavy per-section renderers. Hero + sidebar content is always rendered
-     eagerly (it's the first thing the user sees), so only these are deferred. */
+     eagerly (it's the first thing the user sees), so only these are deferred.
+     The 24h temperature chart and the hourly blocks now live in ONE section
+     ("forecast") and are both painted together — the user switches between
+     them with the in-card toggle, without a second section. */
   renderers: {
-    chart: () => renderChart(),
-    hourly: () => renderHourly(),
+    forecast: () => { renderChart(); renderHourly(); },
     daily: () => renderDaily()
   },
 
@@ -102,6 +104,21 @@ const SECTION_MANAGER = {
     });
   },
 
+  /* Re-apply [data-translate] inside a section's card. Heavy renderers paint
+     their dynamic strings via t(), but static data-translate headers inside the
+     card (e.g. #chart-title) are handled by applyTranslations(), which only
+     runs over the LIVE DOM — a cached card restored from unload keeps the old
+     language unless we translate it again here (the "blocks don't translate
+     until reload" bug). */
+  applySectionTranslations(name) {
+    const s = this.sections.get(name);
+    if (!s || !s.el) return;
+    s.el.querySelectorAll('[data-translate]').forEach(node => {
+      const key = node.dataset.translate;
+      if (key && typeof t === 'function') node.textContent = t(key);
+    });
+  },
+
   /* Runs a heavy renderer. Returns true only if the render actually happened.
      On a real device the IntersectionObserver fires immediately for the
      sections that are in the viewport (chart/hourly/daily) — BEFORE the first
@@ -157,6 +174,9 @@ const SECTION_MANAGER = {
     if (wasUnloaded || section.dirty) {
       if (this.runRenderer(name)) section.dirty = false;
     }
+    /* A card restored from unload may predate a language switch — repaint its
+       static data-translate nodes in the current language. */
+    this.applySectionTranslations(name);
     el.classList.remove('section-skeleton');
 
     if (immediate) {
@@ -238,7 +258,7 @@ const SECTION_MANAGER = {
     el.classList.add('section-skeleton');
 
     /* Pause any running timers related to this section */
-    if (name === 'chart') hideChartGuide();
+    if (name === 'forecast') hideChartGuide();
   },
 
   /* Re-insert the cached card (if it was unloaded) — instant, no re-render. */
@@ -287,6 +307,8 @@ function applyEffects() {
   else if (state.weather) applyWeatherTheme();
 }
 function syncEffectsSelect() {
-  if (el.effectsSelect) el.effectsSelect.value = state.effects;
+  /* The settings panel now uses segmented radios (no <select>); its marker is
+     synced through syncMenuChecks() from the menu module. */
+  if (typeof syncMenuChecks === 'function') syncMenuChecks();
 }
 

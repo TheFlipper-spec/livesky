@@ -4,11 +4,11 @@ function renderAll() {
   updateHero();
   updateMetrics();
   renderSunArc();
-  /* The heavy chart/hourly/daily renderers are routed through the Section
-     Manager so off-screen sections are skipped (and re-rendered lazily when
-     they scroll back into view) instead of always rebuilding their DOM. */
-  SECTION_MANAGER.renderSection('chart');
-  SECTION_MANAGER.renderSection('hourly');
+  /* The heavy forecast (chart + hourly blocks) and daily renderers are routed
+     through the Section Manager so off-screen sections are skipped (and
+     re-rendered lazily when they scroll back into view) instead of always
+     rebuilding their DOM. */
+  SECTION_MANAGER.renderSection('forecast');
   SECTION_MANAGER.renderSection('daily');
   renderAlerts();
   updateFavIcon();

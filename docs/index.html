@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>LiveSky — Погода, которая впечатляет</title>
-  <meta name="description" content="LiveSky Weather Pro 1.3 — поминутный прогноз, живые обновления, карта осадков, графики, качество воздуха и офлайн-доступ." />
+  <meta name="description" content="LiveSky Weather Pro 1.4 — поминутный прогноз, живые обновления, карта осадков, графики, качество воздуха и офлайн-доступ." />
   <meta name="theme-color" content="#05070f" />
-  <meta name="application-version" content="1.3" />
+  <meta name="application-version" content="1.4" />
   <meta name="msapplication-TileColor" content="#38bdf8" />
   <link rel="icon" href="favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=45" />
+  <link rel="stylesheet" href="css/app.css?v=56" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -166,49 +166,84 @@
           <button class="hbtn" id="menu-btn" aria-haspopup="true" aria-expanded="false" aria-label="Меню" title="Меню">
             <i class="ph ph-sliders-horizontal"></i>
           </button>
-          <div class="dropdown" id="main-menu">
-            <div class="dd-group-label" data-translate="language">Язык</div>
-            <button class="dd-item" data-lang="ru"><img class="lang-flag" src="assets/flags/ru.svg" alt="" loading="lazy"><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="en"><img class="lang-flag" src="assets/flags/gb.svg" alt="" loading="lazy"><span data-translate="lang_en">English</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-lang="es"><img class="lang-flag" src="assets/flags/es.svg" alt="" loading="lazy"><span data-translate="lang_es">Español</span><i class="ph-bold ph-check dd-check"></i></button>
+          <div class="dropdown settings-menu" id="main-menu" role="dialog" aria-label="Настройки">
+            <div class="mm-head">
+              <div class="mm-title">
+                <span class="mm-title-ico"><i class="ph-bold ph-sliders-horizontal"></i></span>
+                <div class="mm-title-text">
+                  <b data-translate="settings_title">Настройки</b>
+                  <small data-translate="settings_sub">Язык · тема · данные</small>
+                </div>
+              </div>
+              <button type="button" class="mm-close" id="menu-close" aria-label="Закрыть"><i class="ph-bold ph-x"></i></button>
+            </div>
 
-            <div class="dd-group-label"><span data-translate="theme_group">Тема</span> · <span id="theme-label"></span></div>
-            <button class="dd-item" data-theme-pick="adaptive"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-theme-pick="dark"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check dd-check"></i></button>
-            <button class="dd-item" data-theme-pick="light"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check dd-check"></i></button>
+            <div class="mm-scroll">
+              <section class="mm-group">
+                <div class="mm-label"><i class="ph ph-translate"></i><span data-translate="language">Язык</span></div>
+                <div class="mm-seg mm-seg-3" id="lang-seg" role="radiogroup" aria-label="Язык">
+                  <button type="button" class="seg-btn" data-lang="ru" role="radio" aria-checked="false"><img class="lang-flag" src="assets/flags/ru.svg" alt="" loading="lazy"><span data-translate="lang_ru">Русский</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-lang="en" role="radio" aria-checked="false"><img class="lang-flag" src="assets/flags/gb.svg" alt="" loading="lazy"><span data-translate="lang_en">English</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-lang="es" role="radio" aria-checked="false"><img class="lang-flag" src="assets/flags/es.svg" alt="" loading="lazy"><span data-translate="lang_es">Español</span><i class="ph-bold ph-check seg-check"></i></button>
+                </div>
+              </section>
 
-            <div class="dd-group-label" data-translate="units">Единицы</div>
-            <select class="dd-select" id="units-select">
-              <option value="metric">Metric (°C, km/h)</option>
-              <option value="imperial">Imperial (°F, mph)</option>
-            </select>
+              <section class="mm-group">
+                <div class="mm-label"><i class="ph ph-sun-dim"></i><span data-translate="theme_group">Тема</span><span class="mm-value" id="theme-label" data-translate="theme_adaptive">Адаптивная</span></div>
+                <div class="mm-seg mm-seg-3" id="theme-seg" role="radiogroup" aria-label="Тема">
+                  <button type="button" class="seg-btn" data-theme-pick="adaptive" role="radio" aria-checked="false"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-theme-pick="dark" role="radio" aria-checked="false"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-theme-pick="light" role="radio" aria-checked="false"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check seg-check"></i></button>
+                </div>
+              </section>
 
-            <div class="dd-group-label" data-translate="source">Модель данных</div>
-            <select class="dd-select" id="model-select">
-              <option value="auto">Auto (Best Match)</option>
-              <option value="ecmwf_ifs025">ECMWF (Europe)</option>
-              <option value="gfs_seamless">GFS (Global)</option>
-              <option value="icon_seamless">ICON (DWD)</option>
-            </select>
+              <section class="mm-group">
+                <div class="mm-label"><i class="ph ph-globe-hemisphere-west"></i><span data-translate="source">Модель данных</span></div>
+                <div class="mm-seg mm-seg-2" id="model-seg" role="radiogroup" aria-label="Модель данных">
+                  <button type="button" class="seg-btn" data-model="auto" role="radio" aria-checked="false"><span data-translate="source_model_short_auto">Авто</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-model="ecmwf_ifs025" role="radio" aria-checked="false"><span data-translate="source_model_short_ecmwf">ECMWF</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-model="gfs_seamless" role="radio" aria-checked="false"><span data-translate="source_model_short_gfs">GFS</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-model="icon_seamless" role="radio" aria-checked="false"><span data-translate="source_model_short_icon">ICON</span><i class="ph-bold ph-check seg-check"></i></button>
+                </div>
+              </section>
 
-            <div class="dd-group-label"><span data-translate="effects_group">Производительность</span></div>
-            <select class="dd-select" id="effects-select">
-              <option value="auto" data-translate="effects_auto">Авто (по FPS)</option>
-              <option value="full" data-translate="effects_full">Максимум</option>
-              <option value="eco" data-translate="effects_eco">Эконом</option>
-            </select>
+              <section class="mm-group">
+                <div class="mm-label"><i class="ph ph-ruler"></i><span data-translate="units">Единицы</span></div>
+                <div class="mm-seg mm-seg-list" id="units-seg" role="radiogroup" aria-label="Единицы">
+                  <button type="button" class="seg-btn" data-units="metric" role="radio" aria-checked="false"><i class="ph ph-thermometer-simple"></i><span data-translate="units_metric_short">°C · км/ч</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-units="imperial" role="radio" aria-checked="false"><i class="ph ph-thermometer"></i><span data-translate="units_imperial_short">°F · миль/ч</span><i class="ph-bold ph-check seg-check"></i></button>
+                </div>
+              </section>
 
-            <div class="dd-group-label" data-translate="actions">Действия</div>
-            <button class="dd-item hidden" id="install-item"><i class="ph ph-download-simple"></i><span data-translate="install_app">Установить приложение</span></button>
-            <button class="dd-item" id="notif-item"><i id="notif-ico" class="ph ph-bell"></i><span id="notif-label" data-translate="notif_enable">Погодные уведомления</span></button>
-            <button class="dd-item" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location">Моё местоположение</span></button>
-            <button class="dd-item" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
-            <button class="dd-item" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_data">Обновить данные</span></button>
+              <section class="mm-group">
+                <div class="mm-label"><i class="ph ph-battery-high"></i><span data-translate="effects_group">Производительность</span></div>
+                <div class="mm-seg mm-seg-3" id="effects-seg" role="radiogroup" aria-label="Производительность">
+                  <button type="button" class="seg-btn" data-effects="auto" role="radio" aria-checked="false"><i class="ph ph-magic-wand"></i><span data-translate="effects_short_auto">Авто</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-effects="full" role="radio" aria-checked="false"><i class="ph ph-rocket-launch"></i><span data-translate="effects_full">Максимум</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-effects="eco" role="radio" aria-checked="false"><i class="ph ph-leaf"></i><span data-translate="effects_eco">Эконом</span><i class="ph-bold ph-check seg-check"></i></button>
+                </div>
+              </section>
 
-            <div class="dd-group-label" data-translate="legal_info">Юридическая информация</div>
-            <a class="dd-item" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
-            <a class="dd-item" href="legal/privacy.html" target="_blank" rel="noopener"><i class="ph ph-shield-check"></i><span data-translate="privacy_policy">Политика конфиденциальности</span></a>
+              <section class="mm-group mm-actions">
+                <div class="mm-label"><i class="ph ph-lightning"></i><span data-translate="actions">Действия</span><button type="button" class="mm-install hidden" id="install-item"><i class="ph ph-download-simple"></i><span data-translate="install_short">Установить</span></button></div>
+                <div class="mm-tiles">
+                  <button type="button" class="dd-tile" id="notif-item"><i id="notif-ico" class="ph ph-bell"></i><span id="notif-label" data-translate="notif_enable_short">Уведомления</span></button>
+                  <button type="button" class="dd-tile" id="geo-item"><i class="ph ph-navigation-arrow"></i><span data-translate="my_location_short">Геолокация</span></button>
+                  <button type="button" class="dd-tile" id="fs-item"><i id="fs-icon" class="ph ph-corners-out"></i><span data-translate="fullscreen">Полный экран</span></button>
+                  <button type="button" class="dd-tile" id="refresh-item"><i class="ph ph-arrow-clockwise"></i><span data-translate="refresh_short">Обновить</span></button>
+                </div>
+              </section>
+
+              <section class="mm-group mm-legal">
+                <div class="mm-label"><i class="ph ph-shield-check"></i><span data-translate="legal_info">Юридическая информация</span></div>
+                <div class="mm-tiles">
+                  <a class="dd-tile" href="legal/terms.html" target="_blank" rel="noopener"><i class="ph ph-file-text"></i><span data-translate="terms_service">Пользовательское соглашение</span></a>
+                  <a class="dd-tile" href="legal/privacy.html" target="_blank" rel="noopener"><i class="ph ph-lock-key"></i><span data-translate="privacy_policy">Политика конфиденциальности</span></a>
+                </div>
+              </section>
+            </div>
           </div>
+          <div class="menu-backdrop" id="menu-backdrop"></div>
         </div>
       </div>
     </header>
@@ -373,46 +408,53 @@
       </div>
       </div>
 
-      <!-- ==== Chart 24h ==== -->
-      <div data-section="chart" data-section-priority="2" class="section-root">
-      <section class="card chart-card reveal">
+      <!-- ==== Forecast 24h: merged temperature chart + hourly blocks (toggle) ==== -->
+      <div data-section="forecast" data-section-priority="2" class="section-root">
+      <section class="card forecast-card reveal">
         <div class="section-head" style="margin-bottom:6px">
-          <div class="section-title"><span class="tint"><i class="ph ph-chart-line"></i></span><span id="chart-title" data-translate="chart_title">Температура · 24 часа</span></div>
+          <div class="section-title"><span class="tint"><i class="ph ph-chart-line"></i></span><span id="chart-title" data-translate="forecast24_title">Прогноз · 24 часа</span></div>
+          <div class="forecast-toggle" id="forecast-toggle" role="tablist" aria-label="Режим прогноза">
+            <button type="button" class="ft-btn active" id="forecast-view-chart" data-view="chart" role="tab" aria-selected="true" aria-controls="forecast-view-chart-pane">
+              <i class="ph ph-chart-line"></i><span data-translate="view_chart">График</span>
+            </button>
+            <button type="button" class="ft-btn" id="forecast-view-blocks" data-view="blocks" role="tab" aria-selected="false" aria-controls="forecast-view-blocks-pane">
+              <i class="ph ph-clock-afternoon"></i><span data-translate="view_hours">Часы</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Chart view -->
+        <div class="forecast-pane" id="forecast-view-chart-pane" role="tabpanel" aria-labelledby="forecast-view-chart">
           <div class="chart-legend">
             <span class="lg lg-temp"></span><span data-translate="temp_legend">Температура</span>
             <span class="lg lg-precip" style="margin-left:10px"></span><span data-translate="precip_legend">Осадки</span>
             <span class="lg lg-rain-zone" style="margin-left:10px"></span><span data-translate="chart_rain_zone">Дождь</span>
           </div>
-        </div>
-        <div class="chart-rain-summary" id="chart-rain-summary"></div>
-        <div class="chart-scroll" id="chart-scroll" role="region" tabindex="0" aria-labelledby="chart-title" aria-describedby="chart-swipe-hint">
-          <div class="chart-track">
-            <div class="chart-plot" id="chart-plot">
-              <svg id="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
-              <div class="chart-scrub" id="chart-scrub" aria-hidden="true"></div>
-              <div class="chart-guide" id="chart-guide"><i id="chart-guide-dot"></i></div>
+          <div class="chart-rain-summary" id="chart-rain-summary"></div>
+          <div class="chart-scroll" id="chart-scroll" role="region" tabindex="0" aria-labelledby="chart-title" aria-describedby="chart-swipe-hint">
+            <div class="chart-track">
+              <div class="chart-plot" id="chart-plot">
+                <svg id="chart-svg" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+                <div class="chart-scrub" id="chart-scrub" aria-hidden="true"></div>
+                <div class="chart-guide" id="chart-guide"><i id="chart-guide-dot"></i></div>
+              </div>
+              <div class="chart-axis" id="chart-axis"></div>
             </div>
-            <div class="chart-axis" id="chart-axis"></div>
           </div>
+          <div class="chart-swipe-hint" id="chart-swipe-hint">
+            <i class="ph ph-hand-pointing" aria-hidden="true"></i>
+            <span data-translate="chart_swipe">Тяните точку по графику — минуты между часами</span>
+          </div>
+          <div class="chart-detail" id="chart-detail"></div>
         </div>
-        <div class="chart-swipe-hint" id="chart-swipe-hint">
-          <i class="ph ph-hand-pointing" aria-hidden="true"></i>
-          <span data-translate="chart_swipe">Тяните точку по графику — минуты между часами</span>
-        </div>
-        <div class="chart-detail" id="chart-detail"></div>
-      </section>
-      </div>
 
-      <!-- ==== Hourly ==== -->
-      <div data-section="hourly" data-section-priority="3" class="section-root">
-      <section class="card hourly-card reveal" style="--rd:60ms">
-        <div class="section-head">
-          <div class="section-title"><span class="tint"><i class="ph ph-clock-afternoon"></i></span><span data-translate="hourly">Следующие 24 часа</span></div>
-        </div>
-        <div class="hourly-shell">
-          <button class="strip-nav left" id="hourly-left" aria-label="Назад"><i class="ph-bold ph-caret-left"></i></button>
-          <div class="hourly-strip" id="hourly-strip"></div>
-          <button class="strip-nav right" id="hourly-right" aria-label="Вперёд"><i class="ph-bold ph-caret-right"></i></button>
+        <!-- Hourly blocks view -->
+        <div class="forecast-pane hidden" id="forecast-view-blocks-pane" role="tabpanel" aria-labelledby="forecast-view-blocks">
+          <div class="hourly-shell">
+            <button class="strip-nav left" id="hourly-left" aria-label="Назад"><i class="ph-bold ph-caret-left"></i></button>
+            <div class="hourly-strip" id="hourly-strip"></div>
+            <button class="strip-nav right" id="hourly-right" aria-label="Вперёд"><i class="ph-bold ph-caret-right"></i></button>
+          </div>
         </div>
       </section>
       </div>
@@ -473,6 +515,7 @@
         (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>).
         <span data-translate="attr_radar_pre">Данные радара —</span>
         <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>.
+        <span class="footer-gibs" data-translate="attr_gibs">Мы используем снимки NASA Global Imagery Browse Services (GIBS) — часть NASA ESDIS</span>.
         <span data-translate="attr_map_pre">Картографические данные ©</span>
         <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>,
         <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>,
@@ -554,16 +597,20 @@
 
     <div class="radar-panel hidden" id="radar-panel" role="region" aria-label="Карта осадков">
       <div class="radar-head">
-        <span class="radar-title"><i class="ph-fill ph-cloud-rain"></i><span data-translate="radar_title">Карта осадков</span></span>
         <span class="radar-badge" id="radar-badge" data-translate="radar_badge_now">Сейчас</span>
         <span class="radar-time" id="radar-time">--:--</span>
         <button class="radar-close" id="radar-close" aria-label="Закрыть"><i class="ph-bold ph-x"></i></button>
+      </div>
+      <!-- One compact summary line above the timeline: ETA + motion for the pin -->
+      <div class="radar-eta hidden" id="radar-eta" role="status" aria-live="polite">
+        <i class="ph-fill ph-cloud-rain" id="radar-eta-ico"></i>
+        <span id="radar-eta-text"></span>
       </div>
       <div class="radar-timeline">
         <button class="radar-nav" id="radar-back" aria-label="Назад"><i class="ph-bold ph-caret-left"></i></button>
         <div class="radar-range">
           <div class="radar-ticks" id="radar-ticks" aria-hidden="true"></div>
-          <input type="range" id="radar-slider" min="0" max="0" value="0" aria-label="Время кадра радара" />
+          <input type="range" id="radar-slider" min="0" max="0" value="0" aria-label="Время кадра осадков" />
           <div class="radar-axis">
             <span data-translate="radar_past">Прошлое</span>
             <span data-translate="radar_now_label">Сейчас</span>
@@ -575,6 +622,22 @@
         <button class="radar-live" id="radar-live" aria-label="К текущему кадру" title="Live"><i class="ph-fill ph-broadcast"></i></button>
       </div>
       <div class="radar-controls">
+        <div class="radar-sources" id="radar-sources" role="group" aria-label="Источник данных осадков">
+          <button type="button" class="radar-source on" id="radar-src-auto" data-source="auto">
+            <i class="ph-fill ph-globe-simple"></i><span data-translate="radar_src_auto">Авто</span>
+          </button>
+          <button type="button" class="radar-source" id="radar-src-sat" data-source="sat">
+            <i class="ph-fill ph-satellite"></i><span data-translate="radar_src_sat">Спутник</span>
+          </button>
+          <button type="button" class="radar-source" id="radar-src-radar" data-source="radar">
+            <i class="ph-fill ph-broadcast"></i><span data-translate="radar_src_radar">Радар</span>
+          </button>
+        </div>
+        <button class="radar-settings" id="radar-settings" aria-expanded="false" aria-label="Настройки слоя" title="Настройки слоя">
+          <i class="ph-fill ph-sliders-horizontal"></i>
+        </button>
+      </div>
+      <div class="radar-advanced hidden" id="radar-advanced">
         <label class="radar-ctrl">
           <span data-translate="radar_opacity">Плотность</span>
           <input type="range" id="radar-opacity" min="20" max="100" value="78" aria-label="Плотность слоя" />
@@ -594,7 +657,6 @@
         <span class="radar-legend-bar"></span>
         <span data-translate="radar_legend_strong">Сильно</span>
       </div>
-      <div class="radar-note"><i class="ph ph-info"></i><span data-translate="radar_note">RainViewer · кадры ~10 мин · прошлые 2ч + прогноз ~1ч · автообновление</span></div>
       <div class="radar-loading hidden" id="radar-loading"><i class="ph-fill ph-circle-notch"></i><span data-translate="radar_loading">Загружаем карту осадков...</span></div>
     </div>
   </div>
@@ -607,21 +669,21 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=35"></script>
+  <script src="js/i18n.js?v=42"></script>
   <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones.
        The map/radar module (js/modules/11-map-radar.js) is intentionally NOT
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=5"></script>
-  <script src="js/modules/02-weather-data.js?v=3"></script>
-  <script src="js/modules/03-rendering.js?v=3"></script>
-  <script src="js/modules/04-chart.js?v=2"></script>
-  <script src="js/modules/05-hourly-alerts.js?v=2"></script>
-  <script src="js/modules/06-air.js?v=3"></script>
-  <script src="js/modules/07-effects.js?v=7"></script>
-  <script src="js/modules/08-search-modals.js?v=6"></script>
-  <script src="js/modules/09-lifecycle.js?v=3"></script>
-  <script src="js/modules/10-bootstrap.js?v=6"></script>
+  <script src="js/modules/01-core.js?v=8"></script>
+  <script src="js/modules/02-weather-data.js?v=4"></script>
+  <script src="js/modules/03-rendering.js?v=5"></script>
+  <script src="js/modules/04-chart.js?v=6"></script>
+  <script src="js/modules/05-hourly-alerts.js?v=3"></script>
+  <script src="js/modules/06-air.js?v=4"></script>
+  <script src="js/modules/07-effects.js?v=8"></script>
+  <script src="js/modules/08-search-modals.js?v=10"></script>
+  <script src="js/modules/09-lifecycle.js?v=6"></script>
+  <script src="js/modules/10-bootstrap.js?v=10"></script>
 </body>
 </html>

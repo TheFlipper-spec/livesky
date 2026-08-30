@@ -24,7 +24,12 @@
    no-op until the subsystem has loaded. The facade never bypasses
    the Terms of Service gate. */
 window.LiveSkyMap = (function () {
-  const MODULE_URL = 'js/modules/11-map-radar.js?v=5';
+  /* Engine stamp the lazy module publishes on load. If the executing module
+     advertises anything else (older cached copy), we re-inject it once with a
+     fresh cache-buster — this is what ended the "still squares" staleness
+     where a v6 module kept running after the file on disk was updated. */
+  const PRECIP_STAMP = 'precip-engine-v13';
+  const MODULE_URL = 'js/modules/11-map-radar.js?v=13';
   const MAPLIBRE_URL = 'assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1';
   const MAPLIBRE_CSS_URL = 'assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1';
   const LOAD_TIMEOUT_MS = 20000;
@@ -133,13 +138,28 @@ window.LiveSkyMap = (function () {
         chain = injectScript(MODULE_URL);
       }
       return chain
+        .then(() => {
+          /* Stale-copy guard: an old module (or a cached copy served under a
+             fresh URL) may execute but publish an older engine stamp. Reject
+             once and retry with a busted URL so the newest build wins. */
+          if (self.ready && window.__liveskyPrecipVersion && window.__liveskyPrecipVersion !== PRECIP_STAMP && !self._stampRetried) {
+            self._stampRetried = true;
+            self._impl = null; self.ready = false;
+            const busted = MODULE_URL + (MODULE_URL.includes('?') ? '&' : '?') + '_b=' + Date.now();
+            return injectScript(busted).then(() => registered).then(() => {
+              if (window.__liveskyPrecipVersion !== PRECIP_STAMP) {
+                throw new Error('stale precip module after retry');
+              }
+            });
+          }
+          return registered;
+        })
         .then(() => new Promise((resolve, reject) => {
           /* The module registers synchronously while executing. If the file
              loaded but never registered, it is a stale/broken build — fail
              fast instead of leaving the UI in a loading state. */
           setTimeout(() => (self.ready ? resolve() : reject(new Error('map module did not initialize'))), 80);
         }))
-        .then(() => registered)
         .catch((err) => {
           self._registerResolve = null;
           throw err;
@@ -169,6 +189,7 @@ window.LiveSkyMap = (function () {
     /* ---- safe wrappers for the eager modules (no-ops until loaded) ---- */
     update() { this._call('updateSmall'); },          /* keep the mini map in sync */
     refreshTiles() { this._call('refreshTiles'); },   /* theme switch restyle */
+    refreshLang() { this._call('refreshLang'); },     /* language switch: repaint radar chrome */
     radarRefresh() { this._call('radarRefresh'); },   /* impl checks .active itself */
     radarPause() { this._call('radarPause'); },       /* battery: pause hidden radar */
     radarActive() { return !!(this.ready && this._impl && typeof this._impl.radarActive === 'function' && this._impl.radarActive()); },
@@ -331,10 +352,10 @@ function updateNotifItem() {
   const on = state.notif;
   if (el.notifIco) el.notifIco.className = 'ph ' + (on ? 'ph-bell-ringing' : 'ph-bell');
   if (el.notifLabel) {
-    el.notifLabel.dataset.translate = on ? 'notif_enabled' : 'notif_enable';
-    el.notifLabel.textContent = t(on ? 'notif_enabled' : 'notif_enable');
+    el.notifLabel.dataset.translate = on ? 'notif_enabled_short' : 'notif_enable_short';
+    el.notifLabel.textContent = t(on ? 'notif_enabled_short' : 'notif_enable_short');
   }
-  el.notifItem.classList.toggle('selected', on);
+  el.notifItem.classList.toggle('seg-selected', on);
 }
 function setNotificationsEnabled() {
   state.notif = true;
@@ -421,6 +442,8 @@ function init() {
   if (state.model === 'ecmwf_ifs04') state.model = 'ecmwf_ifs025'; /* migrate the old, now-deprecated model id */
   if (!['auto', 'ecmwf_ifs025', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
   if (!['auto', 'full', 'eco'].includes(state.effects)) state.effects = 'auto';
+  if (!['chart', 'blocks'].includes(state.forecastView)) state.forecastView = 'chart';
+  if (typeof applyForecastView === 'function') applyForecastView();
 
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
