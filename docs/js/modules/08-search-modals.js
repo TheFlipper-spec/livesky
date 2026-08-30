@@ -796,6 +796,39 @@ function showSunDetails() {
   openModal(t('sun_modal_title'), state.locationName, body);
 }
 
+/* Smart precipitation advice from the map engine (hybrid IMERG+RainViewer+
+   own extrapolation). Independent of Open-Meteo's hourly grid: catches rain
+   the hourly model misses and can see it clearing when OM still says rain.
+   Returns a list-row tuple or null. No-op until the lazy map module has run
+   — `typeof NOWCAST` is safe before it loads (shared lexical scope). */
+function radarAdviceItem(raining, upcomingRain) {
+  if (typeof NOWCAST === 'undefined' || !NOWCAST.active || !state.weather) return null;
+  try {
+    const wetNow = NOWCAST.sampleNowcast(state.lat, state.lon, 0);
+    if (wetNow != null && wetNow > 0.05) {
+      /* Rain overhead per the map: when does the field clear at the pin? */
+      for (let m = 30; m <= 180; m += 30) {
+        const v = NOWCAST.sampleNowcast(state.lat, state.lon, m);
+        if (v != null && v <= 0.05) {
+          return ['ph-umbrella', 'text:#60a5fa', t('advice_radar_stops').replace('{d}', fmtDurSmart(m))];
+        }
+      }
+      return null;
+    }
+    /* OM says dry — does the map see rain approaching that the hourly grid
+       has not caught yet? Only then it adds value (no duplicate warnings). */
+    if (!raining && !upcomingRain) {
+      for (let m = 15; m <= 120; m += 15) {
+        const v = NOWCAST.sampleNowcast(state.lat, state.lon, m);
+        if (v != null && v > 0.05) {
+          return ['ph-drop-half', 'text:#38bdf8', t('advice_radar_arrive').replace('{d}', fmtDurSmart(m))];
+        }
+      }
+    }
+  } catch (e) { /* engine busy/unavailable → Open-Meteo advice stands */ }
+  return null;
+}
+
 function showAdvice() {
   if (!state.weather) return;
   const h = state.weather.hourly, i = state.nowIdx;
@@ -856,6 +889,11 @@ function showAdvice() {
   else if (type === 'storm') items.push(['ph-cloud-lightning', 'text:#c084fc', t('advice_storm')]);
   else if (raining) items.push(['ph-umbrella', 'text:#60a5fa', t('advice_rain_now') + (precip > 0 ? ' (' + fmtPrecip(precip) + ')' : '')]);
   else if (upcomingRain) items.push(['ph-umbrella', 'text:#60a5fa', t('advice_rain_soon').replace('{h}', String(rainIn))]);
+
+  /* 2b. Precip-map check — an independent source, only adds lines when it has
+      something Open-Meteo's hourly grid does not already say. */
+  const radarTip = radarAdviceItem(raining, upcomingRain);
+  if (radarTip) items.push(radarTip);
 
   /* 3. Wind */
   if (gust != null && gust >= 20) items.push(['ph-wind', 'text:#f87171', t('advice_windy') + ' (' + t('wind_gusts') + ' ' + fmtWind(gust) + ')']);
@@ -1355,24 +1393,66 @@ function setTheme(theme) {
   state.theme = theme;
   applyTheme();
 }
+/* Segment-radio helpers: mark the active choice in a [data-*] group. */
+function syncSegment(container, attr, value) {
+  if (!container) return;
+  container.querySelectorAll('[' + attr + ']').forEach(b => {
+    const sel = b.getAttribute(attr) === value;
+    b.classList.toggle('seg-selected', sel);
+    b.setAttribute('aria-checked', String(sel));
+  });
+}
 function setMenuOpen(open) {
   if (el.mainMenu) el.mainMenu.classList.toggle('open', open);
   if (el.menuBtn) el.menuBtn.setAttribute('aria-expanded', String(open));
-  /* Prevent scrolling behind the menu on mobile */
-  if (open) document.body.classList.add('menu-scroll-lock');
-  else document.body.classList.remove('menu-scroll-lock');
+  /* Prevent scrolling behind the menu on mobile + show the sheet backdrop */
+  document.body.classList.toggle('menu-scroll-lock', open);
+  document.body.classList.toggle('menu-open', open);
 }
 function syncMenuChecks() {
   if (!el.mainMenu) return;
-  el.mainMenu.querySelectorAll('[data-lang]').forEach(b => b.classList.toggle('selected', b.dataset.lang === state.lang));
-  el.mainMenu.querySelectorAll('[data-theme-pick]').forEach(b => b.classList.toggle('selected', b.dataset.themePick === state.theme));
-  if (el.modelSelect) el.modelSelect.value = state.model;
-  if (el.unitsSelect) el.unitsSelect.value = state.units;
+  syncSegment(el.mainMenu, 'data-lang', state.lang);
+  syncSegment(el.mainMenu, 'data-theme-pick', state.theme);
+  syncSegment(el.unitsSeg, 'data-units', state.units);
+  syncSegment(el.modelSeg, 'data-model', state.model);
+  syncSegment(el.effectsSeg, 'data-effects', state.effects);
 }
 function updateThemeLabel() {
   if (!el.themeLabel) return;
   el.themeLabel.dataset.translate = THEME_KEYS[state.theme];
   el.themeLabel.textContent = t(THEME_KEYS[state.theme]);
+}
+
+/* Segmented settings choices. Same-value clicks are no-ops (the menu stay
+   open so the user can keep adjusting); real changes re-render and close. */
+function setUnits(v) {
+  if (!['metric', 'imperial'].includes(v) || state.units === v) return;
+  state.units = v;
+  store.set('livesky:units', v);
+  syncMenuChecks();
+  setMenuOpen(false);
+  if (state.weather) renderAll();
+}
+function setModel(v) {
+  if (!['auto', 'ecmwf_ifs025', 'gfs_seamless', 'icon_seamless'].includes(v) || state.model === v) return;
+  state.model = v;
+  store.set('livesky:model', v);
+  syncMenuChecks();
+  setMenuOpen(false);
+  fetchWeather();
+}
+function setEffects(v) {
+  if (!['auto', 'full', 'eco'].includes(v) || state.effects === v) return;
+  state.effects = v;
+  store.set('livesky:effects', v);
+  syncMenuChecks();
+  setMenuOpen(false);
+  if (v === 'full') state._perfLow = false;
+  applyEffects();
+  /* FPS watchdog runs only on Auto; Maximum/Eco never keep an rAF loop alive
+     in the background. */
+  if (v === 'auto') PERF.start();
+  else PERF.stop();
 }
 
 function applyTranslations() {
@@ -1381,11 +1461,8 @@ function applyTranslations() {
     if (!key) return;
     node.textContent = t(key);
   });
-  /* select options */
-  const modelLabels = { auto: 'source_model_auto', ecmwf_ifs025: 'source_model_ecmwf', gfs_seamless: 'source_model_gfs', icon_seamless: 'source_model_icon' };
-  if (el.modelSelect) [...el.modelSelect.options].forEach(o => { o.textContent = t(modelLabels[o.value] || o.value); });
-  const unitsLabels = { metric: 'units_metric', imperial: 'units_imperial' };
-  if (el.unitsSelect) [...el.unitsSelect.options].forEach(o => { o.textContent = t(unitsLabels[o.value]); });
+  /* segmented controls carry [data-translate] and are covered by the pass above;
+     the model/unit/effect labels live inside them, no option list to sync. */
   syncMenuChecks();
 }
 
@@ -1399,7 +1476,17 @@ function setLang(lang) {
   updateThemeLabel();
   syncMenuChecks();
   clockTick();
-  if (state.weather) renderAll();
+  if (state.weather) {
+    renderAll();
+    /* The Air Quality card is rendered outside renderAll() (it paints only
+       after /v1/air-quality resolves) — without this explicit re-render the
+       AQI labels stayed in the old language until the next refresh. This was
+       one of the "blocks don't translate immediately" bugs. */
+    if (typeof renderAir === 'function') renderAir();
+  }
+  /* Radar/precipitation chrome (badge, time and ETA line) is built lazily;
+     the map subsystem must repaint its labels in the new language at once. */
+  if (window.LiveSkyMap) LiveSkyMap.refreshLang();
 }
 
 /* ---------------- fullscreen ---------------- */
@@ -1470,42 +1557,21 @@ function bindEvents() {
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
     const themeBtn = e.target.closest('[data-theme-pick]');
     if (themeBtn) { setTheme(themeBtn.dataset.themePick); setMenuOpen(false); return; }
-    /* All other clicks inside menu just close it after a short delay */
-    const isSelect = e.target.closest('.dd-select');
-    if (!isSelect) {
-      /* Only close on non-select clicks (selects need to stay open for interaction) */
-      clearTimeout(state._menuCloseTimer);
-      state._menuCloseTimer = setTimeout(() => setMenuOpen(false), 800);
-    }
+    const unitsBtn = e.target.closest('[data-units]');
+    if (unitsBtn) { setUnits(unitsBtn.dataset.units); return; }
+    const modelBtn = e.target.closest('[data-model]');
+    if (modelBtn) { setModel(modelBtn.dataset.model); return; }
+    const effectsBtn = e.target.closest('[data-effects]');
+    if (effectsBtn) { setEffects(effectsBtn.dataset.effects); return; }
+    /* Any other click inside the panel just closes it after a short delay. */
+    clearTimeout(state._menuCloseTimer);
+    state._menuCloseTimer = setTimeout(() => setMenuOpen(false), 800);
   });
-  on(el.modelSelect, 'change', () => {
-    state.model = el.modelSelect.value;
-    store.set('livesky:model', state.model);
-    setMenuOpen(false);
-    fetchWeather();
-  });
-  on(el.unitsSelect, 'change', () => {
-    state.units = el.unitsSelect.value;
-    store.set('livesky:units', state.units);
-    setMenuOpen(false);
-    if (state.weather) renderAll();
-  });
+  on(el.menuClose, 'click', () => setMenuOpen(false));
+  on(el.menuBackdrop, 'click', () => setMenuOpen(false));
   on(el.fsItem, 'click', () => { setMenuOpen(false); toggleFullscreen(); });
   on(el.refreshItem, 'click', () => { setMenuOpen(false); fetchWeather(true); });
   on(el.geoItem, 'click', () => { setMenuOpen(false); getUserLocation(true); });
-
-  /* quality preset (auto / maximum / eco) */
-  on(el.effectsSelect, 'change', () => {
-    state.effects = el.effectsSelect.value;
-    store.set('livesky:effects', state.effects);
-    setMenuOpen(false);
-    if (state.effects === 'full') state._perfLow = false;
-    applyEffects();
-    /* start the FPS watchdog only on Auto; stop it otherwise so it never
-       keeps an rAF loop running in the background on Maximum/Eco */
-    if (state.effects === 'auto') PERF.start();
-    else PERF.stop();
-  });
   on(el.installItem, 'click', promptInstall);
   on(el.notifItem, 'click', () => { setMenuOpen(false); toggleNotifications(); });
 
@@ -1593,6 +1659,10 @@ function bindEvents() {
   on(el.hLeft, 'click', () => el.hStrip.scrollBy({ left: -420, behavior: 'smooth' }));
   on(el.hRight, 'click', () => el.hStrip.scrollBy({ left: 420, behavior: 'smooth' }));
 
+  /* merged forecast card: chart ⇄ hourly blocks toggle */
+  on(el.forecastChartBtn, 'click', () => setForecastView('chart'));
+  on(el.forecastBlocksBtn, 'click', () => setForecastView('blocks'));
+
   on(el.brand, 'click', () => location.reload());
 
   document.addEventListener('click', (e) => {
@@ -1620,8 +1690,10 @@ function bindEvents() {
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
     if (typing || el.modal.classList.contains('open') || el.mapModal.classList.contains('open')) return;
     if (e.key === '/' ) { e.preventDefault(); el.input.focus(); el.input.select(); return; }
-    if (e.key === 'ArrowRight') el.hStrip.scrollBy({ left: 220, behavior: 'smooth' });
-    if (e.key === 'ArrowLeft') el.hStrip.scrollBy({ left: -220, behavior: 'smooth' });
+    /* Arrows scroll whichever 24h view is visible (hourly blocks or the chart). */
+    const target = state.forecastView === 'blocks' ? el.hStrip : el.chartScroll;
+    if (e.key === 'ArrowRight' && target) target.scrollBy({ left: 220, behavior: 'smooth' });
+    if (e.key === 'ArrowLeft' && target) target.scrollBy({ left: -220, behavior: 'smooth' });
   });
 
   window.addEventListener('resize', () => {
@@ -1630,7 +1702,7 @@ function bindEvents() {
     clearTimeout(window.__chartHatchT);
     window.__chartHatchT = setTimeout(() => {
       if (state.weather && typeof renderChart === 'function') {
-        try { SECTION_MANAGER.renderSection('chart'); } catch (e) { try { renderChart(); } catch (e2) {} }
+        try { SECTION_MANAGER.renderSection('forecast'); } catch (e) { try { renderChart(); } catch (e2) {} }
       }
     }, 180);
   });
@@ -1687,10 +1759,32 @@ function initReveal() {
 /* ---------------- PWA: service worker + install --------------- */
 let deferredInstallPrompt = null;
 
+/* The sandbox preview (and local dev) must NEVER keep the long-lived SW cache:
+   sw.js stores same-origin assets under query-stripped keys, so an old build
+   of a lazy module (e.g. 11-map-radar.js?v=6) can keep being served after the
+   code was updated — exactly the "still squares" staleness. Production hosts
+   keep full offline support. */
+function isStaleCacheProneHost() {
+  return /(^|\.)e2b\.app$/.test(location.hostname) ||
+    location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+}
+function dropServiceWorkerForDev() {
+  if (!('serviceWorker' in navigator)) return;
+  /* Unregister whatever an older build may have left controlling this page. */
+  if (navigator.serviceWorker.getRegistrations) {
+    navigator.serviceWorker.getRegistrations()
+      .then(rs => rs.forEach(r => r.unregister()))
+      .catch(() => { /* non-critical */ });
+  }
+  if ('caches' in window && caches.keys) {
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k)))).catch(() => { /* non-critical */ });
+  }
+}
 function registerServiceWorker() {
   if (isNativeApp()) return; /* Capacitor bundles the shell; a second cache layer only causes stale assets */
   if (!('serviceWorker' in navigator)) return;
   if (!/^https?:$/.test(location.protocol)) return; /* skip file:// and data: */
+  if (isStaleCacheProneHost()) { dropServiceWorkerForDev(); return; }
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').catch(() => { /* non-critical */ });
   });

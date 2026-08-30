@@ -367,73 +367,215 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 .hbtn .hbtn-label { font-weight: 700; letter-spacing: 0.02em; }
 .lang-flag { width: 20px; height: 14px; border-radius: 3px; object-fit: cover; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }
 
-/* dropdown */
+/* ---------- settings menu: structured panel ---------- */
 .dropdown {
-  position: absolute; top: calc(100% + 8px); right: 0; z-index: 999;
-  min-width: 260px; max-width: min(330px, calc(100vw - 28px));
-  max-height: min(76vh, 560px); overflow-y: auto;
+  /* Full-width-of-site settings panel: centered overlay spanning the content
+     column (not a narrow rectangle pinned to the right). Groups inside are
+     laid out on a responsive grid (1/2/3 columns) so nothing gets truncated. */
+  position: fixed; top: max(4vh, 24px); left: 50%; z-index: 999;
+  width: min(1180px, calc(100vw - 48px));
+  max-height: min(88vh, 840px); overflow: hidden;
+  display: flex; flex-direction: column;
   background: var(--menu-bg);
   color: var(--text-2);
   backdrop-filter: blur(24px) saturate(170%);
   -webkit-backdrop-filter: blur(24px) saturate(170%);
   border: 1px solid var(--stroke-strong);
-  border-radius: 18px;
+  border-radius: 22px;
   box-shadow: 0 26px 70px -12px rgba(0, 0, 0, 0.65), 0 0 44px -16px var(--glow-accent);
-  padding: 9px;
-  opacity: 0; transform: translateY(-8px) scale(0.96); pointer-events: none;
-  transition: opacity 0.22s, transform 0.26s cubic-bezier(0.34, 1.56, 0.64, 1);
-  transform-origin: top right;
+  opacity: 0; transform: translate(-50%, -14px) scale(0.98); pointer-events: none;
+  transition: opacity 0.22s, transform 0.28s cubic-bezier(0.34, 1.5, 0.64, 1);
+  transform-origin: top center;
 }
-.dropdown.open { opacity: 1; transform: none; pointer-events: auto; }
+.dropdown.open { opacity: 1; transform: translate(-50%, 0) scale(1); pointer-events: auto; }
 
 @keyframes menuIn {
   from { opacity: 0; transform: translateY(-8px) scale(0.96); }
   to { opacity: 1; transform: none; }
 }
-.dd-item {
+
+/* panel head: title + close */
+.mm-head {
   display: flex; align-items: center; gap: 12px;
-  width: 100%; padding: 12px 14px; border-radius: 12px;
-  font-size: 14px; font-weight: 600; color: var(--text-2);
-  transition: background 0.15s, color 0.15s, transform 0.15s;
+  padding: 16px 16px 14px 18px;
+  border-bottom: 1px solid var(--stroke);
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.07), transparent);
 }
-/* Ensure text inside dd-item is always the correct color
-   (Phosphor icon font can sometimes affect text rendering) */
-.dd-item > span { color: inherit; }
-.dd-item:hover { background: var(--accent-soft); color: var(--text-1); transform: translateX(2px); }
-.dd-item i { font-size: 17px; color: var(--accent); }
-.dd-item .dd-check { margin-left: auto; color: var(--accent); opacity: 0; font-size: 16px; transform: scale(0.5); transition: opacity 0.25s, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); }
-.dd-item.selected .dd-check { opacity: 1; transform: scale(1); }
-.dd-item.selected { color: var(--text-1) !important; background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
-.dd-item.selected > span { color: var(--text-1) !important; }
-.dd-group-label {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 9.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--accent); padding: 13px 14px 7px;
+.mm-title { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.mm-title-ico {
+  width: 38px; height: 38px; flex: none; border-radius: 13px;
+  display: grid; place-items: center;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(99, 102, 241, 0.22));
+  color: var(--accent); font-size: 17px;
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.18);
 }
-.dd-group-label::before {
-  content: ""; width: 4px; height: 4px; border-radius: 50%; flex: none;
-  background: var(--accent);
-  box-shadow: 0 0 6px var(--glow-accent);
+.mm-title-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.mm-title-text b { font-size: 15px; font-weight: 800; color: var(--text-1); letter-spacing: 0.02em; }
+.mm-title-text small { font-size: 10.5px; font-weight:600; color: var(--text-3); margin-top: 1px; }
+.mm-close {
+  margin-left: auto; width: 34px; height: 34px; flex: none;
+  border-radius: 11px; display: grid; place-items: center;
+  color: var(--text-3); background: var(--surface-2); border: 1px solid var(--stroke);
+  transition: color 0.2s, border-color 0.2s, background 0.2s, transform 0.3s;
 }
-.dd-select {
-  width: 100%;
-  appearance: none; -webkit-appearance: none;
-  background: var(--surface-2);
+.mm-close:hover { color: var(--text-1); border-color: var(--stroke-strong); background: var(--surface-hover); transform: rotate(90deg); }
+.mm-close:active { transform: scale(0.92); }
+
+/* scrollable body */
+.mm-scroll {
+  min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  padding: 10px 16px 18px;
+  display: grid; grid-template-columns: 1fr; gap: 12px;
+  /* Cards stretch to the height of their row track, so no menu-background
+     strip can ever show between rows (tall/short neighbours share one box). */
+  align-items: stretch;
+}
+/* legal always spans the whole row */
+.mm-group.mm-legal { grid-column: 1 / -1; }
+@media (min-width: 641px) and (max-width: 899px) {
+  .dropdown.settings-menu .mm-scroll { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 900px) {
+  .dropdown.settings-menu .mm-scroll { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* grouped settings cards */
+.mm-group {
+  padding: 12px 14px;
+  background: var(--surface-2); border: 1px solid var(--stroke);
+  border-radius: 18px;
+  animation: mmGroupIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.mm-group:nth-child(2) { animation-delay: 35ms; }
+.mm-group:nth-child(3) { animation-delay: 55ms; }
+.mm-group:nth-child(4) { animation-delay: 75ms; }
+.mm-group:nth-child(5) { animation-delay: 95ms; }
+.mm-group:nth-child(6) { animation-delay: 115ms; }
+.mm-group:nth-child(7) { animation-delay: 135ms; }
+@keyframes mmGroupIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.mm-label {
+  display: flex; align-items: center; gap: 9px;
+  padding: 0 2px 10px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-3);
+}
+.mm-label i { color: var(--accent); font-size: 14px; }
+.mm-value {
+  margin-left: auto; font-size: 10px; font-weight: 800;
+  text-transform: none; letter-spacing: 0.02em; white-space: nowrap;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 2px 9px; border-radius: 999px;
+}
+[data-theme="light"] .mm-value { background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.25); }
+/* install hint lives in the card header as a compact pill: it never adds a
+   grid row, so showing it cannot stretch the card (no gap appears below). */
+.mm-install {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.02em; text-transform: none;
+  color: var(--accent); cursor: pointer;
+  background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.25);
+  padding: 4px 10px; border-radius: 999px;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.mm-install i { font-size: 12px; }
+.mm-install:hover { background: rgba(56, 189, 248, 0.22); border-color: rgba(56, 189, 248, 0.45); transform: translateY(-1px); }
+.mm-install:active { transform: scale(0.96); }
+[data-theme="light"] .mm-install { background: rgba(2, 132, 199, 0.08); border-color: rgba(2, 132, 199, 0.25); }
+
+/* Segmented choice rows (same language as the forecast toggle) */
+.mm-seg { display: grid; gap: 6px; }
+/* Deterministic two columns: every option card is exactly two rows (3 → 2+1,
+   4 → 2+2, 2 → 2) at ANY width, so all cards in a grid row share the same
+   height and no empty strip can appear between rows of the panel. */
+.mm-seg-2, .mm-seg-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Narrow desktop/tablet columns (two-col panel 641–899px, three-col panel
+   900–1099px): tighten button padding instead of shrinking the label, so
+   two-column buttons never ellipsize or wrap their text. */
+@media (min-width: 641px) and (max-width: 1099px) {
+  .seg-btn { padding: 8px 9px; }
+}
+/* Vertical radio list for 2-option groups (units): two full-width rows keep
+   the card the SAME height as its 2-row neighbours — no ragged gaps. */
+.mm-seg-list { grid-template-columns: 1fr; }
+.mm-seg-list .seg-btn { justify-content: flex-start; }
+.mm-seg-list .seg-check { margin-left: auto; }
+.seg-btn {
+  position: relative;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; padding: 8px 12px; border-radius: 12px;
   border: 1px solid var(--stroke);
-  border-radius: 12px;
-  padding: 10px 32px 10px 13px;
-  font-size: 13.5px; font-weight: 600; color: var(--text-1);
-  cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238ca0b5' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 12px center;
-  transition: border-color 0.2s, background-color 0.2s;
+  background: rgba(127, 146, 173, 0.07);
+  color: var(--text-3); font-size: 11.5px; font-weight: 800; line-height: 1.1;
+  white-space: nowrap; overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
 }
-.dd-select:hover, .dd-select:focus { border-color: var(--stroke-strong); outline: none; }
-.dd-select option { background: #0d1528; color: #f4f7fb; }
-[data-theme="light"] .dd-select option { background: #ffffff; color: #16202f; }
+.seg-btn i { font-size: 15px; color: inherit; opacity: 0.9; }
+.seg-btn .lang-flag { flex: none; }
+.seg-btn > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.seg-btn:hover { color: var(--text-1); border-color: var(--stroke-strong); }
+.seg-btn:active { transform: scale(0.95); }
+/* Inline check inside the row (NOT a floating corner badge): it sits on the
+   same baseline as the label in a reserved 11px slot, so selecting a value
+   never overlaps or clips anything. */
+.seg-check {
+  flex: none; order: 5; width: 11px; margin-left: 1px;
+  font-size: 11px; color: var(--accent);
+  opacity: 0; transform: scale(0.4);
+  transition: opacity 0.22s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.seg-btn.seg-selected {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.20), rgba(99, 102, 241, 0.20));
+  color: var(--accent);
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 6px 18px -8px rgba(56, 189, 248, 0.45), inset 0 0 0 1px rgba(56, 189, 248, 0.10);
+}
+.seg-btn.seg-selected .seg-check { opacity: 1; transform: scale(1); }
+[data-theme="light"] .seg-btn { background: rgba(15, 42, 84, 0.05); }
+[data-theme="light"] .seg-btn.seg-selected { color: #0369a1; }
+
+/* action + legal rows */
+/* compact action / legal tiles (2 per row) — keeps the panel dense so the
+   grid has no tall-vs-short column imbalance */
+.mm-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.dd-tile {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 44px; padding: 8px 11px; border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: rgba(127, 146, 173, 0.05);
+  color: var(--text-2); font-size: 12.5px; font-weight: 600; text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s;
+}
+.dd-tile i { font-size: 15px; color: var(--accent); flex: none; }
+.dd-tile > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: inherit; }
+.dd-tile:hover { background: var(--accent-soft); color: var(--text-1); border-color: var(--stroke-strong); transform: translateY(-1px); }
+.dd-tile:active { transform: scale(0.97); }
+.dd-tile-wide { grid-column: 1 / -1; }
+a.dd-tile { text-decoration: none; }
+/* legal links carry long titles: let them wrap on narrow tiles instead of
+   ellipsizing (legal card is full-width and its own grid row, so wrapping
+   never creates a gap in the row above) */
+.mm-legal .dd-tile > span { white-space: normal; line-height: 1.3; }
+.dd-tile.seg-selected {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.20), rgba(99, 102, 241, 0.20));
+  color: var(--accent);
+  border-color: rgba(56, 189, 248, 0.35);
+}
+[data-theme="light"] .dd-tile { background: rgba(15, 42, 84, 0.05); }
 [data-theme="light"] .dropdown { color: var(--text-2); }
-[data-theme="light"] .dd-group-label { color: var(--accent); }
+
+/* dim backdrop for the mobile sheet */
+.menu-backdrop {
+  position: fixed; inset: 0; z-index: 998;
+  background: rgba(2, 6, 23, 0.55);
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s;
+}
+body.menu-open .menu-backdrop { opacity: 1; pointer-events: auto; }
+
 
 /* ---------- Hero ---------- */
 .hero-grid { display: grid; grid-template-columns: 1.85fr 1fr; gap: 22px; align-items: stretch; }
@@ -795,12 +937,52 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 @keyframes alertIn { from { opacity: 0; transform: translateY(-14px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes pulseSoft { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
 
-/* ---------- Chart ---------- */
-.chart-card { padding: 24px 26px 18px; }
-/* The hourly card needs padding too — otherwise its section-head icon sits flush
-   in the top-left corner and is clipped by the card's rounded border. */
-.hourly-card { padding: 24px 26px 18px; }
-.chart-card svg .grid-line { stroke: var(--grid-line); stroke-width: 0.5; }
+/* ---------- Forecast (merged 24h: chart ⇄ hourly blocks) ---------- */
+.forecast-card { padding: 24px 26px 18px; position: relative; }
+.forecast-card svg .grid-line { stroke: var(--grid-line); stroke-width: 0.5; }
+/* Smooth chart ⇄ hours crossfade: incoming pane slides up, outgoing fades out
+   on top of it. The outgoing pane is pinned absolutely so the card keeps its
+   height for the whole switch (no layout jump). */
+.forecast-pane.pane-out {
+  position: absolute;
+  z-index: 5;
+  margin: 0;
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 0.32s ease, transform 0.32s ease;
+  pointer-events: none;
+}
+.forecast-pane.pane-in {
+  transition: opacity 0.36s ease, transform 0.36s ease;
+}
+.forecast-pane.pane-in-enter {
+  opacity: 0;
+  transform: translateY(12px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .forecast-pane.pane-out, .forecast-pane.pane-in { transition: none; }
+}
+/* Segmented toggle in the card header */
+.forecast-toggle {
+  display: inline-flex; align-items: center; gap: 2px;
+  background: var(--surface-2); border: 1px solid var(--stroke);
+  border-radius: 12px; padding: 3px;
+}
+.ft-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 11px; border-radius: 9px;
+  font-size: 11px; font-weight: 800; color: var(--text-3);
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.ft-btn i { font-size: 13px; }
+.ft-btn:hover { color: var(--text-1); }
+.ft-btn.active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(99, 102, 241, 0.22));
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.3);
+}
+.forecast-pane { min-width: 0; }
+
 .chart-legend { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; color: var(--text-3); }
 .lg { width: 16px; height: 4px; border-radius: 99px; display: inline-block; }
 .lg-temp { background: linear-gradient(90deg, var(--accent), var(--accent-2)); height: 5px; }
@@ -961,6 +1143,17 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
 }
 .chart-plot.is-scrubbing { cursor: grabbing; }
 .chart-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* "Now" tag pinned at the real current-time position on the chart (moves with
+   the clock; the tag is an HTML overlay so it is never stretched by the SVG). */
+.chart-now-tag {
+  position: absolute; bottom: -2px; z-index: 5;
+  transform: translateX(-50%);
+  padding: 2px 7px; border-radius: 99px;
+  background: linear-gradient(135deg, #38bdf8, #6366f1);
+  color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.06em;
+  pointer-events: none; white-space: nowrap;
+  box-shadow: 0 4px 12px -4px rgba(56, 189, 248, 0.7);
+}
 /* Full-plot hit target for mouse + finger scrubbing (no per-hour columns). */
 .chart-scrub {
   position: absolute; inset: 0; z-index: 4;
@@ -1688,35 +1881,33 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 
 .radar-panel {
   position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
-  width: min(640px, calc(100vw - 28px)); z-index: 1001;
-  background: rgba(5, 10, 22, 0.86); backdrop-filter: blur(16px) saturate(140%);
+  width: min(420px, calc(100vw - 24px)); z-index: 1001;
+  background: rgba(5, 10, 22, 0.84); backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid var(--stroke-strong); border-radius: 22px;
-  padding: 14px 18px 12px; color: #fff;
-  box-shadow: 0 26px 70px -18px rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--stroke-strong); border-radius: 16px;
+  padding: 10px 13px 9px; color: #fff;
+  box-shadow: 0 22px 60px -18px rgba(0, 0, 0, 0.7);
   animation: radarIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes radarIn {
   from { opacity: 0; transform: translateX(-50%) translateY(16px) scale(0.98); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
-.radar-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-.radar-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; }
-.radar-title i { color: #7db4f8; }
+.radar-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .radar-badge {
   display: inline-flex; align-items: center;
-  padding: 3px 9px; border-radius: 999px;
-  font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
   background: rgba(52, 211, 153, 0.16); color: #6ee7b7; border: 1px solid rgba(52, 211, 153, 0.35);
 }
 .radar-badge.past { background: rgba(148, 163, 184, 0.16); color: #cbd5e1; border-color: rgba(148, 163, 184, 0.35); }
 .radar-badge.forecast { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; border-color: rgba(167, 139, 250, 0.4); }
-.radar-time { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 14px; color: #7db4f8; }
-.radar-close { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; color: var(--text-3); transition: background 0.2s, color 0.2s; }
+.radar-time { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 800; font-size: 12.5px; color: #7db4f8; }
+.radar-close { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); transition: background 0.2s, color 0.2s; }
 .radar-close:hover { background: rgba(248, 113, 113, 0.18); color: #f87171; }
 
-.radar-timeline { display: flex; align-items: center; gap: 10px; }
-.radar-range { position: relative; flex: 1; padding-bottom: 16px; }
+.radar-timeline { display: flex; align-items: center; gap: 7px; }
+.radar-range { position: relative; flex: 1; padding-bottom: 14px; }
 .radar-ticks {
   position: absolute; left: 0; right: 0; top: 1px; height: 6px;
   pointer-events: none; z-index: 0;
@@ -1745,20 +1936,20 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .radar-axis {
   position: absolute; left: 0; right: 0; bottom: 0;
   display: flex; justify-content: space-between;
-  font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em;
-  text-transform: uppercase; color: rgba(203, 213, 225, 0.7); pointer-events: none;
+  font-size: 8.5px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: rgba(203, 213, 225, 0.65); pointer-events: none;
 }
 .radar-nav {
-  width: 34px; height: 34px; border-radius: 50%;
-  display: grid; place-items: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px;
   background: rgba(255, 255, 255, 0.08); color: #fff;
   transition: background 0.2s, transform 0.2s; flex: none;
 }
 .radar-nav:hover { background: rgba(56, 189, 248, 0.25); transform: scale(1.08); }
 .radar-nav:active { transform: scale(0.94); }
 .radar-play {
-  width: 38px; height: 38px; border-radius: 50%;
-  display: grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 14px;
   background: linear-gradient(135deg, #38bdf8, #6366f1); color: #fff;
   box-shadow: 0 8px 22px -8px rgba(56, 189, 248, 0.6);
   transition: transform 0.2s, box-shadow 0.2s; flex: none;
@@ -1767,8 +1958,8 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .radar-play:active { transform: scale(0.94); }
 .radar-play.playing { animation: radarPulse 1.4s ease-in-out infinite; }
 .radar-live {
-  width: 34px; height: 34px; border-radius: 50%;
-  display: grid; place-items: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 13px;
   background: rgba(52, 211, 153, 0.16); color: #6ee7b7;
   border: 1px solid rgba(52, 211, 153, 0.35);
   transition: background 0.2s, transform 0.2s; flex: none;
@@ -1776,13 +1967,64 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .radar-live:hover { background: rgba(52, 211, 153, 0.3); transform: scale(1.08); }
 .radar-live:active { transform: scale(0.94); }
 
-.radar-controls {
-  display: flex; align-items: center; gap: 14px; margin-top: 12px; flex-wrap: wrap;
+/* One compact summary line above the timeline: ETA + motion for the pin. */
+.radar-eta {
+  display: flex; align-items: center; gap: 7px;
+  margin-bottom: 9px; padding: 6px 10px;
+  background: linear-gradient(100deg, rgba(56, 189, 248, 0.13), rgba(99, 102, 241, 0.1));
+  border: 1px solid rgba(56, 189, 248, 0.24);
+  border-radius: 10px;
+  font-size: 11px; font-weight: 700; color: var(--text-2);
+  line-height: 1.35; white-space: nowrap; overflow: hidden;
 }
+.radar-eta i { font-size: 13px; color: #7db4f8; flex: none; }
+.radar-eta.wet i { color: #60a5fa; }
+.radar-eta.storm i { color: #c4b5fd; }
+.radar-eta.dry i { color: #34d399; }
+.radar-eta #radar-eta-text { overflow: hidden; text-overflow: ellipsis; }
+.radar-eta small { font-weight: 600; color: var(--text-3); margin-left: 4px; }
+[data-theme="light"] .radar-eta { color: #1e3a5f; }
+/* Data-source chips */
+.radar-sources { display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.radar-source {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(226, 232, 240, 0.75);
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.02em;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.radar-source i { font-size: 11px; }
+.radar-source:hover { background: rgba(56, 189, 248, 0.18); color: #e0f2fe; }
+.radar-source.on {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.3), rgba(99, 102, 241, 0.3));
+  border-color: rgba(56, 189, 248, 0.5); color: #e0f2fe;
+}
+
+.radar-controls {
+  display: flex; align-items: center; gap: 8px; margin-top: 9px;
+}
+.radar-settings {
+  width: 28px; height: 28px; border-radius: 9px; flex: none;
+  display: grid; place-items: center; font-size: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(226, 232, 240, 0.75);
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.radar-settings:hover { background: rgba(56, 189, 248, 0.18); color: #e0f2fe; }
+.radar-settings.on {
+  background: rgba(56, 189, 248, 0.25); border-color: rgba(56, 189, 248, 0.5); color: #e0f2fe;
+}
+.radar-advanced {
+  display: flex; align-items: center; gap: 12px; margin-top: 8px; flex-wrap: wrap;
+}
+.radar-advanced.hidden { display: none !important; }
 .radar-ctrl {
   display: inline-flex; align-items: center; gap: 8px;
-  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
-  text-transform: uppercase; color: rgba(203, 213, 225, 0.8); flex: 1; min-width: 140px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: rgba(203, 213, 225, 0.8); flex: 1; min-width: 130px;
 }
 .radar-ctrl input[type="range"] {
   -webkit-appearance: none; appearance: none; flex: 1;
@@ -1806,13 +2048,11 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .radar-ctrl select option { background: #0d1528; color: #fff; }
 
 .radar-legend {
-  display: flex; align-items: center; gap: 10px; margin-top: 11px;
-  font-size: 10px; font-weight: 800; letter-spacing: 0.08em;
+  display: flex; align-items: center; gap: 8px; margin-top: 8px;
+  font-size: 8.5px; font-weight: 800; letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--text-3);
 }
-.radar-legend-bar { flex: 1; height: 8px; border-radius: 99px; background: linear-gradient(90deg, #34d399, #38bdf8, #fbbf24, #f87171, #7c3aed); }
-.radar-note { display: flex; align-items: center; gap: 6px; margin-top: 9px; font-size: 10px; color: var(--text-4); }
-.radar-note i { color: var(--accent); }
+.radar-legend-bar { flex: 1; height: 5px; border-radius: 99px; background: linear-gradient(90deg, #34d399, #38bdf8, #fbbf24, #f87171, #7c3aed); }
 .radar-loading {
   position: absolute; inset: 0; z-index: 1002;
   display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -1831,7 +2071,8 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .radar-panel.hidden { display: none !important; }
 
 @media (max-width: 520px) {
-  .radar-controls { gap: 10px; }
+  .radar-controls { gap: 6px; }
+  .radar-advanced { gap: 8px; }
   .radar-ctrl { min-width: 100%; }
   .radar-live { display: none; }
   .min-item { flex-basis: 72px; width: 72px; }
@@ -2250,9 +2491,34 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .search-wrap { min-width: 0; flex-basis: 100%; }
   .search-form { height: 48px; padding-left: 14px; }
   .autocomplete { max-height: min(52vh, 340px); }
-  .dropdown { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 14px; width: min(330px, calc(100vw - 28px)); max-height: calc(100dvh - 28px - env(safe-area-inset-top)); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
-  .dd-item { min-height: 48px; padding: 12px 14px; }
-  .dd-select { min-height: 48px; }
+  /* settings menu becomes a bottom sheet: full-width, slide-up, grab handle */
+  .dropdown.settings-menu {
+    position: fixed; top: auto; left: 0; right: 0; bottom: 0;
+    width: 100%; max-width: none;
+    max-height: min(86dvh, 680px);
+    border-radius: 24px 24px 0 0;
+    border-left: none; border-right: none; border-bottom: none;
+    padding-bottom: env(safe-area-inset-bottom);
+    transform: translateY(calc(100% + 32px));
+    transition: transform 0.34s cubic-bezier(0.34, 1.35, 0.64, 1), opacity 0.25s;
+    /* 24px blur over a full screen is expensive on low-end phones — the sheet
+       is already layered on a dim backdrop, so a lighter blur is enough. */
+    backdrop-filter: blur(14px) saturate(140%);
+    -webkit-backdrop-filter: blur(14px) saturate(140%);
+  }
+  .dropdown.settings-menu::before {
+    content: ""; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 44px; height: 5px; border-radius: 99px;
+    background: var(--stroke-strong); opacity: 0.75;
+  }
+  .dropdown.settings-menu.open { transform: none; }
+  .dropdown.settings-menu .mm-scroll { max-height: calc(86dvh - 64px); }
+  /* narrow phone cells: drop leading icons and shrink flags so labels
+     fit on one line instead of ellipsizing */
+  .seg-btn { font-size: 10.5px; }
+  .seg-btn > i:first-child { display: none; }
+  .lang-flag { width: 17px; height: 12px; }
+  .dd-tile { min-height: 48px; }
 
   .side-col { grid-template-columns: 1fr; gap: 16px; }
   .side-col .map-card { grid-column: auto; }
@@ -2306,7 +2572,7 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .section-head { gap: 10px; margin-bottom: 14px; }
   .section-title { font-size: 13px; gap: 9px; }
   .section-title .tint { width: 34px; height: 34px; border-radius: 10px; }
-  .chart-card, .hourly-card, .daily-card, .lifestyle-card { padding: 18px 14px; border-radius: 24px; }
+  .forecast-card, .chart-card, .hourly-card, .daily-card, .lifestyle-card { padding: 18px 14px; border-radius: 24px; }
   .chart-plot { height: 150px; }
   .chart-swipe-hint { display: flex; }
   .chart-detail { gap: 4px; padding: 6px; min-height: 0; }
@@ -2338,11 +2604,13 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 }
 
 @media (max-width: 390px) {
+  .seg-btn { font-size: 10px; padding: 8px 6px; gap: 4px; }
+  .seg-btn i { font-size: 14px; }
+  .seg-check { width: 10px; font-size: 10px; margin-left: 0; }
   .rain-status { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .hero-temp-col { min-width: 0; flex: 1; }
   .temp-num { font-size: 64px; }
-  .dd-item { font-size: 13px; }
-  .dd-group-label { font-size: 8.5px; padding: 10px 12px 5px; }
+  .dd-tile { font-size: 12px; }
   .shell { padding-left: 10px; padding-right: 10px; }
   .hero { padding: 18px 15px 16px; }
   .hero-icon { width: 78px; height: 78px; }
@@ -2351,7 +2619,7 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .metric { padding: 9px 8px; gap: 7px; }
   .metric-ico { width: 32px; height: 32px; }
   .metric-value { font-size: 12px; }
-  .chart-card, .hourly-card, .daily-card, .lifestyle-card { padding-left: 12px; padding-right: 12px; }
+  .forecast-card, .chart-card, .hourly-card, .daily-card, .lifestyle-card { padding-left: 12px; padding-right: 12px; }
 }
 
 /* ---------- Reduced motion ---------- */
@@ -2366,4 +2634,4 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 }
 
 /* Theme label in dropdown header - ensure readability across all themes */
-#theme-label { color: var(--text-2); font-weight: 600; letter-spacing: normal; text-transform: none; }
+

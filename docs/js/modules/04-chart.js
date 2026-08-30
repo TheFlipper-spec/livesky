@@ -107,10 +107,21 @@ function bandAbsToFrac(abs, chartStartAbs, hours) {
   return Math.max(0, Math.min(hours, (abs - chartStartAbs) / 60));
 }
 
+/* The 24h chart is anchored to the LOCAL day (00:00 → 24:00), not to the
+   current hour. That way the "now" cursor sits exactly where the current time
+   is (e.g. 58% of the width at 14:00) instead of always hugging the left edge.
+   With past_days=16 the hourly series always contains 00:00 of today. */
+function chartDayStartIdx(h) {
+  const date = tzNow(state.tz).date;
+  const idx = h.time.findIndex(tm => tm.startsWith(date + 'T00:'));
+  return idx >= 0 ? idx : state.nowIdx; /* graceful fallback for odd payloads */
+}
+
 function renderChart() {
   const h = state.weather && state.weather.hourly;
   if (!h) return;
-  const n = 24, start = state.nowIdx;
+  /* Day-anchored 24h window: today 00:00 … tomorrow 00:00 (25 samples). */
+  const n = 24, start = chartDayStartIdx(h);
   const temps = [], precs = [], times = [], codes = [];
   let tmin = Infinity, tmax = -Infinity, pmax = 0;
   for (let k = 0; k <= n; k++) {
@@ -146,6 +157,9 @@ function renderChart() {
   pmax = Math.max(pmax, 2.5);
 
   const hours = Math.max(1, m - 1);
+  /* Cursor position = real current time inside the day window (hours since 00:00). */
+  const nowTz = tzNow(state.tz);
+  const nowFrac = Math.min(hours, Math.max(0, (nowTz.hour * 60 + nowTz.minute) / 60));
   const X = k => (k / hours) * 100;
   const Y = v => 8 + (1 - (v - tmin) / (tmax - tmin)) * 84;
   const pts = [];
@@ -242,7 +256,7 @@ function renderChart() {
     <path d="${area}" fill="url(#areaGrad)"/>
     <g class="chart-rain-layer" clip-path="url(#tempUnderClip)">${rainRects}</g>
     <path d="${line}" fill="none" stroke="url(#lineGrad)" stroke-width="2.4" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-    <line x1="${X(0).toFixed(2)}" y1="5" x2="${X(0).toFixed(2)}" y2="100" stroke="${state.accent}" stroke-width="0.7" opacity="0.3"/>
+    <line class="chart-now-line" x1="${X(nowFrac).toFixed(2)}" y1="5" x2="${X(nowFrac).toFixed(2)}" y2="100" stroke="${state.accent}" stroke-width="0.7" opacity="0.4"/>
     ${bars}`;
 
   chartData = [];
@@ -261,23 +275,40 @@ function renderChart() {
       yPct: temps[k] != null ? Y(temps[k]) : null
     });
   }
-  chartMeta = { n: hours, m, start, tmin, tmax, Y, X, hours, bands };
+  chartMeta = { n: hours, m, start, tmin, tmax, Y, X, hours, bands, nowFrac };
 
   let axis = '';
   for (let k = 0; k <= hours; k += 6) {
     const i = start + k;
     const hr = i < h.time.length ? parseInt(h.time[i].slice(11, 13), 10) : 0;
-    axis += `<span>${k === 0 ? t('now') : String(hr).padStart(2, '0') + ':00'}</span>`;
+    axis += `<span>${String(hr).padStart(2, '0')}:00</span>`;
   }
   el.chartAxis.innerHTML = axis;
 
-  /* Icons as HTML overlays — never stretched by the SVG's preserveAspectRatio=none. */
+  /* Big-icons overlay (HTML, never stretched by the SVG). */
   renderChartRainMarkers(bands, temps, X, Y, hours);
   renderChartRainSummary(bands, times);
   bindChartScrub();
-  const nowMin = tzNow(state.tz).minute;
-  chartSelFrac = Math.min(hours, Math.max(0, nowMin / 60));
+  chartSelFrac = Math.min(hours, Math.max(0, nowFrac));
   showChartAtFrac(chartSelFrac);
+  updateChartNowTag();
+}
+
+/* "Now" tag pinned at the current time position on the chart. */
+function updateChartNowTag() {
+  const plot = el.chartPlot;
+  if (!plot || !chartMeta) return;
+  let tag = plot.querySelector('.chart-now-tag');
+  if (!tag) {
+    tag = document.createElement('span');
+    tag.className = 'chart-now-tag';
+    tag.setAttribute('aria-hidden', 'true');
+    plot.appendChild(tag);
+  }
+  const f = chartMeta.nowFrac != null ? chartMeta.nowFrac : chartSelFrac;
+  const x = (f / chartMeta.hours) * 100;
+  tag.style.left = x.toFixed(2) + '%';
+  tag.textContent = t('now');
 }
 
 /* Small round badges on the temperature line at the mid of each rain band. */
@@ -311,7 +342,7 @@ function renderChartRainMarkers(bands, temps, X, Y, hours) {
 function renderChartRainSummary(bands, times) {
   /* Prefer the chart card that owns the cached refs. During section unload that
      card is detached, so document.getElementById() cannot find its summary. */
-  const card = el.chartDetail && el.chartDetail.closest('.chart-card');
+  const card = el.chartDetail && (el.chartDetail.closest('.chart-card') || el.chartDetail.closest('.forecast-card'));
   let box = card ? card.querySelector('#chart-rain-summary') : $('chart-rain-summary');
   if (card) {
     /* Keep this renderer idempotent even if an older render left duplicates. */
@@ -480,9 +511,85 @@ function bindChartScrub() {
   target.addEventListener('dblclick', (e) => {
     if (!chartMeta || !state.weather) return;
     const frac = fracFromEvent(e);
-    const idx = state.nowIdx + Math.round(frac);
+    const idx = chartMeta.start + Math.round(frac);
     if (idx >= 0 && idx < state.weather.hourly.time.length) showModalHourly(state.weather.hourly, idx);
   });
+}
+
+/* ---------- merged 24h block: chart ⇄ hourly toggle ---------- */
+function applyForecastView() {
+  const view = state.forecastView === 'blocks' ? 'blocks' : 'chart';
+  state.forecastView = view;
+  if (el.forecastChartPane) el.forecastChartPane.classList.toggle('hidden', view !== 'chart');
+  if (el.forecastBlocksPane) el.forecastBlocksPane.classList.toggle('hidden', view !== 'blocks');
+  if (el.forecastChartBtn) el.forecastChartBtn.classList.toggle('active', view === 'chart');
+  if (el.forecastBlocksBtn) el.forecastBlocksBtn.classList.toggle('active', view === 'blocks');
+  if (el.forecastChartBtn) el.forecastChartBtn.setAttribute('aria-selected', String(view === 'chart'));
+  if (el.forecastBlocksBtn) el.forecastBlocksBtn.setAttribute('aria-selected', String(view === 'blocks'));
+}
+
+/* Smooth chart ⇄ hours switch. The incoming pane slides up while the outgoing
+   one fades out on top of it; the card keeps its height the whole time, so the
+   page never jumps. prefers-reduced-motion users get the instant switch.
+   Rapid re-clicks are safe: any in-flight animation state on BOTH panes is
+   cleared before the new switch starts, so the pair can never end up frozen
+   invisible (old bug: pane-out + pane-in stuck on the two panes at once). */
+let paneSwitchToken = 0;
+function animatePaneSwitch(outPane, inPane) {
+  const panes = [el.forecastChartPane, el.forecastBlocksPane];
+  const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const clearAnim = () => {
+    panes.forEach(p => {
+      if (!p) return;
+      p.classList.remove('pane-out', 'pane-in', 'pane-in-enter');
+      p.removeAttribute('style');
+    });
+  };
+  const finish = () => {
+    clearAnim();
+    if (outPane) outPane.classList.add('hidden');
+    if (inPane) inPane.classList.remove('hidden');
+  };
+  if (reduce || !outPane || !inPane || outPane === inPane) { finish(); return; }
+  const card = outPane.closest('.forecast-card');
+  if (!card) { finish(); return; }
+  /* A switch may already be mid-flight — clear it so classes/inline styles
+     from the previous direction cannot leak onto the new pair. */
+  clearAnim();
+  const token = ++paneSwitchToken;
+  const guarded = () => { if (token === paneSwitchToken) finish(); };
+  /* Pin the outgoing pane exactly where it sits right now … */
+  const prect = card.getBoundingClientRect();
+  const rect = outPane.getBoundingClientRect();
+  outPane.style.position = 'absolute';
+  outPane.style.top = (rect.top - prect.top) + 'px';
+  outPane.style.left = (rect.left - prect.left) + 'px';
+  outPane.style.width = rect.width + 'px';
+  outPane.style.height = rect.height + 'px';
+  outPane.classList.add('pane-out');
+  /* … and bring the incoming one in underneath it. */
+  inPane.classList.remove('hidden');
+  inPane.classList.add('pane-in', 'pane-in-enter');
+  void inPane.offsetWidth; /* commit the off-state before the transition */
+  inPane.classList.remove('pane-in-enter');
+  window.setTimeout(guarded, 420);
+}
+
+function setForecastView(view) {
+  if (view !== 'chart' && view !== 'blocks') return;
+  if (state.forecastView === view) return;
+  state.forecastView = view;
+  store.set('livesky:forecast_view', view);
+  /* Button states flip instantly; only the panel crossfades. */
+  if (el.forecastChartBtn) el.forecastChartBtn.classList.toggle('active', view === 'chart');
+  if (el.forecastBlocksBtn) el.forecastBlocksBtn.classList.toggle('active', view === 'blocks');
+  if (el.forecastChartBtn) el.forecastChartBtn.setAttribute('aria-selected', String(view === 'chart'));
+  if (el.forecastBlocksBtn) el.forecastBlocksBtn.setAttribute('aria-selected', String(view === 'blocks'));
+  animatePaneSwitch(
+    view === 'chart' ? el.forecastBlocksPane : el.forecastChartPane,
+    view === 'chart' ? el.forecastChartPane : el.forecastBlocksPane
+  );
+  if (state.weather) SECTION_MANAGER.renderSection('forecast');
 }
 
 /* ---------- live clock-driven refresh (no full reload needed) ---------- */
@@ -525,17 +632,22 @@ function liveTick(force) {
     updateFXIntensity();
   }
   renderAlerts();
-  /* Nudge the chart "now" cursor with the real minute when the user isn't scrubbing. */
+  /* Nudge the chart "now" cursor with the real clock when the user isn't scrubbing.
+     The cursor is positioned by the TIME OF DAY (0–24h window), so it moves
+     continuously across the chart instead of sitting at the left edge. */
   if (chartMeta && el.chartPlot && !el.chartPlot.classList.contains('is-scrubbing')) {
-    const nowMin = tzNow(state.tz).minute;
-    showChartAtFrac(Math.min(chartMeta.hours, nowMin / 60));
+    const nt = tzNow(state.tz);
+    const minuteOfDay = nt.hour * 60 + nt.minute;
+    chartMeta.nowFrac = Math.min(chartMeta.hours, minuteOfDay / 60);
+    showChartAtFrac(chartMeta.nowFrac);
+    updateChartNowTag();
   }
   renderSunArc();
 
   if (hourChanged) {
-    /* Hour boundary: rebuild heavier hourly-dependent sections. */
-    SECTION_MANAGER.renderSection('chart');
-    SECTION_MANAGER.renderSection('hourly');
+    /* Hour boundary: rebuild the heavier forecast section (chart + hourly
+       blocks live in it after the v1.4 merge — re-render it only once). */
+    SECTION_MANAGER.renderSection('forecast');
     renderAlerts();
     applyWeatherTheme();
     updateFXIntensity();
