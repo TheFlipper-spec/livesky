@@ -2671,6 +2671,27 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .radar-toggle { left: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); padding: 11px 14px; }
   .radar-panel { bottom: calc(12px + env(safe-area-inset-bottom)); }
   .toast-wrap { bottom: calc(14px + env(safe-area-inset-bottom)); }
+
+  /* Footer links on phones: instead of unevenly-wrapping pill buttons (3–4
+     ragged rows), lay them out as a tight 2-column grid of compact buttons.
+     5 items → 2 + 2 + the longest (privacy policy) spanning the full row. */
+  .site-footer { padding: 26px 0 6px; }
+  .footer-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .footer-link {
+    justify-content: center;
+    padding: 9px 10px;
+    font-size: 11.5px;
+    gap: 7px;
+    border-radius: 14px;
+  }
+  .footer-link i { font-size: 14px; }
+  /* the final, longest link (privacy policy) spans the whole row */
+  .footer-link:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 
 @media (max-width: 390px) {
