@@ -249,7 +249,14 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   display: flex; align-items: center; gap: 18px;
   flex-wrap: wrap;
   margin-bottom: 26px;
-  animation: fadeDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  /* IMPORTANT: fill-mode `backwards`, not `both`. A `both`/`forwards` fill keeps
+     the finished animation's transform applied as an identity matrix, and any
+     transform on the header makes it a containing block for its position:fixed
+     descendants (the settings dropdown). That anchored the menu to the header
+     (top of the page) instead of the viewport — on phones the bottom sheet then
+     rendered above the screen. `backwards` applies the start frame only during
+     any delay, then lets the transform drop back to `none`. */
+  animation: fadeDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .brand { display: flex; align-items: center; gap: 13px; cursor: pointer; user-select: none; }
 .brand-logo {
