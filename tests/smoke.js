@@ -892,6 +892,41 @@ setTimeout(() => {
       assert(ap.types.some(t => t === 'wind' || t === 'wind_extreme'), 'hazard list includes wind: ' + JSON.stringify(ap.types));
       assert(q('alert-box').classList.contains('hidden'), 'alert hidden again after restore');
     }
+
+    /* Smart weather notifications & digests */
+    {
+      const notifProbe = document.createElement('script');
+      notifProbe.textContent = `
+        const stormAlert = { type: 'storm', t: '2026-09-05T15:30', abs: nowAbsMin() + 30, extra: { windMs: 20 } };
+        const hazardPayload = buildSmartHazardNotification(stormAlert);
+        const todayPayload = buildTodayDigestNotification();
+        const tomorrowPayload = buildTomorrowDigestNotification();
+        const welcomePayload = buildWelcomeNotification();
+        const nowcastPayload = buildNowcastRainNotification(20);
+        window.__notifProbe = {
+          hazard: hazardPayload,
+          today: todayPayload,
+          tomorrow: tomorrowPayload,
+          welcome: welcomePayload,
+          nowcast: nowcastPayload
+        };
+      `;
+      document.body.appendChild(notifProbe);
+      const np = window.__notifProbe || {};
+      assert(np.hazard && /⚡|Гроза|Storm|Tormenta/.test(np.hazard.title) && /Москва|LiveSky/.test(np.hazard.title), 'smart hazard notification has rich title: ' + (np.hazard && np.hazard.title));
+      assert(np.hazard && /помещении|шквалы|indoors|gusts|interiores/i.test(np.hazard.body), 'smart hazard notification has actionable advice: ' + (np.hazard && np.hazard.body));
+      assert(np.hazard && np.hazard.channelId === 'weather-alerts', 'smart hazard notification uses weather-alerts channel');
+
+      assert(np.today && /Погода на сегодня|Today|hoy/i.test(np.today.title), 'smart today digest has informative title: ' + (np.today && np.today.title));
+      assert(np.today && /°/.test(np.today.body) && np.today.channelId === 'weather-daily', 'smart today digest includes temps and daily channel: ' + (np.today && np.today.body));
+
+      assert(np.tomorrow && /Прогноз на завтра|Tomorrow|mañana/i.test(np.tomorrow.title), 'smart tomorrow digest has informative title: ' + (np.tomorrow && np.tomorrow.title));
+      assert(np.tomorrow && /°/.test(np.tomorrow.body) && np.tomorrow.channelId === 'weather-daily', 'smart tomorrow digest includes temps: ' + (np.tomorrow && np.tomorrow.body));
+
+      assert(np.welcome && /LiveSky/i.test(np.welcome.title) && /°/.test(np.welcome.body), 'smart welcome notification confirms setup: ' + (np.welcome && np.welcome.body));
+      assert(np.nowcast && /Дождь|Rain|Lluvia/i.test(np.nowcast.title) && /20/i.test(np.nowcast.body), 'smart nowcast notification gives rain ETA: ' + (np.nowcast && np.nowcast.body));
+    }
+
     assert(q('location-admin').textContent.includes('140'), 'elevation shown in admin line');
     assert(/temp-(frigid|cold|mild|warm|hot)/.test(q('temperature').className), 'temperature has colour class');
 

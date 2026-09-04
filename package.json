@@ -9,8 +9,10 @@
     "serve": "python3 scripts/serve-dev.py",
     "cap:sync": "cap sync android",
     "android:open": "cap open android",
-    "android:build": "npm run cap:sync && cd android && ./gradlew assembleDebug",
-    "android:bundle": "npm run cap:sync && cd android && ./gradlew bundleRelease"
+    "android:build": "bash scripts/build-apk.sh --debug",
+    "android:release": "bash scripts/build-apk.sh --release",
+    "android:bundle": "npm run cap:sync && cd android && ./gradlew bundleRelease",
+    "build:apk": "bash scripts/build-apk.sh"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
