@@ -371,13 +371,13 @@ const PERF = {
   }
 };
 
-/* ---------------- weather notifications (local + Web Push ready) ---------------- */
-/* Keeps a rolling record of alerts we already notified about so the user isn't
+/* ---------------- weather notifications (smart alerts + daily digests) ---------------- */
+/* Keeps a rolling record of alerts and digests we already notified about so the user isn't
    spammed with the same event every time the forecast refreshes. */
-let sentAlerts = store.get('livesky:sent_alerts', []);
+let sentAlerts = store.get('livesky:sent_notifications', store.get('livesky:sent_alerts', []));
 function prunSentAlerts() {
   const now = Date.now();
-  sentAlerts = sentAlerts.filter(a => now - a.at < 3 * 3600 * 1000); /* 3h window */
+  sentAlerts = sentAlerts.filter(a => now - a.at < 24 * 3600 * 1000); /* 24h retention */
 }
 function alertSignature(type, hourIso) {
   /* Bucket by 30 minutes so refined minutely times of the same event don't re-fire. */
@@ -387,11 +387,28 @@ function alertSignature(type, hourIso) {
   const bucket = String(hh).padStart(2, '0') + ':' + (mm < 30 ? '00' : '30');
   return type + '|' + hourIso.slice(0, 10) + 'T' + bucket;
 }
-function shouldSendAlert(sig) { prunSentAlerts(); return !sentAlerts.some(a => a.sig === sig); }
+function shouldSendAlert(sig) {
+  prunSentAlerts();
+  const entry = sentAlerts.find(a => a.sig === sig);
+  if (!entry) return true;
+  /* If it is a hazard alert, allow re-notifying after 3.5 hours */
+  if (sig.includes('|') && Date.now() - entry.at > 3.5 * 3600 * 1000) return true;
+  return false;
+}
 function markSent(sig) {
+  prunSentAlerts();
+  sentAlerts = sentAlerts.filter(a => a.sig !== sig);
   sentAlerts.push({ sig, at: Date.now() });
-  sentAlerts = sentAlerts.slice(-60);
+  sentAlerts = sentAlerts.slice(-100);
+  store.set('livesky:sent_notifications', sentAlerts);
   store.set('livesky:sent_alerts', sentAlerts);
+}
+
+function notifHashCode(source) {
+  if (!source) return 1;
+  let hash = 0;
+  for (let i = 0; i < source.length; i++) hash = ((hash * 31) + source.charCodeAt(i)) | 0;
+  return Math.max(1, hash & 0x7fffffff);
 }
 
 /* Public list for notifications — same engine as the banner, 24h horizon.
@@ -407,47 +424,278 @@ function upcomingAlerts() {
 
 function nativeNotificationId(alert) {
   const source = alertSignature(alert.type, alert.t);
-  let hash = 0;
-  for (let i = 0; i < source.length; i++) hash = ((hash * 31) + source.charCodeAt(i)) | 0;
-  return Math.max(1, hash & 0x7fffffff);
+  return notifHashCode(source);
 }
-function sendNotification(alert) {
+
+function buildSmartHazardNotification(alert) {
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
   const abs = alert.abs != null ? alert.abs : (alert.t ? absMinLocal(alert.t) : null);
-  const title = t('notif_title');
-  const body = formatAlertMsg(alert.type, abs, alert.extra);
+  const when = formatAlertWhen(abs);
+  const titleKey = 'notif_hazard_' + alert.type + '_title';
+  let title = t(titleKey);
+  if (title === titleKey) {
+    const name = t('alert_name_' + alert.type);
+    title = (name !== 'alert_name_' + alert.type ? name : t('notif_title')) + ' · ' + city;
+  } else {
+    title = title.replace('{city}', city);
+  }
+
+  const advKey = 'notif_advice_' + alert.type;
+  let body = t(advKey);
+  if (body === advKey) {
+    body = formatAlertMsg(alert.type, abs, alert.extra);
+  } else {
+    const windStr = (alert.extra && alert.extra.windMs != null) ? fmtWind(alert.extra.windMs) : '';
+    const tempStr = (alert.extra && alert.extra.temp != null) ? fmtTempDeg(alert.extra.temp) : '';
+    const uvVal = (alert.extra && alert.extra.uv != null) ? String(alert.extra.uv) : '8';
+    body = body.replace('{when}', when)
+      .replace('{wind}', windStr)
+      .replace('{temp}', tempStr)
+      .replace('{uv}', uvVal)
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
+  const sig = alertSignature(alert.type, alert.t);
+  return {
+    id: notifHashCode(sig),
+    key: sig,
+    title,
+    body,
+    channelId: 'weather-alerts',
+    tag: 'livesky-hazard-' + alert.type,
+    extra: { type: alert.type, forecastTime: alert.t, city }
+  };
+}
+
+function buildTodayDigestNotification() {
+  if (!state.weather || !state.weather.daily || !state.weather.daily.time) return null;
+  const d = state.weather.daily;
+  const i = state.todayIdx || 0;
+  if (i >= d.time.length) return null;
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  const dateKey = d.time[i] || new Date().toISOString().slice(0, 10);
+  const tmin = getVal(d, 'temperature_2m_min', i);
+  const tmax = getVal(d, 'temperature_2m_max', i);
+  const code = getVal(d, 'weathercode', i);
+  const prob = getVal(d, 'precipitation_probability_max', i) || 0;
+  const cond = wmoLabel(code);
+
+  let tip = t('notif_today_dry_tip');
+  if (prob >= 40) {
+    tip = t('notif_today_rain_tip').replace('{prob}', String(Math.round(prob)));
+  } else if (tmax != null && tmax >= 28) {
+    tip = t('notif_today_hot_tip').replace('{temp}', fmtTempDeg(tmax));
+  } else if (tmin != null && tmin <= 5) {
+    tip = t('notif_today_cold_tip').replace('{feels}', fmtTempDeg(tmin));
+  }
+
+  const title = t('notif_today_title').replace('{city}', city);
+  const body = `${fmtTempDeg(tmin)}…${fmtTempDeg(tmax)} · ${cond}. ${tip}`.replace(/\s{2,}/g, ' ').trim();
+  const key = 'digest:today:' + dateKey + ':' + city;
+
+  return {
+    id: notifHashCode(key),
+    key,
+    title,
+    body,
+    channelId: 'weather-daily',
+    tag: 'livesky-digest-today',
+    extra: { type: 'today_digest', date: dateKey, city }
+  };
+}
+
+function buildTomorrowDigestNotification() {
+  if (!state.weather || !state.weather.daily || !state.weather.daily.time) return null;
+  const d = state.weather.daily;
+  const todayIdx = state.todayIdx || 0;
+  const i = todayIdx + 1;
+  if (i >= d.time.length) return null;
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  const dateKey = d.time[i] || '';
+  const tmin = getVal(d, 'temperature_2m_min', i);
+  const tmax = getVal(d, 'temperature_2m_max', i);
+  const tmaxToday = getVal(d, 'temperature_2m_max', todayIdx);
+  const code = getVal(d, 'weathercode', i);
+  const prob = getVal(d, 'precipitation_probability_max', i) || 0;
+  const cond = wmoLabel(code);
+
+  let comp = '';
+  if (tmax != null && tmaxToday != null) {
+    const diff = Math.round(tmax - tmaxToday);
+    if (diff <= -3) comp = ' · ' + t('notif_tomorrow_colder').replace('{diff}', String(Math.abs(diff)));
+    else if (diff >= 3) comp = ' · ' + t('notif_tomorrow_warmer').replace('{diff}', String(diff));
+  }
+
+  const tip = prob >= 40
+    ? t('notif_tomorrow_rain_tip').replace('{prob}', String(Math.round(prob)))
+    : t('notif_tomorrow_dry_tip');
+
+  const title = t('notif_tomorrow_title').replace('{city}', city);
+  const prefix = t('tomorrow_word') ? (t('tomorrow_word').charAt(0).toUpperCase() + t('tomorrow_word').slice(1) + ': ') : '';
+  const body = `${prefix}${fmtTempDeg(tmin)}…${fmtTempDeg(tmax)}${comp} · ${cond}. ${tip}`.replace(/\s{2,}/g, ' ').trim();
+  const key = 'digest:tomorrow:' + dateKey + ':' + city;
+
+  return {
+    id: notifHashCode(key),
+    key,
+    title,
+    body,
+    channelId: 'weather-daily',
+    tag: 'livesky-digest-tomorrow',
+    extra: { type: 'tomorrow_digest', date: dateKey, city }
+  };
+}
+
+function buildWelcomeNotification() {
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  let temp = '--', cond = '';
+  if (state.weather && state.weather.hourly) {
+    const tVal = getVal(state.weather.hourly, 'temperature_2m', state.nowIdx);
+    temp = fmtTemp(tVal);
+    const cVal = getVal(state.weather.hourly, 'weathercode', state.nowIdx);
+    cond = wmoLabel(cVal);
+  }
+  const title = t('notif_welcome_title');
+  const body = t('notif_welcome_body')
+    .replace('{city}', city)
+    .replace('{temp}', temp)
+    .replace('{cond}', cond)
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return {
+    id: notifHashCode('welcome:' + Date.now()),
+    key: 'welcome:' + Date.now(),
+    title,
+    body,
+    channelId: 'weather-alerts',
+    tag: 'livesky-welcome',
+    extra: { type: 'welcome', city }
+  };
+}
+
+function buildNowcastRainNotification(minUntilRain) {
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  const title = t('notif_nowcast_rain_title').replace('{city}', city);
+  const body = t('notif_nowcast_rain_body').replace('{dur}', fmtDurSmart(minUntilRain));
+  const timeBucket = Math.floor(Date.now() / (2 * 3600 * 1000));
+  const key = 'nowcast:rain:' + timeBucket + ':' + city;
+
+  return {
+    id: notifHashCode(key),
+    key,
+    title,
+    body,
+    channelId: 'weather-alerts',
+    tag: 'livesky-nowcast-rain',
+    extra: { type: 'nowcast_rain', city, minutes: minUntilRain }
+  };
+}
+
+function sendNotificationPayload(p) {
+  if (!p) return Promise.resolve();
   const nativeNotifications = nativePlugin('LocalNotifications');
 
   if (nativeNotifications) {
     return nativeNotifications.schedule({
       notifications: [{
-        id: nativeNotificationId(alert), title, body,
-        channelId: 'weather-alerts',
+        id: p.id || notifHashCode(p.key || p.title),
+        title: p.title,
+        body: p.body,
+        channelId: p.channelId || 'weather-alerts',
         smallIcon: 'ic_stat_livesky',
         iconColor: '#38BDF8',
-        extra: { type: alert.type, forecastTime: alert.t }
+        extra: p.extra || {}
       }]
     });
   }
 
   const opts = {
-    body, icon: 'icons/icon-192.png', badge: 'icons/icon-96.png',
-    tag: 'livesky-' + alert.type, data: { url: location.href },
-    renotify: false
+    body: p.body,
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-96.png',
+    tag: p.tag || ('livesky-' + (p.key || 'alert')),
+    data: { url: location.href },
+    renotify: true
   };
   if (navigator.serviceWorker && navigator.serviceWorker.ready) {
-    return navigator.serviceWorker.ready.then(reg => reg.showNotification(title, opts))
-      .catch(() => { try { new Notification(title, opts); } catch (e) { /* ignore */ } });
+    return navigator.serviceWorker.ready.then(reg => reg.showNotification(p.title, opts))
+      .catch(() => { try { new Notification(p.title, opts); } catch (e) { /* ignore */ } });
   }
-  try { new Notification(title, opts); } catch (e) { /* ignore */ }
+  try { new Notification(p.title, opts); } catch (e) { /* ignore */ }
   return Promise.resolve();
 }
 
+function sendNotification(alert) {
+  const p = buildSmartHazardNotification(alert);
+  return sendNotificationPayload(p);
+}
+
 function dispatchWeatherAlerts() {
+  if (!state.weather) return;
+
+  /* 1. Severe / Hazard alerts (highest priority) */
   for (const a of upcomingAlerts()) {
     const sig = alertSignature(a.type, a.t);
     if (!shouldSendAlert(sig)) continue;
     markSent(sig);
-    Promise.resolve(sendNotification(a)).catch(() => { /* permission can be changed in Android settings */ });
+    const p = buildSmartHazardNotification(a);
+    Promise.resolve(sendNotificationPayload(p)).catch(() => { /* permission can be changed in Android settings */ });
+  }
+
+  /* 2. Precip radar nowcast check (if active) */
+  if (typeof NOWCAST !== 'undefined' && NOWCAST.active && state.lat != null && state.lon != null) {
+    try {
+      const wetNow = NOWCAST.sampleNowcast(state.lat, state.lon, 0);
+      if (wetNow == null || wetNow <= 0.05) {
+        for (let m = 15; m <= 45; m += 15) {
+          const v = NOWCAST.sampleNowcast(state.lat, state.lon, m);
+          if (v != null && v > 0.05) {
+            const timeBucket = Math.floor(Date.now() / (2 * 3600 * 1000));
+            const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+            const rainSig = 'nowcast:rain:' + timeBucket + ':' + city;
+            if (shouldSendAlert(rainSig)) {
+              markSent(rainSig);
+              const p = buildNowcastRainNotification(m);
+              Promise.resolve(sendNotificationPayload(p)).catch(() => {});
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) { /* nowcast is optional */ }
+  }
+
+  /* 3. Daily smart digests (morning / evening) */
+  const now = tzNow(state.tz);
+  const hh = now.getHours();
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  const d = state.weather.daily;
+  const todayDate = (d && d.time && d.time[state.todayIdx || 0]) ? d.time[state.todayIdx || 0] : now.toISOString().slice(0, 10);
+
+  /* Morning briefing between 06:00 and 12:00 */
+  if (hh >= 6 && hh <= 12) {
+    const todaySig = 'digest:today:' + todayDate + ':' + city;
+    if (shouldSendAlert(todaySig)) {
+      const p = buildTodayDigestNotification();
+      if (p) {
+        markSent(todaySig);
+        Promise.resolve(sendNotificationPayload(p)).catch(() => {});
+      }
+    }
+  }
+
+  /* Evening tomorrow forecast between 18:00 and 23:00 */
+  if (hh >= 18 && hh <= 23) {
+    const tomorrowSig = 'digest:tomorrow:' + todayDate + ':' + city;
+    if (shouldSendAlert(tomorrowSig)) {
+      const p = buildTomorrowDigestNotification();
+      if (p) {
+        markSent(tomorrowSig);
+        Promise.resolve(sendNotificationPayload(p)).catch(() => {});
+      }
+    }
   }
 }
 
@@ -484,6 +732,10 @@ function setNotificationsEnabled() {
   store.set('livesky:notif', true);
   updateNotifItem();
   toast(t('notif_toast_on'), 'success');
+  const welcome = buildWelcomeNotification();
+  if (welcome) {
+    Promise.resolve(sendNotificationPayload(welcome)).catch(() => {});
+  }
   checkWeatherAlerts();
 }
 function toggleNotifications() {
@@ -543,9 +795,19 @@ function initNativeBridge() {
     try {
       Promise.resolve(nativeNotifications.createChannel({
         id: 'weather-alerts',
-        name: 'LiveSky Weather',
-        description: 'Weather warnings and forecast alerts',
+        name: 'LiveSky Weather Alerts',
+        description: 'Weather warnings and hazard alerts',
         importance: 4,
+        visibility: 1,
+        vibration: true,
+        lights: true,
+        lightColor: '#38BDF8'
+      })).catch(() => {});
+      Promise.resolve(nativeNotifications.createChannel({
+        id: 'weather-daily',
+        name: 'LiveSky Daily Forecast',
+        description: 'Morning and evening weather summaries',
+        importance: 3,
         visibility: 1,
         vibration: true,
         lights: true,
