@@ -67,6 +67,14 @@ LiveSky — погодное приложение для браузера и And
   как только данные пришли, а показанный прогноз не стирается при обрыве связи
 - Единицы всегда согласованы с источником: ветер запрашивается в м/с
   (`wind_speed_unit=ms`) и переводится в км/ч/миль-в-час уже в интерфейсе
+- **Сохранённый прогноз рядом с сайтом.** Если сеть посетителя вообще не
+  пускает к Open-Meteo (фильтрация у провайдера, DNS, корпоративный wifi,
+  авария у API), дашборд через несколько секунд показывает сохранённый прогноз
+  из `docs/data/snapshot*.json` с честной подписью «показан сохранённый
+  прогноз», а как только API отвечает — подменяет его живыми данными.
+  Обновить архив: `node scripts/build-snapshot.js` (нужен интернет);
+  размер радиуса и таймауты — `window.LIVE_SNAPSHOT_*`, период повторных
+  попыток — `window.LIVE_RETRY_AFTER_SNAPSHOT_MS`.
 
 ---
 
@@ -138,6 +146,9 @@ docs/                        # публикуемый сайт (GitHub Pages)
 │       ├── 09-lifecycle.js  # Smart Visibility
 │       ├── 10-bootstrap.js  # инициализация + ленивая карта
 │       └── 11-map-radar.js  # карта и радар (ленивый модуль)
+├── data/
+│   ├── snapshot.json        # список городов архивного прогноза
+│   └── snapshot/*.json      # архивный прогноз (фолбэк при блокировке API)
 ├── assets/
 │   ├── fonts/               # Montserrat, Unbounded (SIL OFL)
 │   ├── vendor/              # MapLibre GL (BSD-2), Phosphor Icons (MIT)
@@ -150,7 +161,9 @@ docs/                        # публикуемый сайт (GitHub Pages)
 android/                     # нативный проект Capacitor
 capacitor.config.json
 scripts/
-└── generate-android-assets.sh
+├── generate-android-assets.sh
+├── build-snapshot.js         # обновляет docs/data/snapshot*.json (--from-seed — офлайн)
+└── snapshot-seed/            # исходные значения для офлайн-сборки архива
 tests/
 └── smoke.js
 ```

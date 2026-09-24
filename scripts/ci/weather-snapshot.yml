@@ -1,0 +1,58 @@
+# Copy this file to .github/workflows/weather-snapshot.yml to enable scheduled
+# refreshes of docs/data/snapshot*.json (the app's saved-forecast fallback).
+# It is kept here because pushing a file into .github/workflows/ requires the
+# `workflows` scope, which the automation token used for this branch lacks.
+# Refreshing by hand works too: node scripts/build-snapshot.js
+name: Weather snapshot
+
+# Keeps docs/data/snapshot.json (the app's same-origin fallback for visitors
+# whose network cannot reach Open-Meteo) fresh.
+#
+# - workflow_dispatch: refresh on demand (GitHub → Actions → Run workflow).
+# - schedule: hourly refresh on the default branch. Remove these two lines if
+#   you prefer to refresh manually only — the app works either way, it just
+#   falls back to an older snapshot for blocked visitors.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weather-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build snapshot from Open-Meteo
+        run: node scripts/build-snapshot.js
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weather-snapshot
+          path: docs/data
+          retention-days: 7
+
+      - name: Commit snapshot
+        continue-on-error: true
+        run: |
+          git config user.name "livesky-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/data
+          if git diff --staged --quiet; then
+            echo "snapshot unchanged"
+          else
+            git commit -m "chore(data): refresh weather snapshot [skip ci]"
+            git push
+          fi

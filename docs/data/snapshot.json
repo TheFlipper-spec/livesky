@@ -1,0 +1,37 @@
+{
+  "generated": "2026-09-24T12:35:00Z",
+  "generator": "livesky-weather-snapshot/1",
+  "source": "Open-Meteo (CC BY 4.0)",
+  "cities": [
+    {
+      "name": "Казань",
+      "cc": "RU",
+      "admin": "Татарстан, Россия",
+      "lat": 55.7963,
+      "lon": 49.1088,
+      "slug": "kazan",
+      "generated": "2026-09-24T12:35:00Z",
+      "file": "data/snapshot/kazan.json"
+    },
+    {
+      "name": "Москва",
+      "cc": "RU",
+      "admin": "Москва, Россия",
+      "lat": 55.7558,
+      "lon": 37.6173,
+      "slug": "moscow",
+      "generated": "2026-09-24T12:35:00Z",
+      "file": "data/snapshot/moscow.json"
+    },
+    {
+      "name": "Санкт-Петербург",
+      "cc": "RU",
+      "admin": "Санкт-Петербург, Россия",
+      "lat": 59.9386,
+      "lon": 30.3141,
+      "slug": "spb",
+      "generated": "2026-09-24T12:35:00Z",
+      "file": "data/snapshot/spb.json"
+    }
+  ]
+}

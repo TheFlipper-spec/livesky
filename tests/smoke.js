@@ -1669,9 +1669,110 @@ function phase11() {
       const rp = w.__recoveryProbe || {};
       assert(rp.latched === true && rp.flagged === true, 'phase11: boot-error panel still shows on a fatal error');
       assert(rp.cleared === true, 'phase11: boot-error panel is cleared once data is available again');
-      finish();
+      phase12();
     } catch (e) { errors.push('phase11 crashed: ' + e.message); finish(); }
   }, 1500);
+}
+
+/* phase 12 (offline fallback): the visitor's network cannot reach the weather
+   API at all — the page itself loads fine. The dashboard must fall back to the
+   snapshot published with the site (docs/data/snapshot*.json), label it as a
+   saved forecast, and swap in live data as soon as the API answers again. */
+function phase12() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;         /* fail fast: this is a blackholed network */
+  w.LIVE_RETRY_MS = 10;
+  w.LIVE_SNAPSHOT_RACE_MS = 50;      /* do not wait out the grace period here */
+  w.LIVE_RETRY_AFTER_SNAPSHOT_MS = 250;
+  const snapshotUrls = [];
+  const live = genForecast();
+  /* Make live data visibly different from the snapshot so the test can prove
+     which source is on screen. */
+  ['temperature_2m', 'temperature_2m_best_match'].forEach((k) => {
+    if (live.hourly[k]) live.hourly[k] = live.hourly[k].map((v) => v + 10);
+  });
+  const snapAir = genAir();
+  snapAir.hourly.european_aqi = snapAir.hourly.european_aqi.map(() => 77);
+  let liveAllowed = false;
+  w.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('snapshot')) {
+      snapshotUrls.push(u);
+      if (u.includes('snapshot.json')) {
+        return { ok: true, json: async () => ({ generated: '2026-09-24T12:00:00Z', cities: [{ name: 'Москва', lat: 55.7558, lon: 37.6173, generated: '2026-09-24T12:00:00Z', file: 'data/snapshot/moscow.json' }] }) };
+      }
+      return { ok: true, json: async () => ({ generated: '2026-09-24T12:00:00Z', name: 'Москва', forecast: genForecast(), air: snapAir }) };
+    }
+    if (!liveAllowed) return Promise.reject(new TypeError('Failed to fetch'));
+    return { ok: true, json: async () => live };
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q12 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const banner = q12('offline-banner');
+      const snapTemp = q12('temperature').textContent;
+      const snapAqi = q12('aqi-value').textContent;
+      assert(snapshotUrls.some((u) => u.includes('snapshot.json')), 'phase12: the snapshot index is requested when the API is unreachable');
+      assert(snapshotUrls.some((u) => u.includes('data/snapshot/')), 'phase12: the per-city snapshot payload is requested');
+      assert(/\d/.test(snapTemp), 'phase12: the saved forecast fills the tiles: ' + snapTemp);
+      assert(snapAqi === '77', 'phase12: air quality comes from the snapshot too: ' + snapAqi);
+      assert(q12('loader').classList.contains('done'), 'phase12: loader is dismissed by the snapshot fallback');
+      assert(!banner.classList.contains('hidden'), 'phase12: saved-forecast banner is visible');
+      assert(/сохранённый прогноз/.test(banner.textContent), 'phase12: banner says the forecast is saved: ' + banner.textContent.trim());
+      assert(doc.querySelectorAll('.toast').length === 0, 'phase12: no error toast while the snapshot covers the outage');
+      assert(q12('boot-error').classList.contains('hidden'), 'phase12: no boot-error panel on the snapshot path');
+      assert(q12('hourly-strip').children.length > 5 && q12('daily-strip').children.length > 5, 'phase12: hourly and daily strips are painted from the snapshot');
+      /* The app retries the API on its own; once it answers, live data must
+         replace the saved forecast and the notice must go away. */
+      liveAllowed = true;
+      setTimeout(() => {
+        try {
+          const probe = doc.createElement('script');
+          probe.textContent = 'window.__snapProbe = { stale: !!state.weatherStale };';
+          doc.body.appendChild(probe);
+          assert(w.__snapProbe && w.__snapProbe.stale === false, 'phase12: live data clears the saved-forecast flag');
+          assert(q12('offline-banner').classList.contains('hidden'), 'phase12: banner hides once live data is back');
+          assert(/\d/.test(q12('temperature').textContent), 'phase12: live tiles still render after the swap');
+          phase13();
+        } catch (e) { errors.push('phase12 swap crashed: ' + e.message); phase13(); }
+      }, 900);
+    } catch (e) { errors.push('phase12 crashed: ' + e.message); phase13(); }
+  }, 1200);
+}
+
+/* phase 13 (no false data): a snapshot for a city 1000 km away must never be
+   passed off as the user's location — the honest error path stays in place. */
+function phase13() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;
+  w.LIVE_RETRY_MS = 10;
+  w.LIVE_SNAPSHOT_RACE_MS = 50;
+  w.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('snapshot')) {
+      if (u.includes('snapshot.json')) {
+        return { ok: true, json: async () => ({ generated: '2026-09-24T12:00:00Z', cities: [{ name: 'Владивосток', lat: 43.1155, lon: 131.8855, file: 'data/snapshot/vladivostok.json' }] }) };
+      }
+      return { ok: true, json: async () => ({ forecast: genForecast(), air: genAir() }) };
+    }
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q13 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const probe = doc.createElement('script');
+      probe.textContent = 'window.__farProbe = { weather: !!state.weather, stale: !!state.weatherStale };';
+      doc.body.appendChild(probe);
+      assert(w.__farProbe && w.__farProbe.weather === false, 'phase13: a far-away snapshot is not shown as local weather');
+      assert(q13('boot-error').classList.contains('hidden'), 'phase13: honest error path — no fake data, no boot-error panic');
+      assert(doc.querySelectorAll('.toast').length >= 1, 'phase13: the user still gets the retry toast when nothing matches');
+      finish();
+    } catch (e) { errors.push('phase13 crashed: ' + e.message); finish(); }
+  }, 1200);
 }
 
 function finish() {

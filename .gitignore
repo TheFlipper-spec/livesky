@@ -9,3 +9,11 @@ node_modules/
 *.aab
 android/key.properties
 artifacts/
+
+# GitHub Actions workflow that refreshes docs/data/*.json on a schedule.
+# The versioned copy lives in scripts/ci/ — GitHub's workflow scanner makes a
+# push fail with "refusing to allow a GitHub App to create or update workflow"
+# unless the pushing token has the `workflows` scope, so the file is copied into
+# .github/workflows/ only on machines/accounts that have it:
+#   mkdir -p .github/workflows && cp scripts/ci/weather-snapshot.yml .github/workflows/
+.github/workflows/weather-snapshot.yml

@@ -74,6 +74,123 @@ async function fetchResilient(hosts, path, ms) {
   throw lastErr || new Error('network unavailable');
 }
 
+/* ---------------- same-origin snapshot fallback ----------------
+   docs/data/snapshot.json ships next to the app: a compact copy of real
+   provider data for a few big cities (built by scripts/build-snapshot.js).
+   When the visitor's network cannot reach api.open-meteo.com — blocked ISP,
+   filtered DNS, captive portal, provider outage — the dashboard shows that
+   saved forecast instead of dashes forever, clearly labelled, and swaps in
+   live data as soon as the API answers again.
+   Tune with window.LIVE_SNAPSHOT_* / LIVE_RETRY_AFTER_SNAPSHOT_MS. */
+const SNAPSHOT_URL = window.LIVE_SNAPSHOT_URL || 'data/snapshot.json';
+const SNAPSHOT_MAX_KM = window.LIVE_SNAPSHOT_MAX_KM != null ? window.LIVE_SNAPSHOT_MAX_KM : 200;
+const SNAPSHOT_RACE_MS = window.LIVE_SNAPSHOT_RACE_MS != null ? window.LIVE_SNAPSHOT_RACE_MS : 4500;
+const SNAPSHOT_SHOW_MS = window.LIVE_SNAPSHOT_SHOW_MS != null ? window.LIVE_SNAPSHOT_SHOW_MS : 9000;
+const LIVE_AGAIN_MS = window.LIVE_RETRY_AFTER_SNAPSHOT_MS != null ? window.LIVE_RETRY_AFTER_SNAPSHOT_MS : 60000;
+
+let snapIndex = null;      /* parsed index, loaded once per session */
+let snapCity = null;       /* { meta, forecast, air } matching the coordinates on screen */
+let snapRetryTimer = null;
+let snapBannerTimer = null;
+
+function kmBetween(lat1, lon1, lat2, lon2) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/* Nearest snapshot city for the current coordinates, or null when the place
+   is outside the covered radius (then the normal error path applies). */
+async function loadSnapshot() {
+  if (snapCity && kmBetween(snapCity.meta.lat, snapCity.meta.lon, state.lat, state.lon) <= SNAPSHOT_MAX_KM) return snapCity;
+  try {
+    if (!snapIndex) {
+      const res = await fetchWithTimeout(SNAPSHOT_URL + '?t=' + Date.now(), SNAPSHOT_SHOW_MS);
+      if (!res || !res.ok) return null;
+      const json = await res.json();
+      if (!json || !Array.isArray(json.cities) || !json.cities.length) return null;
+      snapIndex = json;
+    }
+    let best = null, bestKm = Infinity;
+    for (const c of snapIndex.cities) {
+      if (typeof c.lat !== 'number' || typeof c.lon !== 'number' || !c.file) continue;
+      const km = kmBetween(state.lat, state.lon, c.lat, c.lon);
+      if (km < bestKm) { bestKm = km; best = c; }
+    }
+    if (!best || bestKm > SNAPSHOT_MAX_KM) return null;
+    const res = await fetchWithTimeout(best.file + '?t=' + encodeURIComponent(best.generated || snapIndex.generated || ''), SNAPSHOT_SHOW_MS);
+    if (!res || !res.ok) return null;
+    const payload = await res.json();
+    if (!payload || !payload.forecast || !payload.forecast.hourly || !payload.forecast.hourly.time) return null;
+    snapCity = { meta: best, forecast: payload.forecast, air: payload.air || null, km: Math.round(bestKm) };
+    return snapCity;
+  } catch (e) {
+    console.warn('snapshot fallback unavailable:', e);
+    return null;
+  }
+}
+
+function snapshotClock(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: state.tz || undefined }).format(d);
+  } catch (e) {
+    return d.toISOString().slice(11, 16);
+  }
+}
+
+/* Banner + "updated" chip tell the truth about where the numbers come from:
+   saved forecast, with its timestamp, never passed off as a live reading. */
+function paintSnapshotNotice() {
+  const banner = el.offlineBanner;
+  const info = state.weatherStale;
+  if (banner) {
+    clearTimeout(snapBannerTimer);
+    if (info) {
+      const age = info.at ? (Date.now() - Date.parse(info.at)) / 3600000 : 0;
+      const when = snapshotClock(info.at);
+      banner.querySelector('span').textContent = (when ? `${t('snapshot_banner')} · ${when}` : t('snapshot_banner')) +
+        (age > 6 ? ` · ${t('snapshot_stale')}` : '');
+      banner.classList.remove('hidden', 'out');
+    } else if (!banner.classList.contains('hidden')) {
+      banner.classList.add('out');
+      snapBannerTimer = setTimeout(() => banner.classList.add('hidden'), 320);
+    }
+  }
+  if (info && el.updatedAt) {
+    const when = snapshotClock(info.at);
+    if (when) el.updatedAt.textContent = when.replace(/^[^,]*,\s*/, '');
+  }
+}
+
+function scheduleLiveRetry() {
+  clearTimeout(snapRetryTimer);
+  snapRetryTimer = setTimeout(() => { if (state.weatherStale) fetchWeather(true); }, LIVE_AGAIN_MS);
+}
+
+/* Show the saved forecast for the current place. Returns true when it was
+   actually rendered (false: no snapshot nearby, or live data won the race). */
+async function showSnapshot(reason) {
+  if (state.weather) return false;
+  const snap = await loadSnapshot();
+  if (!snap || state.weather) return false;
+  state.weatherStale = { at: snap.meta.generated || (snapIndex && snapIndex.generated) || null, reason: reason || 'network', city: snap.meta.name, km: snap.km };
+  applyForecastPayload(snap.forecast);
+  if (snap.air) { state.air = snap.air; renderAirError(false); }
+  renderAll();
+  if (snap.air) renderAir();
+  clearBootFail();
+  setLoading(false);
+  hideLoader();
+  paintSnapshotNotice();
+  scheduleLiveRetry();
+  console.info(`LiveSky: showing saved forecast for ${snap.meta.name} (${snap.km} km away, ${snap.meta.generated}) — ${reason}`);
+  return true;
+}
+
 function showLoader() {
   el.loader.classList.remove('done');
   if (!phraseTimer) {
@@ -255,10 +372,36 @@ function setBigIcon(iconClass) {
   }
 }
 
-/* ---------------- data fetching ---------------- */
+/* ---------------- data fetching ----------------
+   One place turns a provider payload into "now" pointers and state, so live
+   responses and the saved snapshot go through exactly the same pipeline. */
+function applyForecastPayload(data) {
+  if (data.timezone) state.tz = data.timezone;
+  if (data.elevation != null) state.elevation = Math.round(data.elevation);
+  state.weather = data;
+  /* Minutely nowcast is optional — some model combos omit it. Keep previous
+     series if the new payload has none, so the live strip doesn't flicker. */
+  if (data.minutely_15 && data.minutely_15.time && data.minutely_15.time.length) {
+    state.minutely = data.minutely_15;
+  }
+  state.nowIdx = data.hourly.time.findIndex(tm => tm.startsWith(tzNow(state.tz).iso));
+  if (state.nowIdx === -1) state.nowIdx = Math.max(0, data.hourly.time.length - 25);
+  state.todayIdx = data.daily.time.findIndex(tm => tm === tzNow(state.tz).date);
+  if (state.todayIdx === -1) state.todayIdx = Math.max(0, data.daily.time.length - 1);
+  state.lastFetchTs = Date.now();
+  /* Advance the hourly pointer if the clock crossed an hour while data sat
+     in memory — keeps "now" correct between auto-refreshes. */
+  syncNowIdx();
+}
+
 async function fetchWeather(silent) {
   const seq = ++fetchSeq;
   if (!silent) setLoading(true);
+  /* The API may be unreachable or crawling. Rather than keeping the loader up
+     through every retry, publish the saved same-origin forecast after a short
+     grace period; a slow-but-healthy API still wins the race and the snapshot
+     is never used. */
+  const snapRace = setTimeout(() => { if (!state.weather) showSnapshot('slow-api'); }, SNAPSHOT_RACE_MS);
   try {
     const params = new URLSearchParams({
       latitude: state.lat, longitude: state.lon,
@@ -292,22 +435,11 @@ async function fetchWeather(silent) {
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
     if (seq !== fetchSeq) return; /* a newer request is in flight */
 
-    if (data.timezone) state.tz = data.timezone;
-    if (data.elevation != null) state.elevation = Math.round(data.elevation);
-    state.weather = data;
-    /* Minutely nowcast is optional — some model combos omit it. Keep previous
-       series if the new payload has none, so the live strip doesn't flicker. */
-    if (data.minutely_15 && data.minutely_15.time && data.minutely_15.time.length) {
-      state.minutely = data.minutely_15;
-    }
-    state.nowIdx = data.hourly.time.findIndex(tm => tm.startsWith(tzNow(state.tz).iso));
-    if (state.nowIdx === -1) state.nowIdx = data.hourly.time.length - 25;
-    state.todayIdx = data.daily.time.findIndex(tm => tm === tzNow(state.tz).date);
-    if (state.todayIdx === -1) state.todayIdx = 16;
-    state.lastFetchTs = Date.now();
-    /* Advance the hourly pointer if the clock crossed an hour while data sat
-       in memory — keeps "now" correct between auto-refreshes. */
-    syncNowIdx();
+    applyForecastPayload(data);
+    /* Live data is back: the saved-forecast notice is no longer true. */
+    state.weatherStale = null;
+    clearTimeout(snapRetryTimer);
+    paintSnapshotNotice();
 
     store.set('livesky:last_city', { lat: state.lat, lon: state.lon, name: state.locationName, cc: state.countryCode, admin: state.admin });
     clearTimeout(selfHealTimer);
@@ -328,6 +460,9 @@ async function fetchWeather(silent) {
        screen a failed refresh keeps it (the updated-chip simply stops
        advancing) and the user gets one non-destructive notice. */
     if (!state.weather) {
+      /* Nothing live and nothing on screen — fall back to the snapshot that
+         ships with the site before telling the user anything failed. */
+      if (await showSnapshot('api-unreachable')) return;
       if (!silent) toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
       /* Self-heal: a connectivity blip while the very first forecast is being
          fetched used to leave an empty dashboard until the user reloaded or
@@ -335,9 +470,14 @@ async function fetchWeather(silent) {
          cadence take over. */
       clearTimeout(selfHealTimer);
       selfHealTimer = setTimeout(() => { if (!state.weather) fetchWeather(true); }, 20000);
+    } else if (state.weatherStale) {
+      /* Still on the saved forecast: keep probing the API in the background
+         until live data returns (the swap clears the flag). */
+      scheduleLiveRetry();
     }
   } finally {
     if (seq !== fetchSeq) return;
+    clearTimeout(snapRace);
     if (!silent) setLoading(false);
     hideLoader();
   }
@@ -367,6 +507,13 @@ async function fetchAir(seq, isRetry) {
       return;
     }
     console.warn('fetchAir failed:', e);
+    /* Air quality is part of the "app is broken" impression too: when the
+       provider is unreachable, reuse the air block that came with the saved
+       snapshot instead of an empty card. */
+    if (!state.air && state.weatherStale) {
+      const snap = await loadSnapshot().catch(() => null);
+      if (snap && snap.air) { state.air = snap.air; renderAirError(false); renderAir(); return; }
+    }
     /* Keep the last good reading instead of wiping it: air quality changes
        slowly, so stale-but-real beats a card full of dashes. Only the very
        first load (no data at all) shows the explicit unavailable state. */
