@@ -33,11 +33,53 @@ const FAV_LIST_DELAY_MS = window.LIVE_FAV_DELAY_MS != null ? window.LIVE_FAV_DEL
    each request is retried with backoff, so one dropped connection, a 429 or a
    brief 5xx never leaves the dashboard empty — which is exactly the failure
    mode users report as "the site loads but no data comes in". */
-const FORECAST_HOSTS = window.LIVE_FORECAST_HOSTS || ['https://api.open-meteo.com'];
+const FORECAST_HOSTS = window.LIVE_FORECAST_HOSTS || [
+  'https://api.open-meteo.com',
+  /* Same provider, same /v1/forecast payload, different hostname and IP.
+     api.open-meteo.com is unreachable from a number of networks — Russian ISPs
+     block it at the provider level, while the open-meteo.com website itself
+     keeps working because it is a different host — so the app must never
+     depend on one hostname. Verified: the sibling returns the identical shape
+     (hourly, daily, minutely_15, m/s, models=best_match). */
+  'https://historical-forecast-api.open-meteo.com'
+];
 const AIR_HOSTS = window.LIVE_AIR_HOSTS || ['https://air-quality-api.open-meteo.com'];
 const GEOCODE_HOSTS = window.LIVE_GEOCODE_HOSTS || ['https://geocoding-api.open-meteo.com'];
 const RETRY_ATTEMPTS = Math.max(1, window.LIVE_RETRY_ATTEMPTS != null ? window.LIVE_RETRY_ATTEMPTS : 3);
 const RETRY_MS = window.LIVE_RETRY_MS != null ? window.LIVE_RETRY_MS : 1200; /* backoff base */
+/* A host that is blocked never answers, so every request to it costs a full
+   timeout. Remember which host actually answered and try it first for a while;
+   after HOST_MEMORY_MS the canonical order comes back, so a network that got
+   fixed returns to the primary host on its own. */
+const HOST_MEMORY_MS = window.LIVE_HOST_MEMORY_MS != null ? window.LIVE_HOST_MEMORY_MS : 6 * 60 * 60 * 1000;
+
+function hostMemory() {
+  try { return store.get('livesky:hosts') || {}; } catch (e) { return {}; }
+}
+function lastHost(group) {
+  const m = hostMemory()[group];
+  if (!m || !m.host) return null;
+  return (Date.now() - m.ts < HOST_MEMORY_MS) ? m.host : null;
+}
+function rememberHost(group, host) {
+  if (!group || !host) return;
+  try {
+    const mem = hostMemory();
+    const changed = !mem[group] || mem[group].host !== host;
+    mem[group] = { host, ts: Date.now() };
+    store.set('livesky:hosts', mem);
+    if (changed && /^https?:/.test(host)) console.info(`[LiveSky] источник «${group}»: ${host}`);
+  } catch (e) { /* private mode — the memory is a nicety, not a requirement */ }
+}
+function orderedHosts(hosts, group) {
+  const list = (hosts && hosts.length) ? hosts.slice() : [''];
+  if (!group || list.length < 2) return list;
+  const mem = hostMemory()[group];
+  if (mem && mem.host && Date.now() - mem.ts < HOST_MEMORY_MS && list.indexOf(mem.host) > 0) {
+    return [mem.host].concat(list.filter((h) => h !== mem.host));
+  }
+  return list;
+}
 
 /* fetch that can never hang forever */
 async function fetchWithTimeout(url, ms) {
@@ -59,14 +101,52 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
    Retry policy: network errors, timeouts, 429 and 5xx are transient and worth
    another try; a 4xx (bad request) is not — retrying it would only burn the
    provider's rate limit, so it fails fast and the caller can report honestly. */
-async function fetchResilient(hosts, path, ms) {
-  const list = (hosts && hosts.length) ? hosts : [''];
+/* While the app does not yet know which host works, a censored host is the
+   expensive one: it does not refuse, it hangs, so a sequential walk would sit
+   in the timeout of every blocked host before reaching a working one. In that
+   case all hosts are asked at once and the first answer wins; once a host has
+   been remembered, requests go to it directly. */
+function raceHosts(list, path, ms, group) {
+  return new Promise((resolve, reject) => {
+    let pending = list.length;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+    list.forEach((host) => {
+      fetchWithTimeout(host + path, ms).then((res) => {
+        if (settled) return;
+        if (res && res.ok) {
+          settled = true;
+          rememberHost(group, host);
+          resolve(res);
+          return;
+        }
+        const err = new Error('API ' + (res ? res.status : '?'));
+        const msg = String(err.message);
+        /* a 4xx means the request itself is wrong — the other host would
+           reject it too, so stop instead of racing to the same failure */
+        if (/API 4\d\d/.test(msg) && !/API 429/.test(msg)) return fail(err);
+        if (--pending === 0) fail(err);
+      }).catch((e) => {
+        if (settled) return;
+        if (--pending === 0) fail(e);
+      });
+    });
+  });
+}
+
+async function fetchResilient(hosts, path, ms, group) {
+  const list = orderedHosts(hosts, group);
+  if (group && list.length > 1 && !lastHost(group)) return raceHosts(list, path, ms, group);
   let lastErr = null;
   for (const host of list) {
     for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
       try {
         const res = await fetchWithTimeout(host + path, ms);
-        if (res && res.ok) return res;
+        if (res && res.ok) { rememberHost(group, host); return res; }
         lastErr = new Error('API ' + (res ? res.status : '?'));
       } catch (e) {
         lastErr = e;
@@ -481,7 +561,7 @@ async function fetchWeather(silent) {
       params.append('models', rm ? `${rm},best_match` : 'best_match');
     }
 
-    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, state.weather ? FETCH_MS : FIRST_FETCH_MS);
+    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, state.weather ? FETCH_MS : FIRST_FETCH_MS, 'forecast');
     const data = await res.json();
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
     if (seq !== fetchSeq) return; /* a newer request is in flight */
@@ -542,7 +622,7 @@ async function fetchWeather(silent) {
 async function fetchAir(seq, isRetry) {
   try {
     const path = `/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`;
-    const res = await fetchResilient(AIR_HOSTS, path, state.air ? 12000 : FIRST_FETCH_MS);
+    const res = await fetchResilient(AIR_HOSTS, path, state.air ? 12000 : FIRST_FETCH_MS, 'air');
     const data = await res.json();
     if (!data || !data.hourly) throw new Error('Bad payload');
     if (seq && seq !== fetchSeq) return;
@@ -766,11 +846,84 @@ function buildCorrectionCandidates(q) {
     return true;
   }).slice(0, 14); /* cap extra requests per search */
 }
-async function geocodeQuery(q, count) {
+/* Search is the one feature that cannot fall back to the saved forecast, so it
+   gets a provider of its own: OpenStreetMap's Nominatim, which is not part of
+   the Open-Meteo infrastructure and therefore survives a block of
+   *.open-meteo.com. The provider that answered last is tried first; OSM asks
+   for at most ~1 request per second, so those calls are spaced out and the
+   typo-correction fan-out is trimmed while OSM is the active provider. */
+const GEOCODE_SOFT_MS = window.LIVE_GEOCODE_SOFT_MS != null ? window.LIVE_GEOCODE_SOFT_MS : 3500;
+const OSM_HOST = 'https://nominatim.openstreetmap.org';
+let osmChain = Promise.resolve();
+let osmLastAt = 0;
+
+function osmQueue(fn) {
+  const run = osmChain.then(async () => {
+    const wait = Math.max(0, 1100 - (Date.now() - osmLastAt));
+    if (wait) await sleepMs(wait);
+    osmLastAt = Date.now();
+    return fn();
+  });
+  osmChain = run.then(() => {}, () => {});
+  return run;
+}
+
+/* Nominatim speaks a different dialect — reshape its answer into what the
+   Open-Meteo geocoder returns so the suggestion list, flags and labels work
+   unchanged. */
+function osmResults(payload) {
+  return (Array.isArray(payload) ? payload : []).map((x) => {
+    const a = x.address || {};
+    return {
+      id: `osm:${x.osm_type || ''}${x.osm_id || ''}`,
+      name: x.name || String(x.display_name || '').split(',')[0].trim(),
+      latitude: parseFloat(x.lat),
+      longitude: parseFloat(x.lon),
+      country_code: String(a.country_code || '').toLowerCase(),
+      country: a.country || '',
+      admin1: a.state || a.region || a.county || a.city || ''
+    };
+  }).filter((c) => c.name && isFinite(c.latitude) && isFinite(c.longitude));
+}
+
+function geocodeOsm(q, count) {
+  return osmQueue(async () => {
+    const path = `/search?q=${encodeURIComponent(q)}&format=jsonv2&addressdetails=1` +
+      `&limit=${count}&accept-language=${encodeURIComponent(state.lang || 'ru')}`;
+    const r = await fetchWithTimeout(OSM_HOST + path, 8000);
+    if (!r || !r.ok) throw new Error('OSM ' + (r ? r.status : '?'));
+    const list = osmResults(await r.json());
+    if (!list.length) throw new Error('OSM empty');
+    return list;
+  });
+}
+
+async function geocodeOpenMeteo(q, count) {
   const path = `/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`;
-  const r = await fetchResilient(GEOCODE_HOSTS, path, 8000);
+  const r = await fetchResilient(GEOCODE_HOSTS, path, 8000, 'geocode');
   const d = await r.json();
   return d.results || [];
+}
+
+async function geocodeQuery(q, count) {
+  if (lastHost('geocode') === 'osm') return geocodeOsm(q, count);
+  let timer = null;
+  const primary = geocodeOpenMeteo(q, count);
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('geocoder timeout')), GEOCODE_SOFT_MS);
+  });
+  try {
+    const results = await Promise.race([primary, guard]);
+    rememberHost('geocode', GEOCODE_HOSTS[0]);
+    return results;
+  } catch (e) {
+    primary.catch(() => {}); /* the abandoned request must not surface later */
+    const results = await geocodeOsm(q, count);
+    rememberHost('geocode', 'osm');
+    return results;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 /* Tries the query as typed first; only if that comes back empty does it
    fire off the (small, capped) set of correction candidates in parallel
@@ -781,6 +934,8 @@ async function geocodeSmart(q, count) {
   const direct = await geocodeQuery(q, count);
   if (direct.length) return { results: direct, corrected: null };
   const candidates = buildCorrectionCandidates(q);
+  /* OSM tolerates ~1 request/second: keep the typo fan-out short there. */
+  if (lastHost('geocode') === 'osm') candidates.length = Math.min(candidates.length, 2);
   if (!candidates.length) return { results: [], corrected: null };
   const settled = await Promise.all(candidates.map(async (cand) => {
     try { return { cand, results: await geocodeQuery(cand, count) }; }

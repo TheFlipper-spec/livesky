@@ -1823,7 +1823,7 @@ function phase14() {
       assert(w.__staleProbe && w.__staleProbe.weather === false, 'phase14: an archive that no longer covers the current hour is not shown as now');
       assert(q14('offline-banner').classList.contains('hidden'), 'phase14: no saved-forecast banner for an expired archive');
       assert(doc.querySelectorAll('.toast').length >= 1, 'phase14: expired archive falls back to the honest retry toast');
-      finish();
+      phase16();
     } catch (e) { errors.push('phase14 crashed: ' + e.message); finish(); }
   }, 1200);
 }
@@ -1865,6 +1865,135 @@ function phase15() {
       phase13();
     } catch (e) { errors.push('phase15 crashed: ' + e.message); phase13(); }
   }, 1200);
+}
+
+/* phase 16 (ISP blocks the API host — the "works with VPN, not without" case):
+   api.open-meteo.com never answers, the provider's sibling host does. The
+   dashboard must show live numbers, with no saved-forecast notice, and the
+   working host must be remembered for the next visits. */
+function phase16() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;
+  w.LIVE_RETRY_MS = 10;
+  w.LIVE_SNAPSHOT_RACE_MS = 5000; /* live wins the race: the archive is not the answer here */
+  const urls = [];
+  const live = genForecast();
+  ['temperature_2m', 'temperature_2m_best_match'].forEach((k) => {
+    if (live.hourly[k]) live.hourly[k] = live.hourly[k].map((v) => v + 10); /* prove it is not the archive */
+  });
+  w.fetch = async (url) => {
+    const u = String(url);
+    urls.push(u);
+    if (u.startsWith('https://historical-forecast-api')) return { ok: true, json: async () => live };
+    /* a censored host does not refuse — it silently swallows the request */
+    if (u.startsWith('https://api.open-meteo.com')) return new Promise(() => {});
+    if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
+    if (u.includes('snapshot')) return { ok: true, json: async () => ({ generated: '2026-09-24T12:00:00Z', cities: [] }) };
+    return { ok: true, json: async () => ({}) };
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q16 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      assert(urls.some((u) => u.startsWith('https://api.open-meteo.com')), 'phase16: the canonical host is tried first');
+      assert(urls.some((u) => u.startsWith('https://historical-forecast-api')), 'phase16: the app fails over to the sibling host');
+      assert(/\d/.test(q16('temperature').textContent), 'phase16: live data renders through the sibling host: ' + q16('temperature').textContent);
+      assert(q16('offline-banner').classList.contains('hidden'), 'phase16: no saved-forecast notice — the numbers are live');
+      const mem = JSON.parse(w.localStorage.getItem('livesky:hosts') || '{}');
+      assert(mem.forecast && mem.forecast.host === 'https://historical-forecast-api.open-meteo.com',
+        'phase16: the host that answered is remembered: ' + JSON.stringify(mem.forecast));
+      phase17();
+    } catch (e) { errors.push('phase16 crashed: ' + e.message); phase17(); }
+  }, 1200);
+}
+
+/* phase 17 (host memory): with a remembered host, a blackholed canonical host
+   must not cost a timeout on every single request — it should not even be
+   contacted. */
+function phase17() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;
+  w.LIVE_RETRY_MS = 10;
+  w.LIVE_SNAPSHOT_RACE_MS = 5000;
+  const remembered = 'https://historical-forecast-api.open-meteo.com';
+  w.localStorage.setItem('livesky:hosts', JSON.stringify({ forecast: { host: remembered, ts: Date.now() } }));
+  const urls = [];
+  const live = genForecast();
+  ['temperature_2m', 'temperature_2m_best_match'].forEach((k) => {
+    if (live.hourly[k]) live.hourly[k] = live.hourly[k].map((v) => v + 10);
+  });
+  w.fetch = async (url) => {
+    const u = String(url);
+    urls.push(u);
+    if (u.startsWith('https://api.open-meteo.com')) return new Promise(() => {}); /* blocked: never answers */
+    if (u.startsWith('https://historical-forecast-api')) return { ok: true, json: async () => live };
+    if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
+    return { ok: true, json: async () => ({}) };
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q17 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      assert(!urls.some((u) => u.startsWith('https://api.open-meteo.com')),
+        'phase17: the remembered host is used first — the blocked host is not touched');
+      assert(/\d/.test(q17('temperature').textContent), 'phase17: the dashboard is filled through the remembered host');
+      assert(q17('offline-banner').classList.contains('hidden'), 'phase17: no saved-forecast notice while a live host answers');
+      phase18();
+    } catch (e) { errors.push('phase17 crashed: ' + e.message); phase18(); }
+  }, 900);
+}
+
+/* phase 18 (city search survives a geocoder block): Open-Meteo's geocoder is
+   unreachable, OpenStreetMap answers instead, and its answer must be reshaped
+   into what the suggestion list expects. */
+function phase18() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;
+  w.LIVE_RETRY_MS = 10;
+  const urls = [];
+  w.fetch = async (url) => {
+    const u = String(url);
+    urls.push(u);
+    if (u.startsWith('https://geocoding-api.open-meteo.com')) return Promise.reject(new TypeError('Failed to fetch'));
+    if (u.startsWith('https://nominatim.openstreetmap.org')) {
+      return { ok: true, json: async () => ([{
+        display_name: 'Казань, Татарстан, Россия',
+        name: 'Казань', lat: '55.7963', lon: '49.1088',
+        osm_type: 'relation', osm_id: 12345,
+        address: { country_code: 'ru', country: 'Россия', state: 'Татарстан', city: 'Казань' }
+      }]) };
+    }
+    if (u.startsWith('https://historical-forecast-api') || u.startsWith('https://api.open-meteo.com')) {
+      return { ok: true, json: async () => genForecast() };
+    }
+    if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
+    return { ok: true, json: async () => ({}) };
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q18 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const input = q18('city-input');
+      input.value = 'Казань';
+      input.dispatchEvent(new w.Event('input', { bubbles: true }));
+      setTimeout(() => {
+        try {
+          const list = q18('autocomplete-list');
+          assert(urls.some((u) => u.startsWith('https://geocoding-api.open-meteo.com')), 'phase18: the primary geocoder is tried first');
+          assert(urls.some((u) => u.startsWith('https://nominatim.openstreetmap.org')), 'phase18: the app falls back to OpenStreetMap');
+          assert(/Казань/.test(list.textContent), 'phase18: the suggestion list shows the OSM result: ' + list.textContent.trim().slice(0, 90));
+          assert(/Татарстан/.test(list.textContent) && /Россия/.test(list.textContent),
+            'phase18: the OSM answer is reshaped into the app shape (admin + country): ' + list.textContent.trim().slice(0, 90));
+          const mem = JSON.parse(w.localStorage.getItem('livesky:hosts') || '{}');
+          assert(mem.geocode && mem.geocode.host === 'osm', 'phase18: the OSM fallback is remembered: ' + JSON.stringify(mem.geocode));
+          finish();
+        } catch (e) { errors.push('phase18 crashed: ' + e.message); finish(); }
+      }, 900);
+    } catch (e) { errors.push('phase18 crashed: ' + e.message); finish(); }
+  }, 700);
 }
 
 function finish() {

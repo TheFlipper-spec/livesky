@@ -9,30 +9,36 @@
   :root { color-scheme: dark; }
   body { margin: 0; padding: 24px 16px 48px; background: #0b1020; color: #e6ecff;
          font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 860px; margin: 0 auto; }
+  .wrap { max-width: 900px; margin: 0 auto; }
   h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 26px 0 8px; color: #c8d6f5; }
   p.lead { color: #9fb0d0; margin: 0 0 20px; }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #1e2942; vertical-align: top; }
   th { color: #9fb0d0; font-weight: 600; }
   code { font-size: 12.5px; color: #b9c7e6; word-break: break-all; }
   .badge { display: inline-block; min-width: 62px; text-align: center; padding: 2px 8px; border-radius: 999px;
-           font-size: 12px; font-weight: 700; }
+           font-size: 12px; font-weight: 700; white-space: nowrap; }
   .ok { background: #10391f; color: #6ee7a0; }
   .fail { background: #3b1520; color: #ff9aa8; }
   .wait { background: #22304d; color: #9fb0d0; }
   #verdict { margin: 18px 0 8px; padding: 14px 16px; border-radius: 12px; background: #111a30; border: 1px solid #1e2942; }
   #verdict b { color: #fff; }
-  button { margin-top: 14px; padding: 9px 15px; border-radius: 10px; border: 1px solid #2b3a5e;
+  #verdict ul { margin: 8px 0 0; padding-left: 20px; }
+  #applied { margin-top: 10px; color: #6ee7a0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  button { padding: 9px 15px; border-radius: 10px; border: 1px solid #2b3a5e;
            background: #16213a; color: #e6ecff; font: inherit; cursor: pointer; }
   button:hover { background: #1b2a4a; }
+  button[disabled] { opacity: .5; cursor: default; }
   .note { color: #7f90b3; font-size: 13px; margin-top: 18px; }
+  .note code { color: #9fb0d0; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>Проверка источников данных</h1>
-  <p class="lead">Эта страница из вашего браузера проверяет, какие адреса доступны, а какие блокирует ваша сеть. Данные никуда не отправляются.</p>
+  <p class="lead">Страница проверяет из вашего браузера, какие адреса доступны в вашей сети, а какие блокирует провайдер. Ничего никуда не отправляется.</p>
 
   <table>
     <thead><tr><th>Источник</th><th>Результат</th><th>Время</th><th>Подробности</th></tr></thead>
@@ -40,13 +46,22 @@
   </table>
 
   <div id="verdict">Проверяю…</div>
-  <button id="again">Проверить снова</button>
-  <button id="copy">Скопировать отчёт</button>
+  <div class="btns">
+    <button id="again">Проверить снова</button>
+    <button id="apply" disabled>Применить рабочий источник</button>
+    <button id="copy">Скопировать отчёт</button>
+  </div>
+  <div id="applied"></div>
 
+  <h2>Что это значит</h2>
   <p class="note">
-    Что означает результат: <b>недоступен</b> — запрос не дошёл до сервера (блокировка сети, DNS, прокси);
-    <b>HTTP 4xx/5xx</b> — сервер ответил ошибкой; <b>ок</b> — источник доступен и данные должны приходить живьём.
-    Если провайдер погоды недоступен, сайт покажет сохранённый прогноз с честной подписью, а не пустые плитки.
+    <b>недоступен</b> — запрос не дошёл до сервера (блокировка провайдера, DNS, фильтр на работе или в школе);
+    <b>HTTP 4xx/5xx</b> — сервер ответил ошибкой; <b>ок</b> — источник доступен.<br>
+    Провайдеры в России часто режут именно <code>api.open-meteo.com</code>, хотя сайт <code>open-meteo.com</code> открывается:
+    это разные хосты. Поэтому приложение пробует несколько адресов подряд, а если ни один не отвечает —
+    показывает сохранённый прогноз, который лежит на самом сайте и блокироваться не может.<br>
+    Кнопка «Применить рабочий источник» сохраняет найденный рабочий адрес в этом браузере, чтобы приложение
+    сразу брало его, не тратя время на заблокированный.
   </p>
 </div>
 
@@ -54,20 +69,31 @@
 (function () {
   'use strict';
   const CORS = { mode: 'cors', cache: 'no-store' };
+  const LAT = 55.7558, LON = 37.6173;
+  const q = (extra) => `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&hourly=temperature_2m&forecast_days=1&${extra || ''}`;
+  const sibling = (extra) => `https://historical-forecast-api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&hourly=temperature_2m,weathercode,windspeed_10m&wind_speed_unit=ms&forecast_days=1&${extra || ''}`;
+
+  /* group/host are what the app stores in localStorage under "livesky:hosts":
+     the address that answered is tried first for the next few hours. */
   const PROBES = [
-    { label: 'Сайт (свой домен)', url: 'data/snapshot.json?diag=' + Date.now(), kind: 'same-origin' },
-    { label: 'Сохранённый прогноз', url: 'data/snapshot/moscow.json?diag=' + Date.now(), kind: 'same-origin' },
-    { label: 'Open-Meteo · прогноз', url: 'https://api.open-meteo.com/v1/forecast?latitude=55.7558&longitude=37.6173&hourly=temperature_2m&forecast_days=1', kind: 'provider' },
-    { label: 'Open-Meteo · качество воздуха', url: 'https://air-quality-api.open-meteo.com/v1/air-quality?latitude=55.7558&longitude=37.6173&hourly=pm2_5', kind: 'provider' },
-    { label: 'Open-Meteo · геокодер', url: 'https://geocoding-api.open-meteo.com/v1/search?name=Moscow&count=1', kind: 'provider' },
-    { label: 'RainViewer (радар)', url: 'https://api.rainviewer.com/public/weather-maps.json', kind: 'provider' },
-    { label: 'DNS-резолвер Google', url: 'https://dns.google/resolve?name=api.open-meteo.com&type=A', kind: 'control' },
-    { label: 'Доступ в интернет (Cloudflare)', url: 'https://cloudflare.com/cdn-cgi/trace', kind: 'control' }
+    { id: 'snapshot', label: 'Свой сайт · архив прогноза', url: 'data/snapshot.json?diag=' + Date.now(), kind: 'same-origin' },
+    { id: 'snapshotCity', label: 'Свой сайт · прогноз города', url: 'data/snapshot/moscow.json?diag=' + Date.now(), kind: 'same-origin' },
+    { id: 'forecast', label: 'Open-Meteo · прогноз (основной адрес)', url: q(), group: 'forecast', host: 'https://api.open-meteo.com' },
+    { id: 'forecastAlt', label: 'Open-Meteo · прогноз (запасной адрес)', url: sibling(), group: 'forecast', host: 'https://historical-forecast-api.open-meteo.com' },
+    { id: 'air', label: 'Open-Meteo · качество воздуха', url: `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${LAT}&longitude=${LON}&hourly=pm2_5&forecast_days=1`, group: 'air', host: 'https://air-quality-api.open-meteo.com' },
+    { id: 'geocode', label: 'Open-Meteo · поиск городов', url: 'https://geocoding-api.open-meteo.com/v1/search?name=Moscow&count=1&language=ru&format=json', group: 'geocode', host: 'https://geocoding-api.open-meteo.com' },
+    { id: 'osm', label: 'OpenStreetMap · поиск городов (запасной)', url: 'https://nominatim.openstreetmap.org/search?q=Moscow&format=jsonv2&addressdetails=1&limit=1', group: 'geocode', host: 'osm' },
+    { id: 'rain', label: 'RainViewer (радар осадков)', url: 'https://api.rainviewer.com/public/weather-maps.json' },
+    { id: 'dns', label: 'DNS-резолвер Google (контроль)', url: 'https://dns.google/resolve?name=api.open-meteo.com&type=A', kind: 'control' },
+    { id: 'net', label: 'Интернет вообще (Cloudflare, контроль)', url: 'https://cloudflare.com/cdn-cgi/trace', kind: 'control' }
   ];
 
   const rows = document.getElementById('rows');
   const verdict = document.getElementById('verdict');
+  const applied = document.getElementById('applied');
+  const applyBtn = document.getElementById('apply');
   const report = [];
+  let outcome = {};
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -93,12 +119,13 @@
       const ms = performance.now() - t0;
       const state = res.ok ? { cls: 'ok', text: 'ок' } : { cls: 'fail', text: 'HTTP ' + res.status };
       let detail = 'HTTP ' + res.status + ' · ' + res.headers.get('content-type');
-      if (res.ok && /\/(forecast|air-quality|search|weather-maps|resolve)/.test(p.url)) {
+      if (res.ok && p.kind !== 'same-origin') {
         const text = await res.text();
         detail += ' · ' + (text.length > 120000 ? Math.round(text.length / 1024) + ' КБ' : text.slice(0, 80).replace(/\s+/g, ' '));
       }
       r.set(state, ms, detail);
       report.push({ probe: p.label, url: p.url, ok: res.ok, status: res.status, ms: Math.round(ms), detail });
+      outcome[p.id] = res.ok;
       return res.ok;
     } catch (e) {
       const ms = performance.now() - t0;
@@ -106,32 +133,82 @@
       const msg = (e && e.message) || String(e);
       r.set({ cls: 'fail', text: 'недоступен' }, ms, name + ': ' + msg);
       report.push({ probe: p.label, url: p.url, ok: false, status: 0, ms: Math.round(ms), detail: name + ': ' + msg });
+      outcome[p.id] = false;
       return false;
     }
+  }
+
+  /* Store the address that answered in the same shape the app reads, so the
+     next page load goes straight to the working source. */
+  function workingHosts() {
+    const out = {};
+    const now = Date.now();
+    const pick = (group) => {
+      const hit = PROBES.filter((p) => p.group === group).find((p) => outcome[p.id]);
+      if (hit) out[group] = { host: hit.host, ts: now };
+    };
+    pick('forecast'); pick('air'); pick('geocode');
+    return out;
+  }
+
+  function verdictText() {
+    const v = [];
+    if (outcome.forecast) {
+      v.push('<b>Основной источник погоды доступен</b> — сайт должен получать живые данные.');
+    } else if (outcome.forecastAlt) {
+      v.push('<b>Ваша сеть блокирует api.open-meteo.com, но запасной адрес Open-Meteo работает.</b> ' +
+             'Сайт умеет переключаться на него сам; кнопка ниже включает это сразу, без ожидания.');
+    } else if (outcome.snapshot && outcome.snapshotCity) {
+      v.push('<b>Провайдер погоды недоступен из вашей сети целиком.</b> ' +
+             'Сайт покажет сохранённый прогноз (лежит на самом сайте, поэтому не блокируется) и будет тихо ждать живые данные.');
+    } else if (outcome.net) {
+      v.push('<b>Интернет есть, но ни один источник погоды не отвечает.</b> Проверьте блокировщики/антивирус и попробуйте ещё раз.');
+    } else {
+      v.push('<b>Похоже, у браузера нет доступа в интернет</b> (не проходит даже запрос к Cloudflare).');
+    }
+    if (!outcome.snapshot || !outcome.snapshotCity) v.push('Сохранённый прогноз с сайта не загрузился — обновите страницу (Ctrl+Shift+R).');
+    if (outcome.forecast && !outcome.air) v.push('Качество воздуха из вашей сети недоступно — плитка покажет «нет данных», остальное работает.');
+    if (!outcome.geocode && outcome.osm) v.push('Поиск городов пойдёт через OpenStreetMap — кнопка ниже включит это сразу.');
+    return '<b>Итог:</b> ' + v.join(' ');
   }
 
   async function run() {
     rows.textContent = '';
     report.length = 0;
+    outcome = {};
+    applied.textContent = '';
+    applyBtn.disabled = true;
     verdict.textContent = 'Проверяю…';
-    const results = await Promise.all(PROBES.map(probe));
-    const providerOk = results[2];
-    const netOk = results[7];
-    const snapOk = results[1];
-    const v = [];
-    if (providerOk) v.push('<b>Провайдер погоды доступен</b> — сайт должен получать живые данные.');
-    else if (netOk) v.push('<b>Интернет есть, но api.open-meteo.com недоступен</b> — похоже, сеть или провайдер блокирует именно этот сервис. Сайт покажет сохранённый прогноз с подписью о недоступности сервиса.');
-    else v.push('<b>Похоже, у браузера нет доступа в интернет</b> (не проходит даже запрос к Cloudflare) — сайт работает только на сохранённом прогнозе и кеше.');
-    if (!snapOk) v.push('Сохранённый прогноз с сайта не загрузился — обновите страницу (Ctrl+Shift+R).');
-    verdict.innerHTML = v.join(' ');
+    await Promise.all(PROBES.map(probe));
+    verdict.innerHTML = verdictText();
+    applyBtn.disabled = !Object.keys(workingHosts()).length;
   }
+
+  applyBtn.addEventListener('click', () => {
+    const hosts = workingHosts();
+    if (!Object.keys(hosts).length) return;
+    try {
+      const prev = JSON.parse(localStorage.getItem('livesky:hosts') || '{}') || {};
+      localStorage.setItem('livesky:hosts', JSON.stringify(Object.assign(prev, hosts)));
+      const list = Object.keys(hosts).map((g) => g + ': ' + hosts[g].host).join(', ');
+      applied.textContent = 'Сохранено (' + list + '). Откройте сайт и обновите страницу — приложение возьмёт этот источник первым.';
+    } catch (e) {
+      applied.textContent = 'Не удалось сохранить: ' + ((e && e.message) || e);
+    }
+  });
 
   document.getElementById('again').addEventListener('click', run);
   document.getElementById('copy').addEventListener('click', async () => {
-    const text = 'LiveSky diag ' + new Date().toISOString() + '\n' + report.map((r) =>
-      `${r.ok ? 'OK ' : 'FAIL'} ${r.probe} | ${r.status} | ${r.ms}ms | ${r.detail}`).join('\n');
-    try { await navigator.clipboard.writeText(text); verdict.innerHTML = 'Отчёт скопирован в буфер обмена.'; }
-    catch (e) { verdict.innerHTML = 'Не удалось скопировать, текст отчёта ниже (можно выделить и скопировать вручную).'; verdict.innerHTML += '<pre style="white-space:pre-wrap">' + esc(text) + '</pre>'; }
+    const text = 'LiveSky diag ' + new Date().toISOString() +
+      '\nstorage: ' + (localStorage.getItem('livesky:hosts') || '(пусто)') +
+      '\n' + report.map((r) => `${r.ok ? 'OK ' : 'FAIL'} ${r.probe} | ${r.status} | ${r.ms}ms | ${r.detail}`).join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      verdict.innerHTML = 'Отчёт скопирован в буфер обмена.';
+    } catch (e) {
+      verdict.innerHTML = 'Не удалось скопировать, текст отчёта ниже (можно выделить и скопировать вручную).' +
+        '<pre style="white-space:pre-wrap">' + esc(text) + '</pre>';
+    }
   });
 
   run();
