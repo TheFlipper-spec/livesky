@@ -1731,6 +1731,7 @@ function phase12() {
       assert(/Сервис погоды недоступен/.test(banner.textContent), 'phase12: banner headline names the problem: ' + banner.textContent.trim());
       assert(/сохранённый прогноз/i.test(banner.textContent), 'phase12: banner says the forecast is saved: ' + banner.textContent.trim());
       assert(banner.querySelector('.ob-title') && banner.querySelector('.ob-sub'), 'phase12: notice renders title + detail lines');
+      assert(/Москва/.test(banner.querySelector('.ob-sub').textContent), 'phase12: the notice names the city the numbers come from: ' + banner.querySelector('.ob-sub').textContent);
       assert(banner.querySelector('.ob-retry'), 'phase12: notice offers a retry button');
       assert(doc.querySelectorAll('.toast').length === 0, 'phase12: no error toast while the snapshot covers the outage');
       assert(q12('boot-error').classList.contains('hidden'), 'phase12: no boot-error panel on the snapshot path');
@@ -1748,7 +1749,7 @@ function phase12() {
           assert(!q12('offline-banner').classList.contains('notice') && /data-translate="offline_banner"/.test(q12('offline-banner').innerHTML),
             'phase12: banner markup is restored for the ordinary offline message');
           assert(/\d/.test(q12('temperature').textContent), 'phase12: live tiles still render after the swap');
-          phase13();
+          phase15();
         } catch (e) { errors.push('phase12 swap crashed: ' + e.message); phase13(); }
       }, 900);
     } catch (e) { errors.push('phase12 crashed: ' + e.message); phase13(); }
@@ -1824,6 +1825,45 @@ function phase14() {
       assert(doc.querySelectorAll('.toast').length >= 1, 'phase14: expired archive falls back to the honest retry toast');
       finish();
     } catch (e) { errors.push('phase14 crashed: ' + e.message); finish(); }
+  }, 1200);
+}
+
+/* phase 15 (distant archive, clearly labelled): when the visitor's own city has
+   no saved forecast, the nearest saved one may be used — but only if the notice
+   names that city and how far away it is. */
+function phase15() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;
+  w.LIVE_RETRY_MS = 10;
+  w.LIVE_SNAPSHOT_RACE_MS = 50;
+  w.LIVE_RETRY_AFTER_SNAPSHOT_MS = 60000;
+  w.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('snapshot')) {
+      if (u.includes('snapshot.json')) {
+        /* ~960 km north of the default city — inside the 1200 km radius */
+        return { ok: true, json: async () => ({ generated: '2026-09-24T12:00:00Z', cities: [{ name: 'Мурманск', lat: 64.5, lon: 37.6173, generated: '2026-09-24T12:00:00Z', file: 'data/snapshot/murmansk.json' }] }) };
+      }
+      return { ok: true, json: async () => ({ forecast: genForecast(), air: genAir() }) };
+    }
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q15 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const banner = q15('offline-banner');
+      const sub = banner.querySelector('.ob-sub');
+      const probe = doc.createElement('script');
+      probe.textContent = 'window.__farProbe2 = { km: state.weatherStale && state.weatherStale.km, city: state.weatherStale && state.weatherStale.city };';
+      doc.body.appendChild(probe);
+      assert(/\d/.test(q15('temperature').textContent), 'phase15: a distant saved city still fills the dashboard: ' + q15('temperature').textContent);
+      assert(w.__farProbe2 && w.__farProbe2.city === 'Мурманск', 'phase15: the used archive city is recorded (' + JSON.stringify(w.__farProbe2) + ')');
+      assert(sub && /Мурманск/.test(sub.textContent), 'phase15: the notice names the distant city: ' + (sub && sub.textContent));
+      assert(sub && /\d{3,4}\s*км/.test(sub.textContent), 'phase15: the notice shows the distance: ' + (sub && sub.textContent));
+      phase13();
+    } catch (e) { errors.push('phase15 crashed: ' + e.message); phase13(); }
   }, 1200);
 }
 

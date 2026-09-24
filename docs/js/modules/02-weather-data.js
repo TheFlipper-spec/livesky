@@ -89,7 +89,11 @@ async function fetchResilient(hosts, path, ms) {
    live data as soon as the API answers again.
    Tune with window.LIVE_SNAPSHOT_* / LIVE_RETRY_AFTER_SNAPSHOT_MS. */
 const SNAPSHOT_URL = window.LIVE_SNAPSHOT_URL || 'data/snapshot.json';
-const SNAPSHOT_MAX_KM = window.LIVE_SNAPSHOT_MAX_KM != null ? window.LIVE_SNAPSHOT_MAX_KM : 200;
+/* How far a saved city may be from the place on screen. It is generous
+   because the notice names the city the numbers came from — «показан
+   сохранённый прогноз: Москва, 730 км» is honest, while a silent substitution
+   would not be. Beyond this the app reports the failure instead. */
+const SNAPSHOT_MAX_KM = window.LIVE_SNAPSHOT_MAX_KM != null ? window.LIVE_SNAPSHOT_MAX_KM : 1200;
 const SNAPSHOT_RACE_MS = window.LIVE_SNAPSHOT_RACE_MS != null ? window.LIVE_SNAPSHOT_RACE_MS : 4500;
 const SNAPSHOT_SHOW_MS = window.LIVE_SNAPSHOT_SHOW_MS != null ? window.LIVE_SNAPSHOT_SHOW_MS : 9000;
 const LIVE_AGAIN_MS = window.LIVE_RETRY_AFTER_SNAPSHOT_MS != null ? window.LIVE_RETRY_AFTER_SNAPSHOT_MS : 60000;
@@ -184,7 +188,10 @@ function paintSnapshotNotice() {
     if (info) {
       const age = info.at ? (Date.now() - Date.parse(info.at)) / 3600000 : 0;
       const when = snapshotClock(info.at);
-      const sub = t('snapshot_banner') + (when ? ` · ${when}` : '') + (age > 6 ? ` · ${t('snapshot_stale')}` : '');
+      const far = info.km > 60;
+      const sub = t('snapshot_banner') + (info.city ? `: ${info.city}` : '') +
+        (far ? ` · ${info.km} ${t('snapshot_km')}` : '') +
+        (when ? ` · ${when}` : '') + (age > 6 ? ` · ${t('snapshot_stale')}` : '');
       banner.classList.add('notice');
       banner.innerHTML =
         `<i class="${OFFLINE_BANNER_ICON}"></i>` +

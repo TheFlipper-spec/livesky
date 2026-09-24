@@ -158,7 +158,7 @@ function validateSeed(seed) {
   checkSeries(who + ' hourly', seed.hourly, HOURLY_VARS, HOURS);
   checkSeries(who + ' minutely', seed.minutely_15, MINUTELY_VARS, MINUTE_SLOTS);
   checkSeries(who + ' daily', seed.daily, DAILY_VARS, DAYS);
-  checkSeries(who + ' air', seed.air, AIR_VARS, AIR_HOURS);
+  if (seed.air) checkSeries(who + ' air', seed.air, AIR_VARS, AIR_HOURS); /* air quality is optional */
   for (let i = 0; i < DAYS; i++) {
     if (!/^\d\d:\d\d$/.test(seed.daily.sunrise[i])) throw new Error(`${who}: sunrise[${i}] not HH:MM`);
     if (!/^\d\d:\d\d$/.test(seed.daily.sunset[i])) throw new Error(`${who}: sunset[${i}] not HH:MM`);
@@ -180,8 +180,15 @@ function assemble(seed) {
     if (v === 'sunrise' || v === 'sunset') daily[v] = daily[v].map((hm, i) => `${daily.time[i]}T${hm}`);
   }
 
-  const airHourly = { time: Array.from({ length: AIR_HOURS }, (_, i) => stamp(seed.start.air, i * 60)) };
-  for (const v of AIR_VARS) airHourly[v] = seed.air[v].slice();
+  let air = null;
+  if (seed.air) {
+    const airHourly = { time: Array.from({ length: AIR_HOURS }, (_, i) => stamp(seed.start.air, i * 60)) };
+    for (const v of AIR_VARS) airHourly[v] = seed.air[v].slice();
+    air = {
+      latitude: seed.lat, longitude: seed.lon, timezone: seed.timezone || 'auto',
+      hourly_units: AIR_UNITS, hourly: airHourly
+    };
+  }
 
   return {
     generated: seed.generated,
@@ -195,10 +202,7 @@ function assemble(seed) {
       daily_units: DAILY_UNITS, daily,
       minutely_15_units: MINUTELY_UNITS, minutely_15: minutely
     },
-    air: {
-      latitude: seed.lat, longitude: seed.lon, timezone: seed.timezone || 'auto',
-      hourly_units: AIR_UNITS, hourly: airHourly
-    }
+    air
   };
 }
 
