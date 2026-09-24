@@ -2150,6 +2150,29 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 }
 .offline-banner i { color: #fbbf24; font-size: 16px; }
 .offline-banner.out { animation: offlineOut 0.3s ease forwards; }
+/* Long notices (e.g. the saved-forecast fallback) are two-line cards, not
+   one-line pills: they must wrap inside the frame instead of overflowing it. */
+.offline-banner.notice {
+  white-space: normal; overflow-wrap: anywhere;
+  align-items: flex-start; text-align: left;
+  border-radius: 16px; max-width: min(92vw, 620px);
+  padding: 12px 14px 12px 16px; gap: 12px;
+}
+.offline-banner.notice > i { margin-top: 1px; }
+.offline-banner .ob-text { display: flex; flex-direction: column; gap: 2px; line-height: 1.35; min-width: 0; }
+.offline-banner .ob-title { font-weight: 800; }
+.offline-banner .ob-sub { font-size: 12px; font-weight: 600; opacity: 0.88; }
+.offline-banner .ob-retry {
+  flex: none; align-self: center; cursor: pointer;
+  padding: 5px 11px; border-radius: 999px; font: inherit; font-size: 12px; font-weight: 700;
+  color: inherit; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.45);
+}
+.offline-banner .ob-retry:hover { background: rgba(251, 191, 36, 0.22); }
+.offline-banner .ob-retry:disabled { opacity: 0.55; cursor: default; }
+@media (max-width: 480px) {
+  .offline-banner.notice { flex-wrap: wrap; gap: 8px; }
+  .offline-banner .ob-retry { margin-left: 26px; }
+}
 @keyframes offlineIn { from { opacity: 0; transform: translateX(-50%) translateY(-12px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 @keyframes offlineOut { to { opacity: 0; transform: translateX(-50%) translateY(-12px); } }
 [data-theme="light"] .offline-banner { background: rgba(255, 255, 255, 0.95); color: #92400e; border-color: rgba(245, 158, 11, 0.5); }

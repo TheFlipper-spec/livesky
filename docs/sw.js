@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-clouds-v23';
+const VERSION = 'livesky-v1.4-clouds-v28';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -166,7 +166,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  /* Data APIs (Open-Meteo): network first, then last-good cache. */
+  /* Data APIs (Open-Meteo): network first, then the last good response for the
+     very same request. A JSON request must NEVER fall back to the HTML shell —
+     returning index.html here made the page parse markup as weather data and
+     report "bad payload", hiding the fact that it had perfectly good cached
+     numbers on disk. When nothing is cached, answer with an explicit 503 so
+     the app's own retry/failover logic takes over. */
   if (isDataApi(url)) {
     event.respondWith(
       fetch(req)
@@ -179,7 +184,10 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() =>
-          caches.match(req).then((hit) => hit || caches.match('./index.html'))
+          caches.match(req).then((hit) => hit || new Response(
+            JSON.stringify({ error: 'offline', offline: true }),
+            { status: 503, headers: { 'Content-Type': 'application/json' } }
+          ))
         )
     );
     return;

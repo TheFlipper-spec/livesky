@@ -13,10 +13,73 @@
 /* ---------------- loader / progress / toasts ---------------- */
 let phraseTimer = null;
 let loaderWatchdog = null;
+let selfHealTimer = null;   /* one-shot retry after a total first-load failure */
 const WATCHDOG_MS = window.LIVE_WATCHDOG_MS || 15000;
 const FETCH_MS = window.LIVE_FETCH_TIMEOUT_MS || 15000;
+/* The very first request gets a shorter leash: a hanging network (packets
+   dropped, no DNS answer) used to keep the loader up for the full timeout on
+   every retry. Nothing is on screen yet, so fail fast and let the fallbacks
+   take over; later refreshes keep the longer timeout so a slow-but-alive API
+   still delivers. */
+const FIRST_FETCH_MS = window.LIVE_FIRST_FETCH_TIMEOUT_MS || 8000;
 const UI_LOCK_MS = window.LIVE_UI_LOCK_MS || 800;          /* UI quiet period after closing overlays */
 const FAV_LIST_DELAY_MS = window.LIVE_FAV_DELAY_MS != null ? window.LIVE_FAV_DELAY_MS : 350; /* debounce before auto-opening favorites */
+
+/* ---------------- data endpoints (resilience) ----------------
+   Every data request is built from a host list instead of a hard-coded URL:
+   the first entry is the canonical provider endpoint, and a deployment (or a
+   mirror/proxy put in front of it) can add fallbacks through
+   window.LIVE_*_HOSTS without touching the modules. On top of the host list
+   each request is retried with backoff, so one dropped connection, a 429 or a
+   brief 5xx never leaves the dashboard empty — which is exactly the failure
+   mode users report as "the site loads but no data comes in". */
+const FORECAST_HOSTS = window.LIVE_FORECAST_HOSTS || [
+  'https://api.open-meteo.com',
+  /* Same provider, same /v1/forecast payload, different hostname and IP.
+     api.open-meteo.com is unreachable from a number of networks — Russian ISPs
+     block it at the provider level, while the open-meteo.com website itself
+     keeps working because it is a different host — so the app must never
+     depend on one hostname. Verified: the sibling returns the identical shape
+     (hourly, daily, minutely_15, m/s, models=best_match). */
+  'https://historical-forecast-api.open-meteo.com'
+];
+const AIR_HOSTS = window.LIVE_AIR_HOSTS || ['https://air-quality-api.open-meteo.com'];
+const GEOCODE_HOSTS = window.LIVE_GEOCODE_HOSTS || ['https://geocoding-api.open-meteo.com'];
+const RETRY_ATTEMPTS = Math.max(1, window.LIVE_RETRY_ATTEMPTS != null ? window.LIVE_RETRY_ATTEMPTS : 3);
+const RETRY_MS = window.LIVE_RETRY_MS != null ? window.LIVE_RETRY_MS : 1200; /* backoff base */
+/* A host that is blocked never answers, so every request to it costs a full
+   timeout. Remember which host actually answered and try it first for a while;
+   after HOST_MEMORY_MS the canonical order comes back, so a network that got
+   fixed returns to the primary host on its own. */
+const HOST_MEMORY_MS = window.LIVE_HOST_MEMORY_MS != null ? window.LIVE_HOST_MEMORY_MS : 6 * 60 * 60 * 1000;
+
+function hostMemory() {
+  try { return store.get('livesky:hosts') || {}; } catch (e) { return {}; }
+}
+function lastHost(group) {
+  const m = hostMemory()[group];
+  if (!m || !m.host) return null;
+  return (Date.now() - m.ts < HOST_MEMORY_MS) ? m.host : null;
+}
+function rememberHost(group, host) {
+  if (!group || !host) return;
+  try {
+    const mem = hostMemory();
+    const changed = !mem[group] || mem[group].host !== host;
+    mem[group] = { host, ts: Date.now() };
+    store.set('livesky:hosts', mem);
+    if (changed && /^https?:/.test(host)) console.info(`[LiveSky] источник «${group}»: ${host}`);
+  } catch (e) { /* private mode — the memory is a nicety, not a requirement */ }
+}
+function orderedHosts(hosts, group) {
+  const list = (hosts && hosts.length) ? hosts.slice() : [''];
+  if (!group || list.length < 2) return list;
+  const mem = hostMemory()[group];
+  if (mem && mem.host && Date.now() - mem.ts < HOST_MEMORY_MS && list.indexOf(mem.host) > 0) {
+    return [mem.host].concat(list.filter((h) => h !== mem.host));
+  }
+  return list;
+}
 
 /* fetch that can never hang forever */
 async function fetchWithTimeout(url, ms) {
@@ -27,6 +90,235 @@ async function fetchWithTimeout(url, ms) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Host-failover + retry wrapper. `path` is the provider path with a leading
+   slash ("/v1/forecast?..."). Resolves with the first OK response, throws the
+   last error only after every host/attempt pair has been exhausted.
+
+   Retry policy: network errors, timeouts, 429 and 5xx are transient and worth
+   another try; a 4xx (bad request) is not — retrying it would only burn the
+   provider's rate limit, so it fails fast and the caller can report honestly. */
+/* While the app does not yet know which host works, a censored host is the
+   expensive one: it does not refuse, it hangs, so a sequential walk would sit
+   in the timeout of every blocked host before reaching a working one. In that
+   case all hosts are asked at once and the first answer wins; once a host has
+   been remembered, requests go to it directly. */
+function raceHosts(list, path, ms, group) {
+  return new Promise((resolve, reject) => {
+    let pending = list.length;
+    let settled = false;
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+    list.forEach((host) => {
+      fetchWithTimeout(host + path, ms).then((res) => {
+        if (settled) return;
+        if (res && res.ok) {
+          settled = true;
+          rememberHost(group, host);
+          resolve(res);
+          return;
+        }
+        /* A host may answer 4xx (different path support) while another host
+           serves the same request fine, so in a race every failure — 4xx
+           included — counts as "this host is out", never as "stop racing". */
+        const err = new Error('API ' + (res ? res.status : '?'));
+        if (--pending === 0) fail(err);
+      }).catch((e) => {
+        if (settled) return;
+        if (--pending === 0) fail(e);
+      });
+    });
+  });
+}
+
+async function fetchResilient(hosts, path, ms, group) {
+  const list = orderedHosts(hosts, group);
+  if (group && list.length > 1 && !lastHost(group)) return raceHosts(list, path, ms, group);
+  let lastErr = null;
+  for (const host of list) {
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      try {
+        const res = await fetchWithTimeout(host + path, ms);
+        if (res && res.ok) { rememberHost(group, host); return res; }
+        lastErr = new Error('API ' + (res ? res.status : '?'));
+      } catch (e) {
+        lastErr = e;
+      }
+      const msg = String((lastErr && lastErr.message) || '');
+      if (/API 4\d\d/.test(msg) && !/API 429/.test(msg)) throw lastErr; /* bad request — retry is pointless */
+      const lastTry = host === list[list.length - 1] && attempt === RETRY_ATTEMPTS;
+      if (!lastTry) await sleepMs(RETRY_MS * attempt + Math.floor(Math.random() * 250));
+    }
+  }
+  throw lastErr || new Error('network unavailable');
+}
+
+/* ---------------- same-origin snapshot fallback ----------------
+   docs/data/snapshot.json ships next to the app: a compact copy of real
+   provider data for a few big cities (built by scripts/build-snapshot.js).
+   When the visitor's network cannot reach api.open-meteo.com — blocked ISP,
+   filtered DNS, captive portal, provider outage — the dashboard shows that
+   saved forecast instead of dashes forever, clearly labelled, and swaps in
+   live data as soon as the API answers again.
+   Tune with window.LIVE_SNAPSHOT_* / LIVE_RETRY_AFTER_SNAPSHOT_MS. */
+const SNAPSHOT_URL = window.LIVE_SNAPSHOT_URL || 'data/snapshot.json';
+/* How far a saved city may be from the place on screen. It is generous
+   because the notice names the city the numbers came from — «показан
+   сохранённый прогноз: Москва, 730 км» is honest, while a silent substitution
+   would not be. Beyond this the app reports the failure instead. */
+const SNAPSHOT_MAX_KM = window.LIVE_SNAPSHOT_MAX_KM != null ? window.LIVE_SNAPSHOT_MAX_KM : 1200;
+const SNAPSHOT_RACE_MS = window.LIVE_SNAPSHOT_RACE_MS != null ? window.LIVE_SNAPSHOT_RACE_MS : 4500;
+const SNAPSHOT_SHOW_MS = window.LIVE_SNAPSHOT_SHOW_MS != null ? window.LIVE_SNAPSHOT_SHOW_MS : 9000;
+const LIVE_AGAIN_MS = window.LIVE_RETRY_AFTER_SNAPSHOT_MS != null ? window.LIVE_RETRY_AFTER_SNAPSHOT_MS : 60000;
+
+let snapIndex = null;      /* parsed index, loaded once per session */
+let snapCity = null;       /* { meta, forecast, air } matching the coordinates on screen */
+let snapRetryTimer = null;
+let snapBannerTimer = null;
+
+function kmBetween(lat1, lon1, lat2, lon2) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad, dLon = (lon2 - lon1) * rad;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/* Does the saved forecast still contain the current hour (in the place's own
+   timezone)? Anything else is stale data, not a substitute for "now". */
+function snapshotCoversNow(forecast) {
+  try {
+    const tz = forecast.timezone && forecast.timezone !== 'auto' ? forecast.timezone : state.tz;
+    const nowLocal = tzNow(tz).iso;
+    return forecast.hourly.time.some((tm) => tm.startsWith(nowLocal));
+  } catch (e) {
+    return true; /* unrecognised shape: don't block the fallback on this check */
+  }
+}
+
+/* Nearest snapshot city for the current coordinates, or null when the place
+   is outside the covered radius (then the normal error path applies). */
+async function loadSnapshot() {
+  if (snapCity && kmBetween(snapCity.meta.lat, snapCity.meta.lon, state.lat, state.lon) <= SNAPSHOT_MAX_KM) return snapCity;
+  try {
+    if (!snapIndex) {
+      const res = await fetchWithTimeout(SNAPSHOT_URL + '?t=' + Date.now(), SNAPSHOT_SHOW_MS);
+      if (!res || !res.ok) return null;
+      const json = await res.json();
+      if (!json || !Array.isArray(json.cities) || !json.cities.length) return null;
+      snapIndex = json;
+    }
+    let best = null, bestKm = Infinity;
+    for (const c of snapIndex.cities) {
+      if (typeof c.lat !== 'number' || typeof c.lon !== 'number' || !c.file) continue;
+      const km = kmBetween(state.lat, state.lon, c.lat, c.lon);
+      if (km < bestKm) { bestKm = km; best = c; }
+    }
+    if (!best || bestKm > SNAPSHOT_MAX_KM) return null;
+    const res = await fetchWithTimeout(best.file + '?t=' + encodeURIComponent(best.generated || snapIndex.generated || ''), SNAPSHOT_SHOW_MS);
+    if (!res || !res.ok) return null;
+    const payload = await res.json();
+    if (!payload || !payload.forecast || !payload.forecast.hourly || !payload.forecast.hourly.time) return null;
+    /* An archive that no longer covers the current hour must not be shown as
+       "now": honest failure beats a three-day-old forecast in the hero tile. */
+    if (!snapshotCoversNow(payload.forecast)) {
+      console.warn('snapshot is older than its coverage window — ignoring it (refresh with scripts/build-snapshot.js)');
+      return null;
+    }
+    snapCity = { meta: best, forecast: payload.forecast, air: payload.air || null, km: Math.round(bestKm) };
+    return snapCity;
+  } catch (e) {
+    console.warn('snapshot fallback unavailable:', e);
+    return null;
+  }
+}
+
+function snapshotClock(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: state.tz || undefined }).format(d);
+  } catch (e) {
+    return d.toISOString().slice(11, 16);
+  }
+}
+
+/* Banner + "updated" chip tell the truth about where the numbers come from:
+   saved forecast, with its timestamp, never passed off as a live reading.
+   The saved-forecast notice is a two-line card (title + details + retry) so the
+   longer text wraps inside the frame instead of overflowing a one-line pill. */
+const OFFLINE_BANNER_ICON = 'ph-fill ph-wifi-slash';
+function restoreOfflineBanner(banner) {
+  if (!banner) return;
+  banner.classList.remove('notice');
+  banner.innerHTML = `<i class="${OFFLINE_BANNER_ICON}"></i><span data-translate="offline_banner">${t('offline_banner')}</span>`;
+}
+function paintSnapshotNotice() {
+  const banner = el.offlineBanner;
+  const info = state.weatherStale;
+  if (banner) {
+    clearTimeout(snapBannerTimer);
+    if (info) {
+      const age = info.at ? (Date.now() - Date.parse(info.at)) / 3600000 : 0;
+      const when = snapshotClock(info.at);
+      const far = info.km > 60;
+      const sub = t('snapshot_banner') + (info.city ? `: ${info.city}` : '') +
+        (far ? ` · ${info.km} ${t('snapshot_km')}` : '') +
+        (when ? ` · ${when}` : '') + (age > 6 ? ` · ${t('snapshot_stale')}` : '');
+      banner.classList.add('notice');
+      banner.innerHTML =
+        `<i class="${OFFLINE_BANNER_ICON}"></i>` +
+        `<span class="ob-text"><span class="ob-title">${t('snapshot_title')}</span><span class="ob-sub">${sub}</span></span>` +
+        `<button type="button" class="ob-retry">${t('toast_retry')}</button>`;
+      const retry = banner.querySelector('.ob-retry');
+      if (retry) {
+        retry.addEventListener('click', () => { retry.disabled = true; fetchWeather(); });
+      }
+      banner.classList.remove('hidden', 'out');
+    } else if (!banner.classList.contains('hidden') || banner.classList.contains('notice')) {
+      banner.classList.add('out');
+      snapBannerTimer = setTimeout(() => {
+        banner.classList.add('hidden');
+        /* leave the pill exactly as the offline handler expects it */
+        if (banner.classList.contains('notice')) restoreOfflineBanner(banner);
+      }, 320);
+    }
+  }
+  if (info && el.updatedAt) {
+    const when = snapshotClock(info.at);
+    if (when) el.updatedAt.textContent = when.replace(/^[^,]*,\s*/, '');
+  }
+}
+
+function scheduleLiveRetry() {
+  clearTimeout(snapRetryTimer);
+  snapRetryTimer = setTimeout(() => { if (state.weatherStale) fetchWeather(true); }, LIVE_AGAIN_MS);
+}
+
+/* Show the saved forecast for the current place. Returns true when it was
+   actually rendered (false: no snapshot nearby, or live data won the race). */
+async function showSnapshot(reason) {
+  if (state.weather) return false;
+  const snap = await loadSnapshot();
+  if (!snap || state.weather) return false;
+  state.weatherStale = { at: snap.meta.generated || (snapIndex && snapIndex.generated) || null, reason: reason || 'network', city: snap.meta.name, km: snap.km };
+  applyForecastPayload(snap.forecast);
+  if (snap.air) { state.air = snap.air; renderAirError(false); }
+  renderAll();
+  if (snap.air) renderAir();
+  clearBootFail();
+  setLoading(false);
+  hideLoader();
+  paintSnapshotNotice();
+  scheduleLiveRetry();
+  console.info(`LiveSky: showing saved forecast for ${snap.meta.name} (${snap.km} km away, ${snap.meta.generated}) — ${reason}`);
+  return true;
 }
 
 function showLoader() {
@@ -72,6 +364,16 @@ function bootFail(msg) {
     const r = $('boot-report-btn');
     if (r) r.href = reportBugUrl(msg);
   }
+}
+/* A boot failure is not a life sentence: the panel used to latch forever, so a
+   user whose very first request failed kept staring at "приложение не
+   запустилось" even after a later refresh had filled the dashboard with data.
+   As soon as real data arrives the panel is dismissed and the flag cleared. */
+function clearBootFail() {
+  if (!state._bootFailed) return;
+  state._bootFailed = false;
+  const panel = $('boot-error');
+  if (panel) panel.classList.add('hidden');
 }
 function setLoading(on) {
   state.loading = Math.max(0, state.loading + (on ? 1 : -1));
@@ -200,10 +502,36 @@ function setBigIcon(iconClass) {
   }
 }
 
-/* ---------------- data fetching ---------------- */
+/* ---------------- data fetching ----------------
+   One place turns a provider payload into "now" pointers and state, so live
+   responses and the saved snapshot go through exactly the same pipeline. */
+function applyForecastPayload(data) {
+  if (data.timezone) state.tz = data.timezone;
+  if (data.elevation != null) state.elevation = Math.round(data.elevation);
+  state.weather = data;
+  /* Minutely nowcast is optional — some model combos omit it. Keep previous
+     series if the new payload has none, so the live strip doesn't flicker. */
+  if (data.minutely_15 && data.minutely_15.time && data.minutely_15.time.length) {
+    state.minutely = data.minutely_15;
+  }
+  state.nowIdx = data.hourly.time.findIndex(tm => tm.startsWith(tzNow(state.tz).iso));
+  if (state.nowIdx === -1) state.nowIdx = Math.max(0, data.hourly.time.length - 25);
+  state.todayIdx = data.daily.time.findIndex(tm => tm === tzNow(state.tz).date);
+  if (state.todayIdx === -1) state.todayIdx = Math.max(0, data.daily.time.length - 1);
+  state.lastFetchTs = Date.now();
+  /* Advance the hourly pointer if the clock crossed an hour while data sat
+     in memory — keeps "now" correct between auto-refreshes. */
+  syncNowIdx();
+}
+
 async function fetchWeather(silent) {
   const seq = ++fetchSeq;
   if (!silent) setLoading(true);
+  /* The API may be unreachable or crawling. Rather than keeping the loader up
+     through every retry, publish the saved same-origin forecast after a short
+     grace period; a slow-but-healthy API still wins the race and the snapshot
+     is never used. */
+  const snapRace = setTimeout(() => { if (!state.weather) showSnapshot('slow-api'); }, SNAPSHOT_RACE_MS);
   try {
     const params = new URLSearchParams({
       latitude: state.lat, longitude: state.lon,
@@ -213,44 +541,41 @@ async function fetchWeather(silent) {
          can say "rain ends in 23 min" and show a live minute strip. */
       minutely_15: 'temperature_2m,precipitation,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m,is_day',
       forecast_minutely_15: '96',
+      /* The whole app speaks m/s internally (fmtWind multiplies by 3.6 for
+         km/h, the hazard engine uses 12/18/28 m/s thresholds, the FX layer
+         reacts at 15 m/s). Open-Meteo's default is km/h, which made every wind
+         reading — and the "storm" banner — 3.6× too strong. Ask for the unit
+         the app actually works in. */
+      wind_speed_unit: 'ms',
       timezone: 'auto', forecast_days: 16, past_days: 16
     });
     /* Accuracy: ask Open-Meteo for the skill-ranked "best_match" model. In Auto
        mode we also nudge the baseline toward the region's strongest model
        (ECMWF over Europe, GFS over N.America); in manual modes we blend the
        chosen model with best_match (getVal prefers the chosen model first).
-       getVal reads the plain key (= first requested model) then _best_match. */
+       getVal/getMinVal read the plain key, the model suffix and _best_match. */
     if (state.model && state.model !== 'auto') params.append('models', `${state.model},best_match`);
     else {
       const rm = regionModel();
       params.append('models', rm ? `${rm},best_match` : 'best_match');
     }
 
-    const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${params}`, FETCH_MS);
-    if (!res.ok) throw new Error('API ' + res.status);
+    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, state.weather ? FETCH_MS : FIRST_FETCH_MS, 'forecast');
     const data = await res.json();
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
     if (seq !== fetchSeq) return; /* a newer request is in flight */
 
-    if (data.timezone) state.tz = data.timezone;
-    if (data.elevation != null) state.elevation = Math.round(data.elevation);
-    state.weather = data;
-    /* Minutely nowcast is optional — some model combos omit it. Keep previous
-       series if the new payload has none, so the live strip doesn't flicker. */
-    if (data.minutely_15 && data.minutely_15.time && data.minutely_15.time.length) {
-      state.minutely = data.minutely_15;
-    }
-    state.nowIdx = data.hourly.time.findIndex(tm => tm.startsWith(tzNow(state.tz).iso));
-    if (state.nowIdx === -1) state.nowIdx = data.hourly.time.length - 25;
-    state.todayIdx = data.daily.time.findIndex(tm => tm === tzNow(state.tz).date);
-    if (state.todayIdx === -1) state.todayIdx = 16;
-    state.lastFetchTs = Date.now();
-    /* Advance the hourly pointer if the clock crossed an hour while data sat
-       in memory — keeps "now" correct between auto-refreshes. */
-    syncNowIdx();
+    applyForecastPayload(data);
+    /* Live data is back: the saved-forecast notice is no longer true. */
+    state.weatherStale = null;
+    clearTimeout(snapRetryTimer);
+    paintSnapshotNotice();
 
     store.set('livesky:last_city', { lat: state.lat, lon: state.lon, name: state.locationName, cc: state.countryCode, admin: state.admin });
+    clearTimeout(selfHealTimer);
     renderAll();
+    /* Real data is on screen: any stale "could not start" panel is now a lie. */
+    clearBootFail();
     /* The mini map (if the lazy map subsystem is already on board) follows the
        city change; until then this is a safe no-op. */
     if (window.LiveSkyMap) LiveSkyMap.update();
@@ -261,9 +586,28 @@ async function fetchWeather(silent) {
   } catch (e) {
     if (seq !== fetchSeq) return;
     console.error('fetchWeather failed:', e);
-    if (!silent) toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
+    /* Never blank a working dashboard: if a previous forecast is still on
+       screen a failed refresh keeps it (the updated-chip simply stops
+       advancing) and the user gets one non-destructive notice. */
+    if (!state.weather) {
+      /* Nothing live and nothing on screen — fall back to the snapshot that
+         ships with the site before telling the user anything failed. */
+      if (await showSnapshot('api-unreachable')) return;
+      if (!silent) toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
+      /* Self-heal: a connectivity blip while the very first forecast is being
+         fetched used to leave an empty dashboard until the user reloaded or
+         clicked Retry. Try once more shortly, then let the regular refresh
+         cadence take over. */
+      clearTimeout(selfHealTimer);
+      selfHealTimer = setTimeout(() => { if (!state.weather) fetchWeather(true); }, 20000);
+    } else if (state.weatherStale) {
+      /* Still on the saved forecast: keep probing the API in the background
+         until live data returns (the swap clears the flag). */
+      scheduleLiveRetry();
+    }
   } finally {
     if (seq !== fetchSeq) return;
+    clearTimeout(snapRace);
     if (!silent) setLoading(false);
     hideLoader();
   }
@@ -276,8 +620,8 @@ async function fetchWeather(silent) {
    "unavailable" state plus a toast with a manual retry action. */
 async function fetchAir(seq, isRetry) {
   try {
-    const res = await fetchWithTimeout(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`, 12000);
-    if (!res.ok) throw new Error('API ' + res.status);
+    const path = `/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`;
+    const res = await fetchResilient(AIR_HOSTS, path, state.air ? 12000 : FIRST_FETCH_MS, 'air');
     const data = await res.json();
     if (!data || !data.hourly) throw new Error('Bad payload');
     if (seq && seq !== fetchSeq) return;
@@ -293,9 +637,18 @@ async function fetchAir(seq, isRetry) {
       return;
     }
     console.warn('fetchAir failed:', e);
-    state.air = null;
-    renderAirError(true);
-    toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
+    /* Air quality is part of the "app is broken" impression too: when the
+       provider is unreachable, reuse the air block that came with the saved
+       snapshot instead of an empty card. */
+    if (!state.air && state.weatherStale) {
+      const snap = await loadSnapshot().catch(() => null);
+      if (snap && snap.air) { state.air = snap.air; renderAirError(false); renderAir(); return; }
+    }
+    /* Keep the last good reading instead of wiping it: air quality changes
+       slowly, so stale-but-real beats a card full of dashes. Only the very
+       first load (no data at all) shows the explicit unavailable state. */
+    renderAirError(!state.air);
+    if (!state.air) toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
   }
 }
 /* Explicit "no data" state for the AQI card instead of a silent, permanent "--". */
@@ -492,10 +845,84 @@ function buildCorrectionCandidates(q) {
     return true;
   }).slice(0, 14); /* cap extra requests per search */
 }
-async function geocodeQuery(q, count) {
-  const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`, 8000);
+/* Search is the one feature that cannot fall back to the saved forecast, so it
+   gets a provider of its own: OpenStreetMap's Nominatim, which is not part of
+   the Open-Meteo infrastructure and therefore survives a block of
+   *.open-meteo.com. The provider that answered last is tried first; OSM asks
+   for at most ~1 request per second, so those calls are spaced out and the
+   typo-correction fan-out is trimmed while OSM is the active provider. */
+const GEOCODE_SOFT_MS = window.LIVE_GEOCODE_SOFT_MS != null ? window.LIVE_GEOCODE_SOFT_MS : 3500;
+const OSM_HOST = 'https://nominatim.openstreetmap.org';
+let osmChain = Promise.resolve();
+let osmLastAt = 0;
+
+function osmQueue(fn) {
+  const run = osmChain.then(async () => {
+    const wait = Math.max(0, 1100 - (Date.now() - osmLastAt));
+    if (wait) await sleepMs(wait);
+    osmLastAt = Date.now();
+    return fn();
+  });
+  osmChain = run.then(() => {}, () => {});
+  return run;
+}
+
+/* Nominatim speaks a different dialect — reshape its answer into what the
+   Open-Meteo geocoder returns so the suggestion list, flags and labels work
+   unchanged. */
+function osmResults(payload) {
+  return (Array.isArray(payload) ? payload : []).map((x) => {
+    const a = x.address || {};
+    return {
+      id: `osm:${x.osm_type || ''}${x.osm_id || ''}`,
+      name: x.name || String(x.display_name || '').split(',')[0].trim(),
+      latitude: parseFloat(x.lat),
+      longitude: parseFloat(x.lon),
+      country_code: String(a.country_code || '').toLowerCase(),
+      country: a.country || '',
+      admin1: a.state || a.region || a.county || a.city || ''
+    };
+  }).filter((c) => c.name && isFinite(c.latitude) && isFinite(c.longitude));
+}
+
+function geocodeOsm(q, count) {
+  return osmQueue(async () => {
+    const path = `/search?q=${encodeURIComponent(q)}&format=jsonv2&addressdetails=1` +
+      `&limit=${count}&accept-language=${encodeURIComponent(state.lang || 'ru')}`;
+    const r = await fetchWithTimeout(OSM_HOST + path, 8000);
+    if (!r || !r.ok) throw new Error('OSM ' + (r ? r.status : '?'));
+    const list = osmResults(await r.json());
+    if (!list.length) throw new Error('OSM empty');
+    return list;
+  });
+}
+
+async function geocodeOpenMeteo(q, count) {
+  const path = `/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`;
+  const r = await fetchResilient(GEOCODE_HOSTS, path, 8000, 'geocode');
   const d = await r.json();
   return d.results || [];
+}
+
+async function geocodeQuery(q, count) {
+  if (lastHost('geocode') === 'osm') return geocodeOsm(q, count);
+  let timer = null;
+  const primary = geocodeOpenMeteo(q, count);
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('geocoder timeout')), GEOCODE_SOFT_MS);
+  });
+  try {
+    const results = await Promise.race([primary, guard]);
+    rememberHost('geocode', GEOCODE_HOSTS[0]);
+    return results;
+  } catch (e) {
+    primary.catch(() => {}); /* the abandoned request must not surface later */
+    const results = await geocodeOsm(q, count);
+    rememberHost('geocode', 'osm');
+    return results;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 /* Tries the query as typed first; only if that comes back empty does it
    fire off the (small, capped) set of correction candidates in parallel
@@ -506,6 +933,8 @@ async function geocodeSmart(q, count) {
   const direct = await geocodeQuery(q, count);
   if (direct.length) return { results: direct, corrected: null };
   const candidates = buildCorrectionCandidates(q);
+  /* OSM tolerates ~1 request/second: keep the typo fan-out short there. */
+  if (lastHost('geocode') === 'osm') candidates.length = Math.min(candidates.length, 2);
   if (!candidates.length) return { results: [], corrected: null };
   const settled = await Promise.all(candidates.map(async (cand) => {
     try { return { cand, results: await geocodeQuery(cand, count) }; }
