@@ -1770,8 +1770,47 @@ function phase13() {
       assert(w.__farProbe && w.__farProbe.weather === false, 'phase13: a far-away snapshot is not shown as local weather');
       assert(q13('boot-error').classList.contains('hidden'), 'phase13: honest error path — no fake data, no boot-error panic');
       assert(doc.querySelectorAll('.toast').length >= 1, 'phase13: the user still gets the retry toast when nothing matches');
-      finish();
+      phase14();
     } catch (e) { errors.push('phase13 crashed: ' + e.message); finish(); }
+  }, 1200);
+}
+
+/* phase 14 (expired archive): an archive whose newest hour is in the past must
+   not be presented as current weather — honest failure beats stale numbers. */
+function phase14() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_ATTEMPTS = 1;
+  w.LIVE_RETRY_MS = 10;
+  w.LIVE_SNAPSHOT_RACE_MS = 50;
+  const old = genForecast();
+  const shift = 10 * 24; /* move every stamp 10 days back: the window misses "now" */
+  old.hourly.time = old.hourly.time.map((t) => t.replace(/^(\d{4})-(\d\d)-(\d\d)/, (m, y, mo, d) => {
+    const dt = new Date(Date.UTC(+y, +mo - 1, +d) - shift * 86400000);
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  }));
+  w.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('snapshot')) {
+      if (u.includes('snapshot.json')) {
+        return { ok: true, json: async () => ({ generated: '2026-09-01T00:00:00Z', cities: [{ name: 'Москва', lat: 55.7558, lon: 37.6173, file: 'data/snapshot/moscow.json' }] }) };
+      }
+      return { ok: true, json: async () => ({ forecast: old, air: genAir() }) };
+    }
+    return Promise.reject(new TypeError('Failed to fetch'));
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q14 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      const probe = doc.createElement('script');
+      probe.textContent = 'window.__staleProbe = { weather: !!state.weather };';
+      doc.body.appendChild(probe);
+      assert(w.__staleProbe && w.__staleProbe.weather === false, 'phase14: an archive that no longer covers the current hour is not shown as now');
+      assert(q14('offline-banner').classList.contains('hidden'), 'phase14: no saved-forecast banner for an expired archive');
+      assert(doc.querySelectorAll('.toast').length >= 1, 'phase14: expired archive falls back to the honest retry toast');
+      finish();
+    } catch (e) { errors.push('phase14 crashed: ' + e.message); finish(); }
   }, 1200);
 }
 

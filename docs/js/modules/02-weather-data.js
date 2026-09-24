@@ -101,6 +101,18 @@ function kmBetween(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
+/* Does the saved forecast still contain the current hour (in the place's own
+   timezone)? Anything else is stale data, not a substitute for "now". */
+function snapshotCoversNow(forecast) {
+  try {
+    const tz = forecast.timezone && forecast.timezone !== 'auto' ? forecast.timezone : state.tz;
+    const nowLocal = tzNow(tz).iso;
+    return forecast.hourly.time.some((tm) => tm.startsWith(nowLocal));
+  } catch (e) {
+    return true; /* unrecognised shape: don't block the fallback on this check */
+  }
+}
+
 /* Nearest snapshot city for the current coordinates, or null when the place
    is outside the covered radius (then the normal error path applies). */
 async function loadSnapshot() {
@@ -124,6 +136,12 @@ async function loadSnapshot() {
     if (!res || !res.ok) return null;
     const payload = await res.json();
     if (!payload || !payload.forecast || !payload.forecast.hourly || !payload.forecast.hourly.time) return null;
+    /* An archive that no longer covers the current hour must not be shown as
+       "now": honest failure beats a three-day-old forecast in the hero tile. */
+    if (!snapshotCoversNow(payload.forecast)) {
+      console.warn('snapshot is older than its coverage window — ignoring it (refresh with scripts/build-snapshot.js)');
+      return null;
+    }
     snapCity = { meta: best, forecast: payload.forecast, air: payload.air || null, km: Math.round(bestKm) };
     return snapCity;
   } catch (e) {
