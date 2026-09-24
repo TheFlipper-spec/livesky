@@ -819,6 +819,9 @@ function initNativeBridge() {
 
 /* ---------------- init ---------------- */
 function init() {
+  /* One line in the console identifying the running build (stale shell / cached
+     service worker reports are otherwise guesswork). */
+  try { console.info(`[LiveSky] build ${APP_BUILD} · version ${APP_VERSION}`); } catch (e) { /* ignore */ }
   /* sanitize persisted settings (old/foreign values must never break boot) */
   if (!I18N[state.lang]) state.lang = 'ru';
   if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';

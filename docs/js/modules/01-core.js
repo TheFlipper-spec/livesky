@@ -17,6 +17,9 @@
 
 /* Canonical public version of the website and service. */
 const APP_VERSION = '1.4';
+/* Build stamp for support: printed once at boot so a report like
+   "the site shows old code" can be answered with the actual build. */
+const APP_BUILD = '1.4.1-snapshot';
 
 /* ---------------- DOM refs ---------------- */
 const $ = (id) => document.getElementById(id);

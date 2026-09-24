@@ -333,6 +333,13 @@ setTimeout(() => {
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
       assert(/\.search-form input\s*\{[^}]*cursor:\s*text/s.test(cssSrc), 'search input uses a text cursor');
+      /* The saved-forecast notice carries a full sentence — if it ever goes
+         back to the nowrap pill it visibly overflows its frame. */
+      const noticeRule = (cssSrc.match(/\.offline-banner\.notice\s*\{[^}]*\}/) || [''])[0];
+      assert(/\.offline-banner\.notice/.test(cssSrc), 'css: saved-forecast notice has its own layout rule');
+      assert(/white-space:\s*normal/.test(noticeRule), 'css: the notice wraps instead of overflowing (white-space: normal)');
+      assert(/max-width/.test(noticeRule), 'css: the notice is bounded by a max-width');
+      assert(/\.offline-banner \.ob-retry/.test(cssSrc), 'css: the notice retry button is styled');
       /* hourly strip must be a horizontal no-wrap flex row (regression: items stacked vertically) */
       const hs = cssSrc.match(/\.hourly-strip\s*\{[^}]*\}/s);
       assert(hs && /display:\s*flex/.test(hs[0]) && /flex-direction:\s*row/.test(hs[0]) && /flex-wrap:\s*nowrap/.test(hs[0]), 'hourly strip is a horizontal no-wrap flex row');
@@ -1720,7 +1727,11 @@ function phase12() {
       assert(snapAqi === '77', 'phase12: air quality comes from the snapshot too: ' + snapAqi);
       assert(q12('loader').classList.contains('done'), 'phase12: loader is dismissed by the snapshot fallback');
       assert(!banner.classList.contains('hidden'), 'phase12: saved-forecast banner is visible');
-      assert(/сохранённый прогноз/.test(banner.textContent), 'phase12: banner says the forecast is saved: ' + banner.textContent.trim());
+      assert(banner.classList.contains('notice'), 'phase12: the notice uses the wrapping card layout (not the one-line pill)');
+      assert(/Сервис погоды недоступен/.test(banner.textContent), 'phase12: banner headline names the problem: ' + banner.textContent.trim());
+      assert(/сохранённый прогноз/i.test(banner.textContent), 'phase12: banner says the forecast is saved: ' + banner.textContent.trim());
+      assert(banner.querySelector('.ob-title') && banner.querySelector('.ob-sub'), 'phase12: notice renders title + detail lines');
+      assert(banner.querySelector('.ob-retry'), 'phase12: notice offers a retry button');
       assert(doc.querySelectorAll('.toast').length === 0, 'phase12: no error toast while the snapshot covers the outage');
       assert(q12('boot-error').classList.contains('hidden'), 'phase12: no boot-error panel on the snapshot path');
       assert(q12('hourly-strip').children.length > 5 && q12('daily-strip').children.length > 5, 'phase12: hourly and daily strips are painted from the snapshot');
@@ -1734,6 +1745,8 @@ function phase12() {
           doc.body.appendChild(probe);
           assert(w.__snapProbe && w.__snapProbe.stale === false, 'phase12: live data clears the saved-forecast flag');
           assert(q12('offline-banner').classList.contains('hidden'), 'phase12: banner hides once live data is back');
+          assert(!q12('offline-banner').classList.contains('notice') && /data-translate="offline_banner"/.test(q12('offline-banner').innerHTML),
+            'phase12: banner markup is restored for the ordinary offline message');
           assert(/\d/.test(q12('temperature').textContent), 'phase12: live tiles still render after the swap');
           phase13();
         } catch (e) { errors.push('phase12 swap crashed: ' + e.message); phase13(); }

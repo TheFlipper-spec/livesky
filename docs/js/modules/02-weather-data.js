@@ -16,6 +16,12 @@ let loaderWatchdog = null;
 let selfHealTimer = null;   /* one-shot retry after a total first-load failure */
 const WATCHDOG_MS = window.LIVE_WATCHDOG_MS || 15000;
 const FETCH_MS = window.LIVE_FETCH_TIMEOUT_MS || 15000;
+/* The very first request gets a shorter leash: a hanging network (packets
+   dropped, no DNS answer) used to keep the loader up for the full timeout on
+   every retry. Nothing is on screen yet, so fail fast and let the fallbacks
+   take over; later refreshes keep the longer timeout so a slow-but-alive API
+   still delivers. */
+const FIRST_FETCH_MS = window.LIVE_FIRST_FETCH_TIMEOUT_MS || 8000;
 const UI_LOCK_MS = window.LIVE_UI_LOCK_MS || 800;          /* UI quiet period after closing overlays */
 const FAV_LIST_DELAY_MS = window.LIVE_FAV_DELAY_MS != null ? window.LIVE_FAV_DELAY_MS : 350; /* debounce before auto-opening favorites */
 
@@ -161,7 +167,15 @@ function snapshotClock(iso) {
 }
 
 /* Banner + "updated" chip tell the truth about where the numbers come from:
-   saved forecast, with its timestamp, never passed off as a live reading. */
+   saved forecast, with its timestamp, never passed off as a live reading.
+   The saved-forecast notice is a two-line card (title + details + retry) so the
+   longer text wraps inside the frame instead of overflowing a one-line pill. */
+const OFFLINE_BANNER_ICON = 'ph-fill ph-wifi-slash';
+function restoreOfflineBanner(banner) {
+  if (!banner) return;
+  banner.classList.remove('notice');
+  banner.innerHTML = `<i class="${OFFLINE_BANNER_ICON}"></i><span data-translate="offline_banner">${t('offline_banner')}</span>`;
+}
 function paintSnapshotNotice() {
   const banner = el.offlineBanner;
   const info = state.weatherStale;
@@ -170,12 +184,24 @@ function paintSnapshotNotice() {
     if (info) {
       const age = info.at ? (Date.now() - Date.parse(info.at)) / 3600000 : 0;
       const when = snapshotClock(info.at);
-      banner.querySelector('span').textContent = (when ? `${t('snapshot_banner')} · ${when}` : t('snapshot_banner')) +
-        (age > 6 ? ` · ${t('snapshot_stale')}` : '');
+      const sub = t('snapshot_banner') + (when ? ` · ${when}` : '') + (age > 6 ? ` · ${t('snapshot_stale')}` : '');
+      banner.classList.add('notice');
+      banner.innerHTML =
+        `<i class="${OFFLINE_BANNER_ICON}"></i>` +
+        `<span class="ob-text"><span class="ob-title">${t('snapshot_title')}</span><span class="ob-sub">${sub}</span></span>` +
+        `<button type="button" class="ob-retry">${t('toast_retry')}</button>`;
+      const retry = banner.querySelector('.ob-retry');
+      if (retry) {
+        retry.addEventListener('click', () => { retry.disabled = true; fetchWeather(); });
+      }
       banner.classList.remove('hidden', 'out');
-    } else if (!banner.classList.contains('hidden')) {
+    } else if (!banner.classList.contains('hidden') || banner.classList.contains('notice')) {
       banner.classList.add('out');
-      snapBannerTimer = setTimeout(() => banner.classList.add('hidden'), 320);
+      snapBannerTimer = setTimeout(() => {
+        banner.classList.add('hidden');
+        /* leave the pill exactly as the offline handler expects it */
+        if (banner.classList.contains('notice')) restoreOfflineBanner(banner);
+      }, 320);
     }
   }
   if (info && el.updatedAt) {
@@ -448,7 +474,7 @@ async function fetchWeather(silent) {
       params.append('models', rm ? `${rm},best_match` : 'best_match');
     }
 
-    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, FETCH_MS);
+    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, state.weather ? FETCH_MS : FIRST_FETCH_MS);
     const data = await res.json();
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
     if (seq !== fetchSeq) return; /* a newer request is in flight */
@@ -509,7 +535,7 @@ async function fetchWeather(silent) {
 async function fetchAir(seq, isRetry) {
   try {
     const path = `/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`;
-    const res = await fetchResilient(AIR_HOSTS, path, 12000);
+    const res = await fetchResilient(AIR_HOSTS, path, state.air ? 12000 : FIRST_FETCH_MS);
     const data = await res.json();
     if (!data || !data.hourly) throw new Error('Bad payload');
     if (seq && seq !== fetchSeq) return;
