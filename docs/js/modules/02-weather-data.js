@@ -124,11 +124,10 @@ function raceHosts(list, path, ms, group) {
           resolve(res);
           return;
         }
+        /* A host may answer 4xx (different path support) while another host
+           serves the same request fine, so in a race every failure — 4xx
+           included — counts as "this host is out", never as "stop racing". */
         const err = new Error('API ' + (res ? res.status : '?'));
-        const msg = String(err.message);
-        /* a 4xx means the request itself is wrong — the other host would
-           reject it too, so stop instead of racing to the same failure */
-        if (/API 4\d\d/.test(msg) && !/API 429/.test(msg)) return fail(err);
         if (--pending === 0) fail(err);
       }).catch((e) => {
         if (settled) return;
