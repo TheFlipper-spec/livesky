@@ -454,19 +454,33 @@ function updateRainStatus() {
   el.rainStatusText.textContent = t('rain_prob').replace('{p}', Math.round(p));
 }
 
-/* Read a value from the minutely_15 payload (no model suffix — Open-Meteo returns plain keys). */
+/* Read a value from the minutely_15 payload.
+   Open-Meteo mirrors hourly naming here too: as soon as ANY `models` is
+   requested (the app always asks for `<region model>,best_match` or
+   `best_match`), every series is returned model-suffixed —
+   `precipitation_best_match`, `weather_code_ecmwf_ifs025`, … — with no plain
+   key at all. Reading only the plain key silently turned the whole 15-minute
+   nowcast into "no data", which is why the minute-precision status ("rain ends
+   in 23 min") so often fell back to the hourly guess. Resolve exactly like
+   getVal() does for hourly/daily, and keep the alias tolerance. */
 function getMinVal(obj, key, i) {
   if (!obj) return null;
-  const arr = obj[key];
-  if (arr && arr[i] != null) return arr[i];
-  /* tolerate Open-Meteo naming aliases across hourly/minutely payloads */
   const aliases = {
     weathercode: 'weather_code', weather_code: 'weathercode',
     windspeed_10m: 'wind_speed_10m', wind_speed_10m: 'windspeed_10m',
     relativehumidity_2m: 'relative_humidity_2m', relative_humidity_2m: 'relativehumidity_2m'
   };
-  const alt = aliases[key];
-  if (alt && obj[alt] && obj[alt][i] != null) return obj[alt][i];
+  const keys = [key];
+  if (aliases[key]) keys.push(aliases[key]);
+  const candidates = [];
+  for (const k of keys) {
+    if (state.model && state.model !== 'auto') candidates.push(`${k}_${state.model}`);
+    candidates.push(k, `${k}_best_match`);
+  }
+  for (const k of candidates) {
+    const arr = obj[k];
+    if (arr && arr[i] != null) return arr[i];
+  }
   return null;
 }
 

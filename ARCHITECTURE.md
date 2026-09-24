@@ -23,7 +23,7 @@ only at runtime, after all eager modules have loaded).
 | # | File | Layer / responsibility |
 |---|------|------------------------|
 | 01 | `01-core.js` | **Kernel (root).** `el` DOM refs, `store` (persistence), `state` (runtime), `$`/`on`, Capacitor helpers, `t()`/`loc()` i18n access, time/unit formatters, WMO catalogue, rain-merge + minute-precision helpers, `getVal`/`getMinVal`, `regionModel`, moon phase. |
-| 02 | `02-weather-data.js` | **Data services & search.** Forecast/air fetching + loader/toast/watchdog, clock, geolocation + reverse geocoding, city search/geocoding (wrong-layout & typo correction), favorites & recent-cities persistence/rendering. |
+| 02 | `02-weather-data.js` | **Data services & search.** Forecast/air fetching + loader/toast/watchdog, host-failover + retry layer (`fetchResilient`, `window.LIVE_*_HOSTS`), clock, geolocation + reverse geocoding, city search/geocoding (wrong-layout & typo correction), favorites & recent-cities persistence/rendering. |
 | 03 | `03-rendering.js` | **Dashboard rendering.** `renderAll` orchestration, hero, metrics, wind tile, sun arc. |
 | 04 | `04-chart.js` | **Forecast chart & live layer.** 24 h chart, scrubbing, now-tag, rain markers, live minute ticker. |
 | 05 | `05-hourly-alerts.js` | **Hourly/daily lists + hazard alerts.** Renders strips; detects/scores hazards (rain, snow, wind, heat, cold, fog, UV). |

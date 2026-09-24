@@ -13,10 +13,25 @@
 /* ---------------- loader / progress / toasts ---------------- */
 let phraseTimer = null;
 let loaderWatchdog = null;
+let selfHealTimer = null;   /* one-shot retry after a total first-load failure */
 const WATCHDOG_MS = window.LIVE_WATCHDOG_MS || 15000;
 const FETCH_MS = window.LIVE_FETCH_TIMEOUT_MS || 15000;
 const UI_LOCK_MS = window.LIVE_UI_LOCK_MS || 800;          /* UI quiet period after closing overlays */
 const FAV_LIST_DELAY_MS = window.LIVE_FAV_DELAY_MS != null ? window.LIVE_FAV_DELAY_MS : 350; /* debounce before auto-opening favorites */
+
+/* ---------------- data endpoints (resilience) ----------------
+   Every data request is built from a host list instead of a hard-coded URL:
+   the first entry is the canonical provider endpoint, and a deployment (or a
+   mirror/proxy put in front of it) can add fallbacks through
+   window.LIVE_*_HOSTS without touching the modules. On top of the host list
+   each request is retried with backoff, so one dropped connection, a 429 or a
+   brief 5xx never leaves the dashboard empty — which is exactly the failure
+   mode users report as "the site loads but no data comes in". */
+const FORECAST_HOSTS = window.LIVE_FORECAST_HOSTS || ['https://api.open-meteo.com'];
+const AIR_HOSTS = window.LIVE_AIR_HOSTS || ['https://air-quality-api.open-meteo.com'];
+const GEOCODE_HOSTS = window.LIVE_GEOCODE_HOSTS || ['https://geocoding-api.open-meteo.com'];
+const RETRY_ATTEMPTS = Math.max(1, window.LIVE_RETRY_ATTEMPTS != null ? window.LIVE_RETRY_ATTEMPTS : 3);
+const RETRY_MS = window.LIVE_RETRY_MS != null ? window.LIVE_RETRY_MS : 1200; /* backoff base */
 
 /* fetch that can never hang forever */
 async function fetchWithTimeout(url, ms) {
@@ -27,6 +42,36 @@ async function fetchWithTimeout(url, ms) {
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Host-failover + retry wrapper. `path` is the provider path with a leading
+   slash ("/v1/forecast?..."). Resolves with the first OK response, throws the
+   last error only after every host/attempt pair has been exhausted.
+
+   Retry policy: network errors, timeouts, 429 and 5xx are transient and worth
+   another try; a 4xx (bad request) is not — retrying it would only burn the
+   provider's rate limit, so it fails fast and the caller can report honestly. */
+async function fetchResilient(hosts, path, ms) {
+  const list = (hosts && hosts.length) ? hosts : [''];
+  let lastErr = null;
+  for (const host of list) {
+    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+      try {
+        const res = await fetchWithTimeout(host + path, ms);
+        if (res && res.ok) return res;
+        lastErr = new Error('API ' + (res ? res.status : '?'));
+      } catch (e) {
+        lastErr = e;
+      }
+      const msg = String((lastErr && lastErr.message) || '');
+      if (/API 4\d\d/.test(msg) && !/API 429/.test(msg)) throw lastErr; /* bad request — retry is pointless */
+      const lastTry = host === list[list.length - 1] && attempt === RETRY_ATTEMPTS;
+      if (!lastTry) await sleepMs(RETRY_MS * attempt + Math.floor(Math.random() * 250));
+    }
+  }
+  throw lastErr || new Error('network unavailable');
 }
 
 function showLoader() {
@@ -72,6 +117,16 @@ function bootFail(msg) {
     const r = $('boot-report-btn');
     if (r) r.href = reportBugUrl(msg);
   }
+}
+/* A boot failure is not a life sentence: the panel used to latch forever, so a
+   user whose very first request failed kept staring at "приложение не
+   запустилось" even after a later refresh had filled the dashboard with data.
+   As soon as real data arrives the panel is dismissed and the flag cleared. */
+function clearBootFail() {
+  if (!state._bootFailed) return;
+  state._bootFailed = false;
+  const panel = $('boot-error');
+  if (panel) panel.classList.add('hidden');
 }
 function setLoading(on) {
   state.loading = Math.max(0, state.loading + (on ? 1 : -1));
@@ -213,21 +268,26 @@ async function fetchWeather(silent) {
          can say "rain ends in 23 min" and show a live minute strip. */
       minutely_15: 'temperature_2m,precipitation,weather_code,apparent_temperature,wind_speed_10m,relative_humidity_2m,is_day',
       forecast_minutely_15: '96',
+      /* The whole app speaks m/s internally (fmtWind multiplies by 3.6 for
+         km/h, the hazard engine uses 12/18/28 m/s thresholds, the FX layer
+         reacts at 15 m/s). Open-Meteo's default is km/h, which made every wind
+         reading — and the "storm" banner — 3.6× too strong. Ask for the unit
+         the app actually works in. */
+      wind_speed_unit: 'ms',
       timezone: 'auto', forecast_days: 16, past_days: 16
     });
     /* Accuracy: ask Open-Meteo for the skill-ranked "best_match" model. In Auto
        mode we also nudge the baseline toward the region's strongest model
        (ECMWF over Europe, GFS over N.America); in manual modes we blend the
        chosen model with best_match (getVal prefers the chosen model first).
-       getVal reads the plain key (= first requested model) then _best_match. */
+       getVal/getMinVal read the plain key, the model suffix and _best_match. */
     if (state.model && state.model !== 'auto') params.append('models', `${state.model},best_match`);
     else {
       const rm = regionModel();
       params.append('models', rm ? `${rm},best_match` : 'best_match');
     }
 
-    const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?${params}`, FETCH_MS);
-    if (!res.ok) throw new Error('API ' + res.status);
+    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, FETCH_MS);
     const data = await res.json();
     if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
     if (seq !== fetchSeq) return; /* a newer request is in flight */
@@ -250,7 +310,10 @@ async function fetchWeather(silent) {
     syncNowIdx();
 
     store.set('livesky:last_city', { lat: state.lat, lon: state.lon, name: state.locationName, cc: state.countryCode, admin: state.admin });
+    clearTimeout(selfHealTimer);
     renderAll();
+    /* Real data is on screen: any stale "could not start" panel is now a lie. */
+    clearBootFail();
     /* The mini map (if the lazy map subsystem is already on board) follows the
        city change; until then this is a safe no-op. */
     if (window.LiveSkyMap) LiveSkyMap.update();
@@ -261,7 +324,18 @@ async function fetchWeather(silent) {
   } catch (e) {
     if (seq !== fetchSeq) return;
     console.error('fetchWeather failed:', e);
-    if (!silent) toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
+    /* Never blank a working dashboard: if a previous forecast is still on
+       screen a failed refresh keeps it (the updated-chip simply stops
+       advancing) and the user gets one non-destructive notice. */
+    if (!state.weather) {
+      if (!silent) toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
+      /* Self-heal: a connectivity blip while the very first forecast is being
+         fetched used to leave an empty dashboard until the user reloaded or
+         clicked Retry. Try once more shortly, then let the regular refresh
+         cadence take over. */
+      clearTimeout(selfHealTimer);
+      selfHealTimer = setTimeout(() => { if (!state.weather) fetchWeather(true); }, 20000);
+    }
   } finally {
     if (seq !== fetchSeq) return;
     if (!silent) setLoading(false);
@@ -276,8 +350,8 @@ async function fetchWeather(silent) {
    "unavailable" state plus a toast with a manual retry action. */
 async function fetchAir(seq, isRetry) {
   try {
-    const res = await fetchWithTimeout(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`, 12000);
-    if (!res.ok) throw new Error('API ' + res.status);
+    const path = `/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&hourly=pm2_5,pm10,nitrogen_dioxide,ozone,european_aqi&timezone=auto`;
+    const res = await fetchResilient(AIR_HOSTS, path, 12000);
     const data = await res.json();
     if (!data || !data.hourly) throw new Error('Bad payload');
     if (seq && seq !== fetchSeq) return;
@@ -293,9 +367,11 @@ async function fetchAir(seq, isRetry) {
       return;
     }
     console.warn('fetchAir failed:', e);
-    state.air = null;
-    renderAirError(true);
-    toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
+    /* Keep the last good reading instead of wiping it: air quality changes
+       slowly, so stale-but-real beats a card full of dashes. Only the very
+       first load (no data at all) shows the explicit unavailable state. */
+    renderAirError(!state.air);
+    if (!state.air) toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
   }
 }
 /* Explicit "no data" state for the AQI card instead of a silent, permanent "--". */
@@ -493,7 +569,8 @@ function buildCorrectionCandidates(q) {
   }).slice(0, 14); /* cap extra requests per search */
 }
 async function geocodeQuery(q, count) {
-  const r = await fetchWithTimeout(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`, 8000);
+  const path = `/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=${state.lang}&format=json`;
+  const r = await fetchResilient(GEOCODE_HOSTS, path, 8000);
   const d = await r.json();
   return d.results || [];
 }

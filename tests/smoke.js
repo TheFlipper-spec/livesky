@@ -9,6 +9,8 @@ const DOCS = path.join(__dirname, '..', 'docs');
 const html = fs.readFileSync(path.join(DOCS, 'index.html'), 'utf8');
 
 const errors = [];
+/* Every URL the stubbed network was asked for (provider contract assertions). */
+const fetchedUrls = [];
 const dom = new JSDOM(html, {
   url: 'https://livesky.local/',
   runScripts: 'dangerously',
@@ -191,6 +193,17 @@ function genForecast() {
       minutely_15[key] = order.map(i => minutely_15[key][i]);
     }
   } catch (e) { /* ignore */ }
+  /* Real-provider shape for the 15-minute block: index.html always requests
+     `models=…,best_match`, so Open-Meteo suffixes EVERY series of minutely_15
+     too (`precipitation_best_match`, `weather_code_best_match`, …) and returns
+     no plain key at all. Reproduce that here and drop the bare names, so the
+     suite fails loudly if the 15-minute reader ever goes back to plain keys
+     (that regression silently disabled the minute-precision nowcast). */
+  for (const key of Object.keys(minutely_15)) {
+    if (key === 'time') continue;
+    minutely_15[key + '_best_match'] = minutely_15[key];
+    delete minutely_15[key];
+  }
   return { timezone: 'Europe/Moscow', timezone_abbreviation: 'GMT+3', elevation: 140, hourly, daily, minutely_15 };
 }
 
@@ -209,6 +222,7 @@ function genAir() {
 function makeFetchStub() {
   return async (url) => {
     const u = String(url);
+    fetchedUrls.push(u);
     if (u.includes('/v1/forecast')) return { ok: true, json: async () => genForecast() };
     if (u.includes('air-quality-api')) return { ok: true, json: async () => genAir() };
     if (u.includes('geocoding-api')) return {
@@ -850,6 +864,44 @@ setTimeout(() => {
     assert(q('aqi-card').textContent.includes('Мелкая пыль') || q('aqi-card').textContent.includes('Fine dust'), 'AQI card uses plain dust label');
     assert(q('m-wind-arrow').style.transform.includes('deg'), 'wind arrow rotated');
     assert(q('alert-box').classList.contains('hidden'), 'no alert in calm weather');
+
+    /* ---- provider contract: wind units + model-suffixed 15-minute series ----
+       The app works in m/s internally (fmtWind multiplies by 3.6 for km/h, the
+       hazard engine uses m/s thresholds), so the forecast request must pin
+       wind_speed_unit=ms. Open-Meteo's default is km/h, which used to inflate
+       every wind reading 3.6× and invent "storm · 170 km/h" banners on a calm
+       day — the data looked broken while the feed was perfectly fine. */
+    assert(fetchedUrls.some(u => /\/v1\/forecast\?/.test(u) && /[?&]wind_speed_unit=ms(&|$)/.test(u)),
+      'forecast request pins wind_speed_unit=ms so the feed matches the app unit system');
+    assert(/^2[45] км\/ч$/.test(q('m-wind').textContent.trim()),
+      'wind tile converts the m/s feed to km/h exactly once: ' + q('m-wind').textContent);
+    assert(/Порывы 40 км\/ч/.test(q('m-wind-dir').textContent),
+      'gust value is converted exactly once too: ' + q('m-wind-dir').textContent);
+    {
+      const probe = document.createElement('script');
+      probe.textContent = `
+        window.__minProbe = (function () {
+          const m = state.minutely;
+          const info = minutelyPrecipInfo();
+          return {
+            plain: !!(m && (m.precipitation || m.weather_code || m.weathercode)),
+            suffixed: !!(m && (m.precipitation_best_match || m.weather_code_best_match)),
+            slot1: getMinVal(m, 'precipitation', 1),
+            status: document.getElementById('rain-status-text').textContent,
+            source: info && info.source,
+            resolved: !!(info && (info.wet ? info.endAbs != null : info.startAbs != null))
+          };
+        })();
+      `;
+      document.body.appendChild(probe);
+      const mp = window.__minProbe || {};
+      assert(mp.plain === false && mp.suffixed === true, 'stub serves the real model-suffixed minutely shape (no plain keys)');
+      assert(typeof mp.slot1 === 'number' && mp.slot1 > 0,
+        'getMinVal resolves model-suffixed 15-minute series: ' + mp.slot1);
+      assert(mp.source === 'minutely' && mp.resolved === true,
+        'minute-precision nowcast is driven by the 15-minute block, not the hourly fallback');
+      assert(/\\d{2}:\\d{2}|мин/.test(mp.status || ''), 'rain status keeps minute precision: ' + mp.status);
+    }
     /* Hazard engine: minute-aware multi-type alerts */
     {
       const probe = document.createElement('script');
@@ -1526,10 +1578,10 @@ function phase10() {
           doc.body.appendChild(probe2);
           const p2 = w.__i18n2 || {};
           assert(p2.air === true, 'phase10: air card exists after switch');
-          finish();
-        } catch (e) { errors.push('phase10 crashed: ' + e.message); finish(); }
+          phase11();
+        } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
       }, 700);
-    } catch (e) { errors.push('phase10 crashed: ' + e.message); finish(); }
+    } catch (e) { errors.push('phase10 crashed: ' + e.message); phase11(); }
   }, 900);
 }
 
@@ -1568,6 +1620,58 @@ function phase9() {
       phase10();
     } catch (e) { errors.push('phase9 crashed: ' + e.message); phase10(); }
   }, 900);
+}
+
+/* phase 11 (data resilience): the site must keep receiving data when a request
+   is dropped instead of showing an empty dashboard. A single network failure
+   has to be retried by the data layer itself (no user click, no scary toast),
+   and a latched boot-error panel has to disappear as soon as data arrives. */
+function phase11() {
+  const { w, doc } = makeWorld();
+  w.LIVE_RETRY_MS = 30;        /* fast backoff inside the test */
+  w.LIVE_WATCHDOG_MS = 6000;
+  const stub = makeFetchStub();
+  let forecastCalls = 0;
+  w.fetch = (url) => {
+    if (String(url).includes('/v1/forecast')) {
+      forecastCalls += 1;
+      if (forecastCalls === 1) return Promise.reject(new Error('NetworkError: connection dropped'));
+    }
+    return stub(url);
+  };
+  const s1 = doc.createElement('script'); s1.textContent = i18nSrc; doc.body.appendChild(s1);
+  const s2 = doc.createElement('script'); s2.textContent = appSrc; doc.body.appendChild(s2);
+  const q11 = (id) => doc.getElementById(id);
+  setTimeout(() => {
+    try {
+      assert(forecastCalls >= 2, 'phase11: a dropped forecast request is retried automatically (' + forecastCalls + ' attempts)');
+      assert(/[^-]/.test(q11('temperature').textContent), 'phase11: data renders after the automatic retry: ' + q11('temperature').textContent);
+      assert(doc.querySelectorAll('.toast').length === 0, 'phase11: a self-healed retry never shows an error toast');
+      assert(q11('boot-error').classList.contains('hidden'), 'phase11: no boot-error panel after recovery');
+      assert(q11('loader').classList.contains('done'), 'phase11: loader is dismissed after recovery');
+
+      /* A fatal error (e.g. a missing script) may still raise the panel — but it
+         must be dismissible by data arriving later, not latch for the session. */
+      const probe = doc.createElement('script');
+      probe.textContent = `
+        window.__recoveryProbe = (function () {
+          bootFail('simulated fatal boot error');
+          const latched = !document.getElementById('boot-error').classList.contains('hidden');
+          const flagged = state._bootFailed === true;
+          clearBootFail();
+          return {
+            latched, flagged,
+            cleared: state._bootFailed === false && document.getElementById('boot-error').classList.contains('hidden')
+          };
+        })();
+      `;
+      doc.body.appendChild(probe);
+      const rp = w.__recoveryProbe || {};
+      assert(rp.latched === true && rp.flagged === true, 'phase11: boot-error panel still shows on a fatal error');
+      assert(rp.cleared === true, 'phase11: boot-error panel is cleared once data is available again');
+      finish();
+    } catch (e) { errors.push('phase11 crashed: ' + e.message); finish(); }
+  }, 1500);
 }
 
 function finish() {
