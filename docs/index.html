@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=59" />
+  <link rel="stylesheet" href="css/app.css?v=64" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -98,12 +98,14 @@
   <div id="bg-container">
     <div id="bg-layer-1" class="bg-layer active" style="background: linear-gradient(180deg, #0a1020 0%, #05070f 100%);"></div>
     <div id="bg-layer-2" class="bg-layer"></div>
+    <div id="dusk-veil" class="bg-layer" aria-hidden="true"></div>
   </div>
   <div id="aurora">
     <div class="aurora-blob blob-a"></div>
     <div class="aurora-blob blob-b"></div>
     <div class="aurora-blob blob-c"></div>
   </div>
+  <div id="rainbow" aria-hidden="true"></div>
   <canvas id="fx-canvas"></canvas>
   <div id="vignette"></div>
   <div id="flash"></div>
@@ -117,7 +119,7 @@
       <span class="orb-star st1"></span>
       <span class="orb-star st2"></span>
       <span class="orb-star st3"></span>
-      <div class="orb-ring ring-a"><i class="ph-fill ph-cloud orb-cloud"></i></div>
+      <div class="orb-ring ring-a"><span class="orb-cloud-bob"><i class="ph-fill ph-cloud orb-cloud"></i></span></div>
       <div class="orb-ring ring-b"><span class="orb-dot"></span></div>
       <div class="orb-core"></div>
     </div>
@@ -194,6 +196,8 @@
                   <button type="button" class="seg-btn" data-theme-pick="adaptive" role="radio" aria-checked="false"><i class="ph ph-cloud-sun"></i><span data-translate="theme_adaptive">Адаптивная</span><i class="ph-bold ph-check seg-check"></i></button>
                   <button type="button" class="seg-btn" data-theme-pick="dark" role="radio" aria-checked="false"><i class="ph ph-moon"></i><span data-translate="theme_dark">Тёмная</span><i class="ph-bold ph-check seg-check"></i></button>
                   <button type="button" class="seg-btn" data-theme-pick="light" role="radio" aria-checked="false"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn" data-theme-pick="custom" role="radio" aria-checked="false"><i class="ph ph-palette"></i><span data-translate="theme_custom">Своя</span><i class="ph-bold ph-check seg-check"></i></button>
+                  <button type="button" class="seg-btn st-open-btn" id="studio-btn"><i class="ph ph-sliders-horizontal"></i><span data-translate="studio_open">Студия темы</span></button>
                 </div>
               </section>
 
@@ -627,7 +631,7 @@
             <i class="ph-fill ph-globe-simple"></i><span data-translate="radar_src_auto">Авто</span>
           </button>
           <button type="button" class="radar-source" id="radar-src-sat" data-source="sat">
-            <i class="ph-fill ph-satellite"></i><span data-translate="radar_src_sat">Спутник</span>
+            <i class="ph-fill ph-planet"></i><span data-translate="radar_src_sat">Спутник</span>
           </button>
           <button type="button" class="radar-source" id="radar-src-radar" data-source="radar">
             <i class="ph-fill ph-broadcast"></i><span data-translate="radar_src_radar">Радар</span>
@@ -669,21 +673,22 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=43"></script>
+  <script src="js/i18n.js?v=45"></script>
   <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones.
        The map/radar module (js/modules/11-map-radar.js) is intentionally NOT
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=10"></script>
-  <script src="js/modules/02-weather-data.js?v=10"></script>
-  <script src="js/modules/03-rendering.js?v=5"></script>
-  <script src="js/modules/04-chart.js?v=6"></script>
+  <script src="js/modules/01-core.js?v=11"></script>
+  <script src="js/modules/02-weather-data.js?v=11"></script>
+  <script src="js/modules/03-rendering.js?v=6"></script>
+  <script src="js/modules/04-chart.js?v=8"></script>
   <script src="js/modules/05-hourly-alerts.js?v=3"></script>
   <script src="js/modules/06-air.js?v=4"></script>
-  <script src="js/modules/07-effects.js?v=8"></script>
-  <script src="js/modules/08-search-modals.js?v=10"></script>
+  <script src="js/modules/07-effects.js?v=10"></script>
+  <script src="js/modules/08-search-modals.js?v=12"></script>
   <script src="js/modules/09-lifecycle.js?v=6"></script>
-  <script src="js/modules/10-bootstrap.js?v=11"></script>
+  <script src="js/modules/10-bootstrap.js?v=12"></script>
+  <script src="js/modules/12-theme-studio.js?v=5"></script>
 </body>
 </html>

@@ -772,6 +772,7 @@ function toggleFavorite() {
 function updateFavIcon() {
   const isFav = state.favorites.some(f => f.name === state.locationName && f.lat === state.lat);
   el.favIcon.classList.toggle('ph-fill', isFav);
+  el.favIcon.classList.toggle('ph', !isFav);
   el.favBtn.classList.toggle('fav-on', isFav);
 }
 
@@ -1116,7 +1117,7 @@ async function handleSearch(e) {
   } catch (e) {
     /* Note: handleSearch expects an Event (uses e.preventDefault() on the first line),
        so the retry callback must not forward the error object. */
-    toast(t('toast_network'), 'error', t('toast_retry'), () => handleSearch());
+    toast(t('toast_network'), 'error', t('toast_retry'), () => handleSearch({ preventDefault() {} }));
   }
 }
 

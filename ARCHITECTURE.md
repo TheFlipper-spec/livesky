@@ -29,11 +29,12 @@ only at runtime, after all eager modules have loaded).
 | 04 | `04-chart.js` | **Forecast chart & live layer.** 24 h chart, scrubbing, now-tag, rain markers, live minute ticker. |
 | 05 | `05-hourly-alerts.js` | **Hourly/daily lists + hazard alerts.** Renders strips; detects/scores hazards (rain, snow, wind, heat, cold, fog, UV). |
 | 06 | `06-air.js` | **Air quality.** AQI card, day strip, detail modal. |
-| 07 | `07-effects.js` | **Visual effects & theme.** Weather theme/background, canvas FX, storm flashes, GlassFX. |
+| 07 | `07-effects.js` | **Visual effects & theme.** Weather theme/background, canvas FX (incl. firefly overlay), storm flashes, GlassFX, after-rain rainbow, dusk glide (hour-long sunset/sunrise melt). |
 | 08 | `08-search-modals.js` | **Interactive UI layer.** Accessible modal infra (focus trap), detail views (hourly/daily/monthly/sun), advice & lifestyle scoring, theme/units/model/effects/language settings + menu, fullscreen, reveal-on-scroll, global event wiring. |
 | 09 | `09-lifecycle.js` | **Lifecycle & gating.** `SECTION_MANAGER` (Smart Visibility: active/unload/mount), legal consent + privacy/geolocation gate (sequential). |
 | 10 | `10-bootstrap.js` | **Bootstrap & platform shell.** Single `init()`; `window.LiveSkyMap` facade, PWA (service worker/install/offline banner), adaptive FPS detector (`PERF`), weather notifications, Capacitor native bridge. |
 | 11 | `11-map-radar.js` | **Map & precipitation (lazy).** RainViewer + NASA IMERG nowcast engine; registers with `LiveSkyMap._register`. |
+| 12 | `12-theme-studio.js` | **Custom themes & studio (eager).** `CustomTheme` storage/apply (multiple named themes, inline CSS variables over a light/dark base); `openThemeStudio` builder modal with live mini-preview; ambient hooks (fireflies overlay + after-rain rainbow live in `07-effects.js`). Owns the stored-custom-theme boot paint (late-boot repair at module end: `10-bootstrap.js` `init()` runs before this module is parsed, so it cannot do it) and unconditionally (re)activates the custom theme on every studio open. |
 
 ## Refactor history (this branch)
 

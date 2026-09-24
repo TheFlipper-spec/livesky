@@ -270,7 +270,7 @@ const i18nSrc = fs.readFileSync(path.join(DOCS, 'js', 'i18n.js'), 'utf8');
 /* Eager modules: inlined in order, exactly like index.html's classic script tags. */
 const moduleNames = ['01-core.js', '02-weather-data.js', '03-rendering.js', '04-chart.js',
   '05-hourly-alerts.js', '06-air.js', '07-effects.js', '08-search-modals.js',
-  '09-lifecycle.js', '10-bootstrap.js'];
+  '09-lifecycle.js', '10-bootstrap.js', '12-theme-studio.js'];
 /* The map/radar module is a LAZY subsystem: index.html must not load it and the
    smoke run delivers it below the way the LiveSkyMap loader would. */
 const lazyModuleName = '11-map-radar.js';
@@ -1191,13 +1191,82 @@ setTimeout(() => {
     assert(q('fav-icon').classList.contains('ph-fill') !== before, 'favorite toggles');
     q('fav-btn').click();
 
-    /* theme cycle */
+    /* theme cycle (custom is the fourth stop) */
     window.cycleTheme();
     assert(document.documentElement.dataset.theme === 'light', 'theme cycles to light');
     window.cycleTheme();
     assert(document.documentElement.dataset.theme === 'dark', 'theme cycles to dark');
     window.cycleTheme();
-    assert(document.documentElement.dataset.theme === 'adaptive', 'theme cycles back');
+    assert(document.documentElement.dataset.custom === '1', 'theme cycles to custom');
+    window.cycleTheme();
+    assert(document.documentElement.dataset.theme === 'adaptive' && !document.documentElement.dataset.custom, 'theme cycles back');
+
+    /* custom theme studio */
+    assert(typeof window.openThemeStudio === 'function', 'studio entry exists');
+    assert(q('rainbow') !== null, 'rainbow layer present');
+    assert(q('dusk-veil') !== null, 'dusk veil layer present');
+    assert(typeof window.updateDuskBlend === 'function', 'dusk updater exists');
+    assert(typeof window.duskFactor() === 'number', 'dusk factor computes');
+    assert(q('studio-btn') !== null, 'studio menu entry present');
+    window.openThemeStudio();
+    assert(q('studio-overlay') && q('studio-overlay').classList.contains('open'), 'studio overlay opens');
+    assert(document.documentElement.dataset.custom === '1', 'studio activates the custom theme');
+    assert(q('pv-mini') && q('pv-mini').children.length > 0, 'studio preview renders');
+    assert(q('st-themes') && q('st-themes').children.length >= 2, 'studio lists themes + add');
+    assert(q('studio-overlay').querySelector('[data-stab="tune"]') !== null, 'studio mobile tabs present');
+    assert(document.documentElement.style.getPropertyValue('--surface-2') !== '', 'custom theme derives tile surfaces');
+    /* studio input path: the exact reported scenario (light base + red blocks) */
+    q('studio-overlay').querySelector('#st-base button[data-base="light"]').click();
+    assert(document.documentElement.dataset.theme === 'light', 'studio base flips to light');
+    const surfaceOf = () => document.documentElement.style.getPropertyValue('--surface').replace(/\s+/g, '');
+    const stCardInput = q('studio-overlay').querySelector('input[type="color"][data-k="card"]');
+    stCardInput.value = '#ff4242';
+    stCardInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert(surfaceOf() === 'rgba(255,66,66,0.72)', 'block color applies live: ' + surfaceOf());
+    const stAlphaInput = q('studio-overlay').querySelector('input[type="range"][data-k="cardAlpha"]');
+    stAlphaInput.value = '64';
+    stAlphaInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert(surfaceOf() === 'rgba(255,66,66,0.64)', 'transparency applies live: ' + surfaceOf());
+    stCardInput.dispatchEvent(new window.Event('change', { bubbles: true }));
+    assert(surfaceOf() === 'rgba(255,66,66,0.64)', 'change-event commit keeps values: ' + surfaceOf());
+    const stTintInput = q('studio-overlay').querySelector('[data-k="weatherTint"]');
+    stTintInput.checked = false;
+    stTintInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert(document.documentElement.style.getPropertyValue('--accent') !== '', 'weather-tint toggle applies');
+    const stDiag = q('studio-overlay').querySelector('#studio-diag');
+    assert(stDiag && stDiag.textContent.includes('build ') && stDiag.textContent.replace(/\s+/g, '').includes('surface=rgba(255,66,66,0.64)'),
+      'studio footer shows the live readout: ' + (stDiag ? stDiag.textContent.slice(0, 120) : '(missing)'));
+    window.closeThemeStudio();
+    assert(!q('studio-overlay').classList.contains('open'), 'studio closes');
+    const customs = JSON.parse(window.localStorage.getItem('livesky:custom_themes') || 'null');
+    assert(customs && Array.isArray(customs.list) && customs.list.length >= 1, 'custom themes persist');
+    /* boot repair: a reload with a stored custom theme paints it (the exact reported scenario) */
+    const boot = makeWorld(null, (w) => {
+      /* store.set JSON-quotes values: seed exactly what the app persists */
+      w.localStorage.setItem('livesky:theme', JSON.stringify('custom'));
+      w.localStorage.setItem('livesky:custom_themes', JSON.stringify({ active: 'boot1', list: [{
+        id: 'boot1', name: 'Своя', base: 'light', card: '#D80000', cardAlpha: 67,
+        bg0: '#0077FF', bg1: '#003668', text1: '#E407C6', text2: '#0B3CA3',
+        text3: '#75ACFF', accent: '#012A3C', weatherTint: true }] }));
+    });
+    /* deliver the app scripts the way a browser would (fresh worlds start scriptless) */
+    try {
+      const bs1 = boot.doc.createElement('script');
+      bs1.textContent = i18nSrc;
+      boot.doc.body.appendChild(bs1);
+      const bs2 = boot.doc.createElement('script');
+      bs2.textContent = appSrc;
+      boot.doc.body.appendChild(bs2);
+    } catch (e) { errors.push('boot world script failed: ' + e.message); }
+    const bootRoot = boot.doc.documentElement;
+    assert(bootRoot.dataset.theme === 'light', 'boot resolves the stored custom base: ' + bootRoot.dataset.theme);
+    assert(bootRoot.dataset.custom === '1', 'boot flags the custom theme');
+    assert(bootRoot.style.getPropertyValue('--surface').replace(/\s+/g, '') === 'rgba(216,0,0,0.67)',
+      'boot paints the stored block color: ' + bootRoot.style.getPropertyValue('--surface'));
+    assert(bootRoot.style.getPropertyValue('--text-1') === '#e407c6',
+      'boot paints the stored heading color: ' + bootRoot.style.getPropertyValue('--text-1'));
+    /* NB: never boot.w.close() — pending app timers/fetch continuations must
+       not run against a torn-down document (other phases never close either). */
 
     /* search */
     q('city-input').value = 'Санкт-Петербург';
@@ -1236,8 +1305,15 @@ setTimeout(() => {
 }, 900);
 
 /* ================= failure scenarios ================= */
-function makeWorld(htmlMod) {
-  const d = new JSDOM(html, { url: 'https://livesky.local/', runScripts: 'dangerously', pretendToBeVisual: true });
+function makeWorld(htmlMod, seed) {
+  const d = new JSDOM(html, {
+    url: 'https://livesky.local/', runScripts: 'dangerously', pretendToBeVisual: true,
+    beforeParse(w) {
+      if (typeof seed === 'function') {
+        try { seed(w); } catch (e) { errors.push('world seed crashed: ' + e.message); }
+      }
+    }
+  });
   const w = d.window, doc = d.window.document;
   w.requestAnimationFrame = (cb) => setTimeout(() => cb(w.performance.now()), 16);
   w.cancelAnimationFrame = () => {};

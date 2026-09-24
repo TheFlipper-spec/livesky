@@ -57,7 +57,11 @@ function applyWeatherTheme() {
   const type = code != null ? wmo(code).type : 'cloudy';
   const night = code != null ? !isDayNow() : false;
   const time = night ? 'night' : 'day';
-  const mode = state.theme;
+  /* Custom themes ride the adaptive pipeline (weather FX + blobs) but keep
+     the user's own page background and — unless weather-tint is on — accents. */
+  const isCustomTheme = state.theme === 'custom' && typeof CustomTheme !== 'undefined';
+  const mode = isCustomTheme ? 'adaptive' : state.theme;
+  const customFixedAccents = isCustomTheme && !CustomTheme.weatherTint();
 
   if (mode === 'light') {
     setBackground('linear-gradient(180deg, #e8f3fd 0%, #f7fafd 100%)', 'light');
@@ -67,6 +71,7 @@ function applyWeatherTheme() {
     root.style.removeProperty('--grad-logo');
     FX.stop(); stopStorm();
     state.accent = '#7c3aed'; state.accent2 = '#06b6d4';
+    duskInfo = null; updateDuskBlend();
     return;
   }
   if (mode === 'dark') {
@@ -77,6 +82,7 @@ function applyWeatherTheme() {
     root.style.removeProperty('--grad-logo');
     FX.stop(); stopStorm();
     state.accent = '#38bdf8'; state.accent2 = '#818cf8';
+    duskInfo = null; updateDuskBlend();
     return;
   }
 
@@ -92,7 +98,27 @@ function applyWeatherTheme() {
   root.style.setProperty('--blob-3', blobs[2]);
   const logo = (LOGOS[type] || LOGOS.cloudy)[time];
   root.style.setProperty('--grad-logo', logo);
-  setBackground((BGS[type] || BGS.cloudy)[time], `${type}-${time}`);
+  if (isCustomTheme) fadeBgLayers();
+  else setBackground((BGS[type] || BGS.cloudy)[time], `${type}-${time}`);
+  if (customFixedAccents) CustomTheme.applyAccents();
+  /* dusk glide source data (adaptive only — fixed/custom modes hide the veil) */
+  if (isCustomTheme) { duskInfo = null; }
+  else {
+    const dAcc = ACCENTS[type] || ACCENTS.cloudy;
+    const dBlobs = BLOBS[type] || BLOBS.cloudy;
+    const dLogo = LOGOS[type] || LOGOS.cloudy;
+    duskInfo = {
+      nightBg: (BGS[type] || BGS.cloudy).night,
+      dayAcc: dAcc.day, nightAcc: dAcc.night,
+      dayBlobs: dBlobs.day, nightBlobs: dBlobs.night,
+      dayLogo: dLogo.day, nightLogo: dLogo.night
+    };
+    const veil = document.getElementById('dusk-veil');
+    if (veil && veil._duskBg !== duskInfo.nightBg) {
+      veil._duskBg = duskInfo.nightBg;
+      veil.style.background = duskInfo.nightBg;
+    }
+  }
 
   let fx = null;
   if (type === 'rain' || type === 'storm') fx = 'rain';
@@ -106,6 +132,159 @@ function applyWeatherTheme() {
   else {
     FX.start(fx);
     if (type === 'storm') startStorm(); else stopStorm();
+  }
+  /* ambient life: night fireflies + the after-rain rainbow */
+  const liveCode = typeof currentWeatherCodeLive === 'function' ? currentWeatherCodeLive() : code;
+  if (effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
+  else {
+    FX.setOverlay(!night && (liveCode === 0 || liveCode === 1 || liveCode === 2) ? 'fireflies' : null);
+    updateRainbowAftermath(liveCode, !night);
+  }
+  updateDuskBlend();
+}
+
+/* Fade out the weather background layers so a custom theme's own page
+   gradient (painted on <body> by the studio) shows through. */
+function fadeBgLayers() {
+  if (lastBgKey === 'custom-clear') return;
+  lastBgKey = 'custom-clear';
+  [el.bg1, el.bg2].forEach(l => { if (l) l.classList.remove('active'); });
+}
+
+/* Rainbow aftermath: liquid-precipitation codes whose end may reveal a bow. */
+const RAINBOW_RAIN_CODES = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+const RAINBOW_AFTER_MS = 20 * 60 * 1000;
+let rainbowHideTimer = null;
+/* Tracks rain→clear transitions and shows the rainbow arc for a while after
+   the rain ends (daytime + clearing sky only — it needs the sun). */
+function updateRainbowAftermath(liveCode, day) {
+  const bow = document.getElementById('rainbow');
+  const rainy = liveCode != null && RAINBOW_RAIN_CODES.includes(liveCode);
+  if (rainy) {
+    state._wasRainy = true;
+    state._rainEndedAt = 0;
+    try { store.set('livesky:rain_ended_at', 0); } catch (e) { /* ignore */ }
+    if (bow) bow.classList.remove('show');
+    return;
+  }
+  let endedAt = state._rainEndedAt || 0;
+  if (state._wasRainy) {
+    state._wasRainy = false;
+    endedAt = Date.now();
+    state._rainEndedAt = endedAt;
+    try { store.set('livesky:rain_ended_at', endedAt); } catch (e) { /* ignore */ }
+  } else if (!endedAt) {
+    try { endedAt = store.get('livesky:rain_ended_at', 0) || 0; } catch (e) { endedAt = 0; }
+    state._rainEndedAt = endedAt;
+  }
+  const fresh = endedAt && (Date.now() - endedAt < RAINBOW_AFTER_MS);
+  const ok = !!fresh && !!day &&
+    (liveCode === 0 || liveCode === 1 || liveCode === 2 || liveCode === 3) && !effectsReduced();
+  if (bow) bow.classList.toggle('show', ok);
+  clearTimeout(rainbowHideTimer);
+  if (ok) {
+    rainbowHideTimer = setTimeout(() => {
+      const b = document.getElementById('rainbow');
+      if (b) b.classList.remove('show');
+    }, RAINBOW_AFTER_MS - (Date.now() - endedAt) + 500);
+  }
+}
+
+/* ---------- dusk glide: day melts into night over the sunset/sunrise hour -----
+   Around sunrise/sunset (±30 min, cosine-eased) a veil carrying the NIGHT
+   gradient fades over the base background, while accents + aurora blobs lerp
+   between their day/night values. Outside the windows everything snaps to the
+   exact endpoint values, so non-transition rendering is pixel-identical. */
+const DUSK_HALF_MIN = 30;
+let duskInfo = null;     /* { nightBg, dayAcc, nightAcc, dayBlobs, nightBlobs, dayLogo, nightLogo } */
+let duskSnapped = false; /* endpoint values are already exact for the current zone */
+let duskLogoSide = '';   /* logo gradient flips once, at the glide midpoint */
+let duskZone = '';       /* 'day' | 'dusk' | 'night' — repaints the chart on change */
+
+/* 0 = full day … 1 = full night, eased across a one-hour window. */
+function duskFactor() {
+  try {
+    if (!state.weather) return isDayNow() ? 0 : 1;
+    const d = state.weather.daily;
+    const sr = minOfDay(getVal(d, 'sunrise', state.todayIdx));
+    const ss = minOfDay(getVal(d, 'sunset', state.todayIdx));
+    if (!sr || !ss || ss <= sr) return isDayNow() ? 0 : 1;
+    const now = tzNow(state.tz);
+    const nowMin = now.hour * 60 + now.minute;
+    const DAY = 1440, W = DUSK_HALF_MIN * 2;
+    const since = (a, b) => (a - b + DAY) % DAY;
+    const inWindow = (delta) => {
+      if (delta <= DUSK_HALF_MIN) return delta + DUSK_HALF_MIN;
+      if (delta >= DAY - DUSK_HALF_MIN) return delta - (DAY - DUSK_HALF_MIN);
+      return -1;
+    };
+    const xSet = inWindow(since(nowMin, ss));
+    if (xSet >= 0) return 0.5 - 0.5 * Math.cos(Math.PI * xSet / W); /* day → night */
+    const xRise = inWindow(since(nowMin, sr));
+    if (xRise >= 0) return 0.5 + 0.5 * Math.cos(Math.PI * xRise / W); /* night → day */
+    return isDayNow() ? 0 : 1;
+  } catch (e) {
+    return isDayNow() ? 0 : 1;
+  }
+}
+function duskLerp(a, b, f) { return Math.round(a + (b - a) * f); }
+function duskMixHex(h1, h2, f) {
+  const p = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const A = p(h1), B = p(h2);
+  return '#' + A.map((v, i) => duskLerp(v, B[i], f).toString(16).padStart(2, '0')).join('');
+}
+function duskMixRgba(r1, r2, f) {
+  const p = (st) => {
+    const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(st || '');
+    return m ? [+m[1], +m[2], +m[3], m[4] == null ? 1 : +m[4]] : [0, 0, 0, 0];
+  };
+  const A = p(r1), B = p(r2);
+  return `rgba(${duskLerp(A[0], B[0], f)}, ${duskLerp(A[1], B[1], f)}, ${duskLerp(A[2], B[2], f)}, ${(A[3] + (B[3] - A[3]) * f).toFixed(3)})`;
+}
+/* Cheap per-tick updater: veil opacity every 15s (+16s CSS glide between
+   ticks), lerped accents/blobs inside the window, exact snaps outside it. */
+function updateDuskBlend() {
+  const veil = document.getElementById('dusk-veil');
+  if (!veil) return;
+  if (!duskInfo || state.theme !== 'adaptive' || !state.weather) {
+    if (veil.style.opacity !== '0' && veil.style.opacity !== '') veil.style.opacity = '0';
+    duskSnapped = false; duskZone = ''; duskLogoSide = '';
+    return;
+  }
+  const f = Math.max(0, Math.min(1, duskFactor()));
+  veil.style.opacity = f.toFixed(3);
+  const root = document.documentElement;
+  const di = duskInfo;
+  const zone = f <= 0.001 ? 'day' : f >= 0.999 ? 'night' : 'dusk';
+  if (zone !== duskZone) {
+    duskZone = zone;
+    duskSnapped = false;
+    /* the chart snapshots accents at render time — repaint it when the glide
+       starts/ends so its gradient never sits an hour behind the sky */
+    if (typeof SECTION_MANAGER !== 'undefined' && state.weather) {
+      try { SECTION_MANAGER.renderSection('forecast'); } catch (e) { /* ignore */ }
+    }
+  }
+  if (zone === 'dusk') {
+    const a1 = duskMixHex(di.dayAcc[0], di.nightAcc[0], f);
+    const a2 = duskMixHex(di.dayAcc[1], di.nightAcc[1], f);
+    root.style.setProperty('--accent', a1);
+    root.style.setProperty('--accent-2', a2);
+    for (let i = 0; i < 3; i++) root.style.setProperty('--blob-' + (i + 1), duskMixRgba(di.dayBlobs[i], di.nightBlobs[i], f));
+    const side = f < 0.5 ? 'day' : 'night';
+    if (side !== duskLogoSide) { duskLogoSide = side; root.style.setProperty('--grad-logo', side === 'day' ? di.dayLogo : di.nightLogo); }
+    state.accent = a1; state.accent2 = a2;
+  } else if (!duskSnapped) {
+    duskSnapped = true;
+    const night = zone === 'night';
+    const acc = night ? di.nightAcc : di.dayAcc;
+    root.style.setProperty('--accent', acc[0]);
+    root.style.setProperty('--accent-2', acc[1]);
+    const blobs = night ? di.nightBlobs : di.dayBlobs;
+    for (let i = 0; i < 3; i++) root.style.setProperty('--blob-' + (i + 1), blobs[i]);
+    duskLogoSide = night ? 'night' : 'day';
+    root.style.setProperty('--grad-logo', night ? di.nightLogo : di.dayLogo);
+    state.accent = acc[0]; state.accent2 = acc[1];
   }
 }
 
@@ -125,6 +304,7 @@ function startStorm() {
 /* ---------- FX canvas ---------- */
 const FX = {
   parts: [], kind: null, raf: 0, last: 0, w: 0, h: 0, dpr: 1, shoot: null, intensity: 0.5,
+  overlay: null, op: [], _fly: null,
   resize() {
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.w = window.innerWidth; this.h = window.innerHeight;
@@ -135,6 +315,7 @@ const FX = {
     const ctx = el.fxCanvas.getContext('2d');
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     if (this.kind) this.build(); /* reposition particles for the new viewport */
+    if (this.overlay === 'fireflies') this.buildFireflies();
   },
   build() {
     this.parts = [];
@@ -182,10 +363,12 @@ const FX = {
   stop() {
     this.kind = null;
     this.parts = [];
+    this.overlay = null;
+    this.op = [];
     this.running = false;
     cancelAnimationFrame(this.raf);
     const ctx = el.fxCanvas.getContext('2d');
-    ctx.clearRect(0, 0, this.w, this.h);
+    if (ctx) ctx.clearRect(0, 0, this.w, this.h);
   },
   resume() {
     if (!this.kind || this.running) return;
@@ -198,6 +381,7 @@ const FX = {
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
     const ctx = el.fxCanvas.getContext('2d');
+    if (!ctx) { this.running = false; return; }
     ctx.clearRect(0, 0, this.w, this.h);
 
     if (this.kind === 'rain') {
@@ -272,7 +456,81 @@ const FX = {
         ctx.fill();
       }
     }
+    if (this.overlay === 'fireflies' && this.op.length) this.drawFireflies(ctx, t, dt);
     this.raf = requestAnimationFrame((tt) => this.loop(tt));
+  },
+  /* ---- ambient overlay: fireflies drift above the base kind ---- */
+  setOverlay(kind) {
+    if (kind && effectsReduced()) kind = null;
+    if (this.overlay === kind) return;
+    this.overlay = kind;
+    this.op = [];
+    if (kind === 'fireflies') {
+      if (!this.w) { try { this.resize(); } catch (e) { /* ignore */ } }
+      this.buildFireflies();
+      if (!this.running) {
+        this.running = true;
+        this.last = performance.now();
+        this.raf = requestAnimationFrame((t) => this.loop(t));
+      }
+    }
+  },
+  buildFireflies() {
+    this.op = [];
+    const w = this.w || window.innerWidth, h = this.h || window.innerHeight;
+    const n = Math.max(10, Math.min(24, Math.round(w / 56)));
+    for (let i = 0; i < n; i++) {
+      this.op.push({
+        x: Math.random() * w, y: h * (0.35 + Math.random() * 0.6),
+        r: 5 + Math.random() * 6,
+        ph: Math.random() * Math.PI * 2,
+        blink: 0.22 + Math.random() * 0.4,
+        drift: 3 + Math.random() * 7,
+        rise: 1.5 + Math.random() * 3.5
+      });
+    }
+  },
+  /* Pre-rendered glow sprite: one drawImage per firefly, no shadowBlur. */
+  fireflySprite() {
+    if (this._fly) return this._fly;
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    if (!g) return null;
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255, 246, 200, 1)');
+    grad.addColorStop(0.25, 'rgba(253, 230, 138, 0.85)');
+    grad.addColorStop(0.6, 'rgba(190, 242, 100, 0.25)');
+    grad.addColorStop(1, 'rgba(190, 242, 100, 0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    this._fly = c;
+    return c;
+  },
+  drawFireflies(ctx, t, dt) {
+    const spr = this.fireflySprite();
+    if (!spr) return;
+    const w = this.w, h = this.h, sec = t / 1000;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const still = motionReduce;
+    for (const p of this.op) {
+      if (!still) {
+        p.x += Math.sin(sec * 0.5 + p.ph) * p.drift * dt;
+        p.y -= p.rise * dt;
+        if (p.y < h * 0.3) { p.y = h * (0.85 + Math.random() * 0.12); p.x = Math.random() * w; }
+        if (p.x < -20) p.x = w + 20; else if (p.x > w + 20) p.x = -20;
+      }
+      /* faint lantern breathing: dim, slow, never a sharp flash */
+      const pulse = still ? 0.4 : Math.sin(sec * p.blink * 2 + p.ph * 3);
+      const glow = 0.10 + 0.42 * Math.pow(Math.max(0, pulse), 2);
+      if (glow < 0.04) continue;
+      const s = p.r * (0.6 + glow * 0.5);
+      ctx.globalAlpha = Math.min(0.55, glow);
+      ctx.drawImage(spr, p.x - s, p.y - s, s * 2, s * 2);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 };
 

@@ -824,7 +824,7 @@ function init() {
   try { console.info(`[LiveSky] build ${APP_BUILD} · version ${APP_VERSION}`); } catch (e) { /* ignore */ }
   /* sanitize persisted settings (old/foreign values must never break boot) */
   if (!I18N[state.lang]) state.lang = 'ru';
-  if (!['adaptive', 'light', 'dark'].includes(state.theme)) state.theme = 'adaptive';
+  if (!['adaptive', 'light', 'dark', 'custom'].includes(state.theme)) state.theme = 'adaptive';
   if (!['metric', 'imperial'].includes(state.units)) state.units = 'metric';
   if (state.model === 'ecmwf_ifs04') state.model = 'ecmwf_ifs025'; /* migrate the old, now-deprecated model id */
   if (!['auto', 'ecmwf_ifs025', 'gfs_seamless', 'icon_seamless'].includes(state.model)) state.model = 'auto';
@@ -834,6 +834,9 @@ function init() {
 
   document.documentElement.dataset.theme = state.theme;
   document.body.dataset.theme = state.theme;
+  /* NOTE: a persisted custom theme is painted by 12-theme-studio.js itself
+     (late-boot repair at the end of that module) — init() runs before the
+     studio module is parsed, so CustomTheme is always undefined here. */
   el.input.placeholder = t('search_ph');
   applyTranslations();
   updateThemeLabel();
