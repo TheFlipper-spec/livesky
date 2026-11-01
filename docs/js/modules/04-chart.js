@@ -435,9 +435,12 @@ function chartSampleAt(frac) {
   const gust = chartLerp(a.gust, b ? b.gust : a.gust, u);
   const hum = chartLerp(a.hum, b ? b.hum : a.hum, u);
   const feels = chartLerp(a.feels, b ? b.feels : a.feels, u);
-  /* Build HH:MM label from the base hour + fractional minutes. */
+  /* Build HH:MM label from the base hour + fractional minutes.
+     The chart is day-anchored (00:00 → 24:00), so "now" is only shown next to
+     the real current time — the left edge is midnight, not "now". */
+  const nowF = chartMeta && chartMeta.nowFrac != null ? chartMeta.nowFrac : -1;
   let when;
-  if (frac < 0.008) {
+  if (Math.abs(frac - nowF) < 0.02) {
     when = t('now');
   } else if (Math.abs(u - 1) < 0.001 && b) {
     when = b.time.slice(11, 16);
@@ -573,6 +576,11 @@ function animatePaneSwitch(outPane, inPane) {
       p.classList.remove('pane-out', 'pane-in', 'pane-in-enter');
       p.removeAttribute('style');
     });
+    /* Release the height lock (see below) on both panes' cards. */
+    panes.forEach(p => {
+      const c = p && p.closest ? p.closest('.forecast-card') : null;
+      if (c) { c.style.removeProperty('height'); c.style.removeProperty('transition'); }
+    });
   };
   const finish = () => {
     clearAnim();
@@ -590,6 +598,7 @@ function animatePaneSwitch(outPane, inPane) {
   /* Pin the outgoing pane exactly where it sits right now … */
   const prect = card.getBoundingClientRect();
   const rect = outPane.getBoundingClientRect();
+  const h0 = card.offsetHeight;
   outPane.style.position = 'absolute';
   outPane.style.top = (rect.top - prect.top) + 'px';
   outPane.style.left = (rect.left - prect.left) + 'px';
@@ -599,6 +608,15 @@ function animatePaneSwitch(outPane, inPane) {
   /* … and bring the incoming one in underneath it. */
   inPane.classList.remove('hidden');
   inPane.classList.add('pane-in', 'pane-in-enter');
+  /* Ease the card height from the outgoing to the incoming pane: without this
+     the card snaps (and clips the fading pane) the instant the panes swap. */
+  const h1 = card.offsetHeight;
+  if (h0 > 0 && h1 > 0 && h0 !== h1) {
+    card.style.height = h0 + 'px';
+    void card.offsetWidth; /* commit the locked height before the transition */
+    card.style.transition = 'height 0.38s cubic-bezier(0.16, 1, 0.3, 1)';
+    card.style.height = h1 + 'px';
+  }
   void inPane.offsetWidth; /* commit the off-state before the transition */
   inPane.classList.remove('pane-in-enter');
   window.setTimeout(guarded, 420);
@@ -672,6 +690,8 @@ function liveTick(force) {
     updateChartNowTag();
   }
   renderSunArc();
+  /* dusk glide: keep the sunset/sunrise melt moving between weather passes */
+  if (typeof updateDuskBlend === 'function') updateDuskBlend();
 
   if (hourChanged) {
     /* Hour boundary: rebuild the heavier forecast section (chart + hourly
