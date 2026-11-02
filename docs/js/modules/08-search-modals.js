@@ -291,6 +291,152 @@ function radarAdviceItem(raining, upcomingRain) {
   return null;
 }
 
+/* Multi-factor smart wardrobe & gear engine.
+   Considers: apparent temperature (feels-like), wind & wind gusts (windchill +
+   umbrella inversion risk), precipitation type & intensity (rain, heavy rain,
+   freezing rain, wet slush vs dry snow), black-ice risk near 0°C, 6-hour
+   temperature swings (evening chill / daytime warm-up), humidity, and UV index. */
+function buildSmartWearAdvice(h, startIdx, opts) {
+  if (!h || !h.time || startIdx == null || startIdx < 0 || startIdx >= h.time.length) return '';
+  const options = opts || {};
+  const activity = options.activity || 'general'; /* 'general' | 'run' | 'walk' */
+  const brief = Boolean(options.brief);
+  const horizon = options.horizon || 6;
+
+  const temp = getVal(h, 'temperature_2m', startIdx);
+  const feelsRaw = getVal(h, 'apparent_temperature', startIdx);
+  const feels = feelsRaw != null ? feelsRaw : (temp != null ? temp : 15);
+  const code = getVal(h, 'weathercode', startIdx);
+  const wind = getVal(h, 'windspeed_10m', startIdx) || 0;
+  const gust = getVal(h, 'windgusts_10m', startIdx) || wind;
+  const uv = getVal(h, 'uv_index', startIdx) || 0;
+  const hum = getVal(h, 'relativehumidity_2m', startIdx) || 50;
+  const precipNow = getVal(h, 'precipitation', startIdx) || 0;
+  const probNow = getVal(h, 'precipitation_probability', startIdx) || 0;
+  const night = hourIsNight(startIdx);
+
+  const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+  const heavyRainCodes = [63, 65, 81, 82, 95, 96, 99];
+  const iceCodes = [56, 57, 66, 67];
+  const snowCodes = SNOW_CODES || [71, 73, 75, 77, 85, 86];
+
+  let hasRain = rainCodes.includes(code) && (precipNow > 0 || probNow >= 25 || code >= 61);
+  let hasHeavyRain = heavyRainCodes.includes(code) || precipNow >= 3.5;
+  let hasSnow = snowCodes.includes(code);
+  let hasIceCode = iceCodes.includes(code);
+  let maxPeakWind = Math.max(wind, gust);
+  let minFutureFeels = feels;
+  let maxFutureFeels = feels;
+  let maxUv = night ? 0 : uv;
+  let hadRecentWet = hasRain || hasSnow || precipNow > 0.1;
+
+  for (let p = Math.max(0, startIdx - 4); p < startIdx; p++) {
+    const pCode = getVal(h, 'weathercode', p);
+    const pPrec = getVal(h, 'precipitation', p) || 0;
+    if (pPrec > 0.2 || rainCodes.includes(pCode) || snowCodes.includes(pCode)) hadRecentWet = true;
+  }
+
+  const endIdx = Math.min(h.time.length, startIdx + horizon + 1);
+  for (let k = startIdx + 1; k < endIdx; k++) {
+    const kCode = getVal(h, 'weathercode', k);
+    const kProb = getVal(h, 'precipitation_probability', k) || 0;
+    const kPrec = getVal(h, 'precipitation', k) || 0;
+    const kFeels = getVal(h, 'apparent_temperature', k) ?? getVal(h, 'temperature_2m', k);
+    const kWind = getVal(h, 'windspeed_10m', k) || 0;
+    const kGust = getVal(h, 'windgusts_10m', k) || kWind;
+    const kUv = getVal(h, 'uv_index', k) || 0;
+    if (kFeels != null) {
+      if (kFeels < minFutureFeels) minFutureFeels = kFeels;
+      if (kFeels > maxFutureFeels) maxFutureFeels = kFeels;
+    }
+    if (Math.max(kWind, kGust) > maxPeakWind) maxPeakWind = Math.max(kWind, kGust);
+    if (!hourIsNight(k) && kUv > maxUv) maxUv = kUv;
+    if (iceCodes.includes(kCode) && kProb >= 30) hasIceCode = true;
+    if (snowCodes.includes(kCode) && (kProb >= 35 || kPrec >= 0.2)) hasSnow = true;
+    if (rainCodes.includes(kCode) && (kProb >= 35 || kPrec >= 0.2)) {
+      hasRain = true;
+      if (heavyRainCodes.includes(kCode) || kPrec >= 3.5) hasHeavyRain = true;
+    }
+  }
+
+  /* Effective thermal comfort: account for windchill on damp/windy days and
+     upcoming temperature drops so we never under-dress the user. */
+  let effFeels = feels;
+  if (feels < 16 && maxPeakWind >= 10) effFeels -= 1.5;
+  if (feels < 12 && hum >= 82 && (hasRain || hasSnow)) effFeels -= 1.5;
+  /* Weight slightly toward the cooler part of the next few hours if cooling down */
+  if (minFutureFeels < feels - 2) {
+    effFeels = effFeels * 0.65 + minFutureFeels * 0.35;
+  }
+
+  let baseWear = '';
+  if (activity === 'run') {
+    if (effFeels < -5) baseWear = t('wear_run_freezing');
+    else if (effFeels < 4) baseWear = t('wear_run_cold');
+    else if (effFeels < 11) baseWear = t('wear_run_cool');
+    else if (effFeels < 17) baseWear = t('wear_run_mild');
+    else baseWear = t('wear_run_warm');
+  } else {
+    if (effFeels < -18) baseWear = t('wear_tier_extreme_cold');
+    else if (effFeels < -8) baseWear = t('wear_tier_freezing');
+    else if (effFeels < 0) baseWear = t('wear_tier_subzero');
+    else if (effFeels < 6) baseWear = t('wear_tier_cold');
+    else if (effFeels < 12) baseWear = t('wear_tier_chilly');
+    else if (effFeels < 17) baseWear = t('wear_tier_cool');
+    else if (effFeels < 22) baseWear = t('wear_tier_mild');
+    else if (effFeels < 27) baseWear = t('wear_tier_warm');
+    else baseWear = t('wear_tier_hot');
+  }
+
+  const mods = [];
+
+  /* 1. Rain & wind vs umbrella logic */
+  if (hasRain) {
+    if (maxPeakWind >= 13 || wind >= 10) {
+      mods.push(t('wear_mod_rain_windy'));
+    } else if (hasHeavyRain) {
+      mods.push(t('wear_mod_rain_heavy'));
+    } else {
+      mods.push(t('wear_mod_rain'));
+    }
+  }
+
+  /* 2. Ice, slush & snow footwear intelligence */
+  const nearZeroFreeze = (temp != null && temp >= -4.5 && temp <= 2.5 && (hadRecentWet || hasSnow || hasRain))
+    || (temp != null && temp > 0 && minFutureFeels <= -1 && hadRecentWet);
+  if (hasIceCode || nearZeroFreeze) {
+    mods.push(t('wear_mod_ice'));
+  } else if (hasSnow) {
+    mods.push(t('wear_mod_snow'));
+  }
+
+  /* 3. Windproof shell advice when dry but windy & cool */
+  if (!hasRain && effFeels < 19 && (maxPeakWind >= 12 || wind >= 7.5)) {
+    mods.push(t('wear_mod_wind'));
+  }
+
+  /* 4. Significant temperature swing over the next 6 hours */
+  if (!brief) {
+    const drop = feels - minFutureFeels;
+    const rise = maxFutureFeels - feels;
+    if (drop >= 5) {
+      mods.push(t('wear_mod_drop').replace('{t}', fmtTempDeg(minFutureFeels)));
+    } else if (rise >= 6 && effFeels < 18) {
+      mods.push(t('wear_mod_rise').replace('{t}', fmtTempDeg(maxFutureFeels)));
+    }
+  }
+
+  /* 5. High UV protection */
+  if (!night && maxUv >= 5 && !hasRain && !hasSnow) {
+    mods.push(t('wear_mod_uv'));
+  }
+
+  if (brief) {
+    return mods.length ? (baseWear + ' ' + mods[0]) : baseWear;
+  }
+  return [baseWear].concat(mods).join(' ');
+}
+
 function showAdvice() {
   if (!state.weather) return;
   const h = state.weather.hourly, i = state.nowIdx;
@@ -388,15 +534,8 @@ function showAdvice() {
     else if (nMin >= ss - 60 && nMin <= ss) items.push(['ph-camera', 'text:#fb923c', t('golden_evening')]);
   }
 
-  /* Clothing */
-  let wear = '';
-  if (snowing || (feels != null && feels < -5)) wear = t('wear_arctic');
-  else if (feels != null && feels < 5) wear = t('wear_cold');
-  else if (feels != null && feels < 12) wear = t('wear_cool');
-  else if (feels != null && feels < 22) wear = t('wear_mild');
-  else if (feels != null && feels < 28) wear = t('wear_warm');
-  else wear = t('wear_hot');
-  if (raining || upcomingRain) wear += ' · ' + t('wear_rain_gear');
+  /* Clothing — multi-factor smart wardrobe recommendation */
+  const wear = buildSmartWearAdvice(h, i, { activity: 'general', horizon: 6 });
 
   const list = items.map(it => `
     <div class="m-list-row advice-row">
@@ -748,11 +887,7 @@ function showLifeSkySlot(index, type) {
 
   let advice = '';
   if (type === 'run') {
-    let wear;
-    if (temp < 5) wear = t('wear_cold');
-    else if (temp < 12) wear = t('wear_cool');
-    else if (temp < 20) wear = t('wear_mild');
-    else wear = t('wear_warm');
+    const wear = buildSmartWearAdvice(h, index, { activity: 'run', horizon: 3 });
     advice = `
       <div class="m-note" style="margin-top:0;margin-bottom:12px;border-color:${score >= 50 ? 'rgba(52,211,153,.4)' : 'rgba(248,113,113,.4)'}">
         <i class="ph-fill ${score >= 50 ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${score >= 50 ? '#34d399' : '#f87171'}"></i>
@@ -792,12 +927,14 @@ function showLifeSkySlot(index, type) {
     else if (temp > 30) comfort = t('comfort_hot');
     else if (temp > 25) comfort = t('comfort_warm');
     const windDesc = wind > 15 ? t('wind_windy') : wind > 8 ? t('wind_light') : t('wind_none');
+    const walkWear = buildSmartWearAdvice(h, index, { activity: 'walk', horizon: 3 });
     advice = `
       <div class="m-note" style="margin-top:0;margin-bottom:12px;border-color:${score >= 50 ? 'rgba(52,211,153,.4)' : 'rgba(248,113,113,.4)'}">
         <i class="ph-fill ${score >= 50 ? 'ph-check-circle' : 'ph-warning-circle'}" style="color:${score >= 50 ? '#34d399' : '#f87171'}"></i>
         <p><b>${t('life_score')} ${score}/100</b> · ${scoreLabel(score)}</p>
       </div>
       <div class="m-note" style="margin-top:0;margin-bottom:12px"><i class="ph-fill ph-smiley"></i><p><b>${t('comfort_title')}:</b> ${comfort}. ${windDesc}</p></div>
+      <div class="m-note" style="margin-top:0;margin-bottom:12px"><i class="ph-fill ph-t-shirt"></i><p><b>${t('wear_title')}:</b> ${walkWear}</p></div>
       <div class="m-grid">
         ${mTile('ph-wind', t('wind'), fmtWind(wind) + (gust && gust > wind ? ' · ' + t('wind_gusts') + ' ' + fmtWind(gust) : ''))}
         ${mTile('ph-sun', t('uv_index'), uv != null ? (Math.round(uv * 10) / 10).toLocaleString(loc()) + ' · ' + uvLabel(uv) : '--')}
@@ -1196,6 +1333,8 @@ function bindEvents() {
   const iconPicker = document.getElementById('app-icon-picker');
   if (iconPicker) {
     on(iconPicker, 'click', (e) => {
+      e.stopPropagation();
+      clearTimeout(state._menuCloseTimer);
       const chip = e.target.closest('.app-icon-chip');
       if (chip) {
         const c = chip.getAttribute('data-icon-color');
@@ -1204,7 +1343,20 @@ function bindEvents() {
     });
     const customInp = document.getElementById('app-icon-custom-color');
     if (customInp) {
+      on(customInp, 'click', (e) => {
+        e.stopPropagation();
+        clearTimeout(state._menuCloseTimer);
+        state._colorPickerLockUntil = Date.now() + 2500;
+      });
       on(customInp, 'input', (e) => {
+        e.stopPropagation();
+        clearTimeout(state._menuCloseTimer);
+        state._colorPickerLockUntil = Date.now() + 2500;
+        setAppIconColor(e.target.value);
+      });
+      on(customInp, 'change', (e) => {
+        e.stopPropagation();
+        clearTimeout(state._menuCloseTimer);
         setAppIconColor(e.target.value);
       });
     }
@@ -1269,9 +1421,10 @@ function bindEvents() {
     if (modelBtn) { setModel(modelBtn.dataset.model); return; }
     const effectsBtn = e.target.closest('[data-effects]');
     if (effectsBtn) { setEffects(effectsBtn.dataset.effects); return; }
-    /* Any other click inside the panel just closes it after a short delay. */
-    clearTimeout(state._menuCloseTimer);
-    state._menuCloseTimer = setTimeout(() => setMenuOpen(false), 800);
+    if (e.target.closest('#app-icon-picker') || e.target.closest('.mm-group') || e.target.closest('.mm-head')) {
+      clearTimeout(state._menuCloseTimer);
+      return;
+    }
   });
   on(el.menuClose, 'click', () => setMenuOpen(false));
   on(el.menuBackdrop, 'click', () => setMenuOpen(false));
@@ -1374,6 +1527,7 @@ function bindEvents() {
 
   document.addEventListener('click', (e) => {
     if (!el.searchForm.contains(e.target) && !el.autoList.contains(e.target)) closeAutocomplete();
+    if (state._colorPickerLockUntil && Date.now() < state._colorPickerLockUntil) return;
     if (!el.menuBtn.contains(e.target) && !el.mainMenu.contains(e.target)) setMenuOpen(false);
   });
 

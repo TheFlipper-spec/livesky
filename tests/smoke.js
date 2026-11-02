@@ -963,16 +963,29 @@ setTimeout(() => {
         const tomorrowPayload = buildTomorrowDigestNotification();
         const welcomePayload = buildWelcomeNotification();
         const nowcastPayload = buildNowcastRainNotification(20);
+        const nowcastWindPayload = buildNowcastRainNotification(25, { peakWind: 16, at: '18:30' });
+        let dispatchOk = true;
+        try { dispatchWeatherAlerts(); } catch (err) { dispatchOk = false; }
+        const wearNow = buildSmartWearAdvice(state.weather.hourly, state.nowIdx, { activity: 'general', horizon: 6 });
+        const wearRun = buildSmartWearAdvice(state.weather.hourly, state.nowIdx, { activity: 'run', horizon: 3 });
         window.__notifProbe = {
           hazard: hazardPayload,
           today: todayPayload,
           tomorrow: tomorrowPayload,
           welcome: welcomePayload,
-          nowcast: nowcastPayload
+          nowcast: nowcastPayload,
+          nowcastWind: nowcastWindPayload,
+          dispatchOk,
+          wearNow,
+          wearRun
         };
       `;
       document.body.appendChild(notifProbe);
       const np = window.__notifProbe || {};
+      assert(np.dispatchOk === true, 'dispatchWeatherAlerts runs cleanly with tzNow object');
+      assert(np.wearNow && np.wearNow.length > 20, 'smart wear advice generates detailed recommendation: ' + np.wearNow);
+      assert(np.wearRun && np.wearRun.length > 20, 'smart run wear advice generates running gear recommendation: ' + np.wearRun);
+      assert(np.nowcastWind && /капюшон|hooded|capucha/i.test(np.nowcastWind.body), 'windy rain nowcast recommends hooded jacket over umbrella: ' + (np.nowcastWind && np.nowcastWind.body));
       assert(np.hazard && /⚡|Гроза|Storm|Tormenta/.test(np.hazard.title) && /Москва|LiveSky/.test(np.hazard.title), 'smart hazard notification has rich title: ' + (np.hazard && np.hazard.title));
       assert(np.hazard && /помещении|шквалы|indoors|gusts|interiores/i.test(np.hazard.body), 'smart hazard notification has actionable advice: ' + (np.hazard && np.hazard.body));
       assert(np.hazard && np.hazard.channelId === 'weather-alerts', 'smart hazard notification uses weather-alerts channel');

@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-clouds-v35';
+const VERSION = 'livesky-v1.4-alpha-v36';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 const CUSTOM_ICON_CACHE = 'livesky-custom-icons-v1';

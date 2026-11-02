@@ -155,15 +155,18 @@ function applyWeatherTheme() {
     }
   }
 
+  const isLight = mode === 'light' || document.documentElement.dataset.theme === 'light';
   let fx = null;
-  if (type === 'rain' || type === 'storm') fx = 'rain';
-  else if (type === 'snow') fx = 'snow';
-  else if (type === 'clear' && night) fx = 'stars';
-  else if (type === 'clear') fx = 'sunmotes';
-  else if (type === 'fog') fx = 'fog';
-  else if (type === 'cloudy') fx = 'clouds';
+  if (!isLight) {
+    if (type === 'rain' || type === 'storm') fx = 'rain';
+    else if (type === 'snow') fx = 'snow';
+    else if (type === 'clear' && night) fx = 'stars';
+    else if (type === 'clear') fx = 'sunmotes';
+    else if (type === 'fog') fx = 'fog';
+    else if (type === 'cloudy') fx = 'clouds';
+  }
 
-  if (effectsReduced()) { FX.stop(); stopStorm(); }
+  if (isLight || effectsReduced()) { FX.stop(); stopStorm(); }
   else {
     FX.start(fx);
     if (type === 'storm') startStorm(); else stopStorm();
@@ -171,14 +174,13 @@ function applyWeatherTheme() {
   /* ambient life: night fireflies, windy air-streams, and after-rain rainbow */
   const liveCode = typeof currentWeatherCodeLive === 'function' ? currentWeatherCodeLive() : code;
   const windSpd = (state.weather && state.weather.hourly) ? (getVal(state.weather.hourly, 'windspeed_10m', state.nowIdx) || 0) : 0;
-  if (effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
+  if (isLight || effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
   else {
     let ov = null;
-    const isLight = mode === 'light' || document.documentElement.dataset.theme === 'light';
-    if (!isLight && night && (liveCode != null && liveCode <= 3)) ov = 'fireflies';
+    if (night && (liveCode != null && liveCode <= 3)) ov = 'fireflies';
     else if (windSpd >= 4.5) ov = 'wind';
     FX.setOverlay(ov);
-    updateRainbowAftermath(liveCode, !night && !isLight);
+    updateRainbowAftermath(liveCode, !night);
   }
   updateDuskBlend();
 }
@@ -434,6 +436,7 @@ const FX = {
     }
   },
   start(kind) {
+    if (document.documentElement.dataset.theme === 'light' || state.theme === 'light') kind = null;
     if (kind === this.kind) return;
     if (!kind) {
       this.kind = null;
@@ -628,6 +631,7 @@ const FX = {
   },
   /* ---- ambient overlays: fireflies at night or wind ribbons when breezy ---- */
   setOverlay(kind) {
+    if (document.documentElement.dataset.theme === 'light' || state.theme === 'light') kind = null;
     if (kind && effectsReduced()) kind = null;
     if (this.overlay === kind) return;
     this.overlay = kind;

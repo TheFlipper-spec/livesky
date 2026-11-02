@@ -3873,6 +3873,13 @@ input.st-hex:focus {
   -webkit-background-clip: unset !important;
   color: #000000 !important;
 }
+[data-theme="light"] #fx-canvas,
+[data-theme="light"] #aurora,
+[data-theme="light"] #rainbow,
+[data-theme="light"] #flash {
+  display: none !important;
+  opacity: 0 !important;
+}
 
 /* ---------------- App Icon Settings Customizer ---------------- */
 .app-icon-presets {

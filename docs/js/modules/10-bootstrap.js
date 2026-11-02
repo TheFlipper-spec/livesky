@@ -442,13 +442,14 @@ function notifHashCode(source) {
 }
 
 /* Public list for notifications — same engine as the banner, 24h horizon.
-   Each item has .type, .t (ISO with minutes), .abs (absolute minutes). */
+   Each item has .type, .t (ISO with minutes), .abs (absolute minutes), .rank. */
 function upcomingAlerts() {
   return collectHazardAlerts(24).map(a => ({
     type: a.type,
     t: a.t,
     abs: a.abs,
-    extra: a.extra
+    extra: a.extra,
+    rank: a.rank || (HAZARD_RANK && HAZARD_RANK[a.type]) || 50
   }));
 }
 
@@ -501,6 +502,7 @@ function buildSmartHazardNotification(alert) {
 function buildTodayDigestNotification() {
   if (!state.weather || !state.weather.daily || !state.weather.daily.time) return null;
   const d = state.weather.daily;
+  const h = state.weather.hourly;
   const i = state.todayIdx || 0;
   if (i >= d.time.length) return null;
   const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
@@ -511,13 +513,21 @@ function buildTodayDigestNotification() {
   const prob = getVal(d, 'precipitation_probability_max', i) || 0;
   const cond = wmoLabel(code);
 
-  let tip = t('notif_today_dry_tip');
-  if (prob >= 40) {
-    tip = t('notif_today_rain_tip').replace('{prob}', String(Math.round(prob)));
-  } else if (tmax != null && tmax >= 28) {
-    tip = t('notif_today_hot_tip').replace('{temp}', fmtTempDeg(tmax));
-  } else if (tmin != null && tmin <= 5) {
-    tip = t('notif_today_cold_tip').replace('{feels}', fmtTempDeg(tmin));
+  let tip = '';
+  if (typeof buildSmartWearAdvice === 'function' && h && h.time) {
+    tip = buildSmartWearAdvice(h, state.nowIdx || 0, { brief: true, horizon: 8 });
+  }
+  if (!tip) {
+    tip = t('notif_today_dry_tip');
+    if (prob >= 40) {
+      tip = t('notif_today_rain_tip').replace('{prob}', String(Math.round(prob)));
+    } else if (tmax != null && tmax >= 28) {
+      tip = t('notif_today_hot_tip').replace('{temp}', fmtTempDeg(tmax));
+    } else if (tmin != null && tmin <= 5) {
+      tip = t('notif_today_cold_tip').replace('{feels}', fmtTempDeg(tmin));
+    }
+  } else if (prob >= 40 && !/зонт|дождевик|umbrella|raincoat|paraguas|impermeable/i.test(tip)) {
+    tip += ' ' + t('notif_today_rain_tip').replace('{prob}', String(Math.round(prob)));
   }
 
   const title = t('notif_today_title').replace('{city}', city);
@@ -538,6 +548,7 @@ function buildTodayDigestNotification() {
 function buildTomorrowDigestNotification() {
   if (!state.weather || !state.weather.daily || !state.weather.daily.time) return null;
   const d = state.weather.daily;
+  const h = state.weather.hourly;
   const todayIdx = state.todayIdx || 0;
   const i = todayIdx + 1;
   if (i >= d.time.length) return null;
@@ -557,9 +568,19 @@ function buildTomorrowDigestNotification() {
     else if (diff >= 3) comp = ' · ' + t('notif_tomorrow_warmer').replace('{diff}', String(diff));
   }
 
-  const tip = prob >= 40
+  let tip = prob >= 40
     ? t('notif_tomorrow_rain_tip').replace('{prob}', String(Math.round(prob)))
     : t('notif_tomorrow_dry_tip');
+
+  if (typeof buildSmartWearAdvice === 'function' && h && h.time && dateKey) {
+    const noonIdx = h.time.findIndex(tm => tm.startsWith(dateKey + 'T13') || tm.startsWith(dateKey + 'T12'));
+    if (noonIdx >= 0) {
+      const wearTomorrow = buildSmartWearAdvice(h, noonIdx, { brief: true, horizon: 6 });
+      if (wearTomorrow) {
+        tip = (prob >= 40 ? t('notif_tomorrow_rain_tip').replace('{prob}', String(Math.round(prob))) + ' ' : '') + wearTomorrow;
+      }
+    }
+  }
 
   const title = t('notif_tomorrow_title').replace('{city}', city);
   const prefix = t('tomorrow_word') ? (t('tomorrow_word').charAt(0).toUpperCase() + t('tomorrow_word').slice(1) + ': ') : '';
@@ -579,20 +600,24 @@ function buildTomorrowDigestNotification() {
 
 function buildWelcomeNotification() {
   const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
-  let temp = '--', cond = '';
+  let temp = '--', cond = '', wearTip = '';
   if (state.weather && state.weather.hourly) {
     const tVal = getVal(state.weather.hourly, 'temperature_2m', state.nowIdx);
     temp = fmtTemp(tVal);
     const cVal = getVal(state.weather.hourly, 'weathercode', state.nowIdx);
     cond = wmoLabel(cVal);
+    if (typeof buildSmartWearAdvice === 'function') {
+      wearTip = buildSmartWearAdvice(state.weather.hourly, state.nowIdx || 0, { brief: true, horizon: 6 });
+    }
   }
   const title = t('notif_welcome_title');
-  const body = t('notif_welcome_body')
+  let body = t('notif_welcome_body')
     .replace('{city}', city)
     .replace('{temp}', temp)
     .replace('{cond}', cond)
     .replace(/\s{2,}/g, ' ')
     .trim();
+  if (wearTip) body += ' ' + wearTip;
 
   return {
     id: notifHashCode('welcome:' + Date.now()),
@@ -605,12 +630,26 @@ function buildWelcomeNotification() {
   };
 }
 
-function buildNowcastRainNotification(minUntilRain) {
+function buildNowcastRainNotification(minUntilRain, opts) {
+  const options = opts || {};
+  const isSnow = Boolean(options.snow);
+  const atTime = options.at || hhmmFromAbs(nowAbsMin() + (minUntilRain || 15));
+  const peakWind = options.peakWind || 0;
   const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
-  const title = t('notif_nowcast_rain_title').replace('{city}', city);
-  const body = t('notif_nowcast_rain_body').replace('{dur}', fmtDurSmart(minUntilRain));
+  const durStr = fmtDurSmart(minUntilRain);
+
+  let title = t(isSnow ? 'notif_nowcast_snow_title' : 'notif_nowcast_rain_title').replace('{city}', city);
+  let body = '';
+  if (isSnow && t('notif_nowcast_snow_body') !== 'notif_nowcast_snow_body') {
+    body = t('notif_nowcast_snow_body').replace('{dur}', durStr).replace('{t}', atTime);
+  } else if (!isSnow && peakWind >= 13 && t('notif_nowcast_rain_wind_body') !== 'notif_nowcast_rain_wind_body') {
+    body = t('notif_nowcast_rain_wind_body').replace('{dur}', durStr).replace('{t}', atTime).replace('{wind}', fmtWind(peakWind));
+  } else {
+    body = t('notif_nowcast_rain_body').replace('{dur}', durStr);
+  }
+
   const timeBucket = Math.floor(Date.now() / (2 * 3600 * 1000));
-  const key = 'nowcast:rain:' + timeBucket + ':' + city;
+  const key = 'nowcast:' + (isSnow ? 'snow:' : 'rain:') + timeBucket + ':' + city;
 
   return {
     id: notifHashCode(key),
@@ -618,9 +657,89 @@ function buildNowcastRainNotification(minUntilRain) {
     title,
     body,
     channelId: 'weather-alerts',
-    tag: 'livesky-nowcast-rain',
-    extra: { type: 'nowcast_rain', city, minutes: minUntilRain }
+    tag: 'livesky-nowcast-precip',
+    extra: { type: isSnow ? 'nowcast_snow' : 'nowcast_rain', city, minutes: minUntilRain }
   };
+}
+
+/* Detects sharp temperature drops (>= 8°C within 10h) and black-ice freeze
+   transitions (temperature crossing 0°C downward after rain/wet snow). */
+function buildTempSwingOrIceNotification() {
+  if (!state.weather || !state.weather.hourly || !state.weather.hourly.time) return null;
+  const h = state.weather.hourly;
+  const start = state.nowIdx || 0;
+  const end = Math.min(h.time.length, start + 11);
+  if (start >= end) return null;
+
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  const tempNow = getVal(h, 'temperature_2m', start);
+  const feelsNow = getVal(h, 'apparent_temperature', start) ?? tempNow;
+  if (tempNow == null) return null;
+
+  const rainCodes = [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99];
+  const snowCodes = SNOW_CODES || [71, 73, 75, 77, 85, 86];
+  let hadMoisture = false;
+  for (let p = Math.max(0, start - 3); p <= Math.min(h.time.length - 1, start + 3); p++) {
+    const pCode = getVal(h, 'weathercode', p);
+    const pPrec = getVal(h, 'precipitation', p) || 0;
+    if (pPrec >= 0.2 || rainCodes.includes(pCode) || snowCodes.includes(pCode)) {
+      hadMoisture = true;
+      break;
+    }
+  }
+
+  let minTemp = tempNow, minTempIdx = start;
+  let minFeels = feelsNow, minFeelsIdx = start;
+  let freezeIdx = -1;
+
+  for (let k = start + 1; k < end; k++) {
+    const tk = getVal(h, 'temperature_2m', k);
+    const fk = getVal(h, 'apparent_temperature', k) ?? tk;
+    if (tk != null && tk < minTemp) { minTemp = tk; minTempIdx = k; }
+    if (fk != null && fk < minFeels) { minFeels = fk; minFeelsIdx = k; }
+    if (freezeIdx < 0 && tempNow >= 0.5 && tk != null && tk <= -1.0 && hadMoisture) {
+      freezeIdx = k;
+    }
+  }
+
+  const datePrefix = h.time[start].slice(0, 10);
+
+  /* Priority 1: Black ice formation (wet road freezing below -1°C) */
+  if (freezeIdx > start) {
+    const atStr = h.time[freezeIdx].slice(11, 16);
+    const freezeTemp = getVal(h, 'temperature_2m', freezeIdx);
+    const key = 'swing:ice:' + datePrefix + ':' + city;
+    return {
+      id: notifHashCode(key),
+      key,
+      title: t('notif_black_ice_title').replace('{city}', city),
+      body: t('notif_black_ice_body').replace('{t}', atStr).replace('{temp}', fmtTempDeg(freezeTemp)),
+      channelId: 'weather-alerts',
+      tag: 'livesky-black-ice',
+      extra: { type: 'black_ice', city, time: h.time[freezeIdx] }
+    };
+  }
+
+  /* Priority 2: Sharp temperature drop >= 8°C within 10 hours */
+  const drop = Math.round(feelsNow - minFeels);
+  if (drop >= 8 && minFeelsIdx > start) {
+    const atStr = h.time[minFeelsIdx].slice(11, 16);
+    const key = 'swing:drop:' + datePrefix + ':' + city;
+    return {
+      id: notifHashCode(key),
+      key,
+      title: t('notif_temp_drop_title').replace('{city}', city),
+      body: t('notif_temp_drop_body')
+        .replace('{t}', atStr)
+        .replace('{diff}', String(drop))
+        .replace('{temp}', fmtTempDeg(minFeels)),
+      channelId: 'weather-alerts',
+      tag: 'livesky-temp-drop',
+      extra: { type: 'temp_drop', city, diff: drop }
+    };
+  }
+
+  return null;
 }
 
 function sendNotificationPayload(p) {
@@ -628,17 +747,19 @@ function sendNotificationPayload(p) {
   const nativeNotifications = nativePlugin('LocalNotifications');
 
   if (nativeNotifications) {
-    return nativeNotifications.schedule({
-      notifications: [{
-        id: p.id || notifHashCode(p.key || p.title),
-        title: p.title,
-        body: p.body,
-        channelId: p.channelId || 'weather-alerts',
-        smallIcon: 'ic_stat_livesky',
-        iconColor: '#38BDF8',
-        extra: p.extra || {}
-      }]
-    });
+    const item = {
+      id: p.id || notifHashCode(p.key || p.title),
+      title: p.title,
+      body: p.body,
+      channelId: p.channelId || 'weather-alerts',
+      smallIcon: 'ic_stat_livesky',
+      iconColor: '#38BDF8',
+      extra: p.extra || {}
+    };
+    if (p.scheduleAt instanceof Date && p.scheduleAt.getTime() > Date.now() + 30000) {
+      item.schedule = { at: p.scheduleAt, allowWhileIdle: true };
+    }
+    return nativeNotifications.schedule({ notifications: [item] });
   }
 
   const opts = {
@@ -662,50 +783,118 @@ function sendNotification(alert) {
   return sendNotificationPayload(p);
 }
 
+/* Pre-schedules the next morning (08:30) and evening (20:00) digests on Android
+   so the user receives daily weather + wardrobe briefings even if the app stays closed. */
+function scheduleUpcomingAndroidDigests() {
+  const nativeNotifications = nativePlugin('LocalNotifications');
+  if (!nativeNotifications || !state.weather) return;
+  try {
+    const now = new Date();
+    const todayDigest = buildTodayDigestNotification();
+    if (todayDigest && now.getHours() < 8) {
+      const morningAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 30, 0);
+      if (morningAt.getTime() > Date.now() + 60000) {
+        sendNotificationPayload(Object.assign({}, todayDigest, { id: 900101, scheduleAt: morningAt })).catch(() => {});
+      }
+    }
+    const tomorrowDigest = buildTomorrowDigestNotification();
+    if (tomorrowDigest && now.getHours() < 20) {
+      const eveningAt = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 20, 0, 0);
+      if (eveningAt.getTime() > Date.now() + 60000) {
+        sendNotificationPayload(Object.assign({}, tomorrowDigest, { id: 900102, scheduleAt: eveningAt })).catch(() => {});
+      }
+    }
+  } catch (e) { /* ignore scheduling errors */ }
+}
+
 function dispatchWeatherAlerts() {
   if (!state.weather) return;
 
-  /* 1. Severe / Hazard alerts (highest priority) */
-  for (const a of upcomingAlerts()) {
+  const now = tzNow(state.tz);
+  const hh = typeof now.hour === 'number' ? now.hour : new Date().getHours();
+  const mm = typeof now.minute === 'number' ? now.minute : new Date().getMinutes();
+  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
+  const d = state.weather.daily;
+  const h = state.weather.hourly;
+  const todayDate = (d && d.time && d.time[state.todayIdx || 0])
+    ? d.time[state.todayIdx || 0]
+    : (now.date || new Date().toISOString().slice(0, 10));
+
+  /* Quiet hours: 23:00 – 06:30 local time.
+     Only severe life/property hazards (rank >= 85) within the next 3 hours may wake the user. */
+  const isQuietHours = (hh >= 23) || (hh < 6) || (hh === 6 && mm < 30);
+  const nowA = nowAbsMin();
+  let alertDispatched = false;
+
+  /* 1. Severe / Hazard alerts — prioritized by severity & proximity, capped at 1 per check cycle */
+  const hazards = upcomingAlerts().filter(a => {
+    const deltaMin = (a.abs != null ? a.abs : nowA) - nowA;
+    if (deltaMin > 12 * 60) return false; /* notify within 12h window */
+    if (isQuietHours) return (a.rank >= 85 && deltaMin <= 180);
+    return true;
+  });
+  hazards.sort((a, b) => (b.rank - a.rank) || ((a.abs || 0) - (b.abs || 0)));
+
+  for (const a of hazards) {
     const sig = alertSignature(a.type, a.t);
     if (!shouldSendAlert(sig)) continue;
     markSent(sig);
     const p = buildSmartHazardNotification(a);
-    Promise.resolve(sendNotificationPayload(p)).catch(() => { /* permission can be changed in Android settings */ });
+    Promise.resolve(sendNotificationPayload(p)).catch(() => {});
+    alertDispatched = true;
+    break; /* anti-spam: at most 1 hazard alert per check cycle */
   }
 
-  /* 2. Precip radar nowcast check (if active) */
-  if (typeof NOWCAST !== 'undefined' && NOWCAST.active && state.lat != null && state.lon != null) {
+  /* 2. Imminent precipitation alert (15–60 min ahead) via minutely_15 nowcast OR radar */
+  if (!alertDispatched && !isQuietHours) {
     try {
-      const wetNow = NOWCAST.sampleNowcast(state.lat, state.lon, 0);
-      if (wetNow == null || wetNow <= 0.05) {
-        for (let m = 15; m <= 45; m += 15) {
-          const v = NOWCAST.sampleNowcast(state.lat, state.lon, m);
-          if (v != null && v > 0.05) {
-            const timeBucket = Math.floor(Date.now() / (2 * 3600 * 1000));
-            const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
-            const rainSig = 'nowcast:rain:' + timeBucket + ':' + city;
-            if (shouldSendAlert(rainSig)) {
-              markSent(rainSig);
-              const p = buildNowcastRainNotification(m);
-              Promise.resolve(sendNotificationPayload(p)).catch(() => {});
+      const pInfo = typeof minutelyPrecipInfo === 'function' ? minutelyPrecipInfo() : null;
+      const windNow = h ? Math.max(getVal(h, 'windspeed_10m', state.nowIdx) || 0, getVal(h, 'windgusts_10m', state.nowIdx) || 0) : 0;
+      if (pInfo && !pInfo.wetNow && pInfo.changeMin != null && pInfo.changeMin >= 5 && pInfo.changeMin <= 60) {
+        const pPayload = buildNowcastRainNotification(pInfo.changeMin, {
+          snow: pInfo.snow,
+          at: pInfo.changeAt,
+          peakWind: windNow
+        });
+        if (pPayload && shouldSendAlert(pPayload.key)) {
+          markSent(pPayload.key);
+          Promise.resolve(sendNotificationPayload(pPayload)).catch(() => {});
+          alertDispatched = true;
+        }
+      } else if (typeof NOWCAST !== 'undefined' && NOWCAST.active && state.lat != null && state.lon != null) {
+        const wetNow = NOWCAST.sampleNowcast(state.lat, state.lon, 0);
+        if (wetNow == null || wetNow <= 0.05) {
+          for (let m = 15; m <= 45; m += 15) {
+            const v = NOWCAST.sampleNowcast(state.lat, state.lon, m);
+            if (v != null && v > 0.05) {
+              const p = buildNowcastRainNotification(m, { peakWind: windNow });
+              if (p && shouldSendAlert(p.key)) {
+                markSent(p.key);
+                Promise.resolve(sendNotificationPayload(p)).catch(() => {});
+                alertDispatched = true;
+              }
+              break;
             }
-            break;
           }
         }
       }
     } catch (e) { /* nowcast is optional */ }
   }
 
-  /* 3. Daily smart digests (morning / evening) */
-  const now = tzNow(state.tz);
-  const hh = now.getHours();
-  const city = (state.locationName && state.locationName !== 'null') ? state.locationName : 'LiveSky';
-  const d = state.weather.daily;
-  const todayDate = (d && d.time && d.time[state.todayIdx || 0]) ? d.time[state.todayIdx || 0] : now.toISOString().slice(0, 10);
+  /* 3. Sharp temperature drop or black-ice transition alert */
+  if (!alertDispatched && !isQuietHours) {
+    try {
+      const swingPayload = buildTempSwingOrIceNotification();
+      if (swingPayload && shouldSendAlert(swingPayload.key)) {
+        markSent(swingPayload.key);
+        Promise.resolve(sendNotificationPayload(swingPayload)).catch(() => {});
+        alertDispatched = true;
+      }
+    } catch (e) { /* ignore */ }
+  }
 
-  /* Morning briefing between 06:00 and 12:00 */
-  if (hh >= 6 && hh <= 12) {
+  /* 4. Daily smart digests (morning briefing 06:30–12:00 / evening tomorrow preview 18:00–22:59) */
+  if (!isQuietHours && ((hh === 6 && mm >= 30) || (hh >= 7 && hh <= 12))) {
     const todaySig = 'digest:today:' + todayDate + ':' + city;
     if (shouldSendAlert(todaySig)) {
       const p = buildTodayDigestNotification();
@@ -716,8 +905,7 @@ function dispatchWeatherAlerts() {
     }
   }
 
-  /* Evening tomorrow forecast between 18:00 and 23:00 */
-  if (hh >= 18 && hh <= 23) {
+  if (!isQuietHours && hh >= 18 && hh <= 22) {
     const tomorrowSig = 'digest:tomorrow:' + todayDate + ':' + city;
     if (shouldSendAlert(tomorrowSig)) {
       const p = buildTomorrowDigestNotification();
@@ -727,6 +915,8 @@ function dispatchWeatherAlerts() {
       }
     }
   }
+
+  scheduleUpcomingAndroidDigests();
 }
 
 /* Called on every forecast refresh and on a periodic timer. Only fires when the
