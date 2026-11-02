@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=64" />
+  <link rel="stylesheet" href="css/app.css?v=68" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -146,7 +146,13 @@
     <!-- ==== Header ==== -->
     <header class="site-header">
       <div class="brand" id="brand" title="LiveSky — перезагрузить">
-        <div class="brand-logo" id="logo-box"><img src="assets/brand-wind.png" alt="LiveSky" class="brand-wind-img" /></div>
+        <div class="brand-logo" id="logo-box">
+          <svg class="brand-wind-svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M 28 96 H 124 A 28 28 0 1 0 96 68" />
+            <path d="M 36 132 H 192 A 28 28 0 1 0 164 104" />
+            <path d="M 44 168 H 148 A 28 28 0 1 1 120 196" />
+          </svg>
+        </div>
         <div>
           <div class="brand-name">LiveSky</div>
           <div class="brand-tag">PRO WEATHER</div>
@@ -679,16 +685,16 @@
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=11"></script>
-  <script src="js/modules/02-weather-data.js?v=11"></script>
-  <script src="js/modules/03-rendering.js?v=6"></script>
-  <script src="js/modules/04-chart.js?v=8"></script>
-  <script src="js/modules/05-hourly-alerts.js?v=3"></script>
-  <script src="js/modules/06-air.js?v=4"></script>
-  <script src="js/modules/07-effects.js?v=10"></script>
-  <script src="js/modules/08-search-modals.js?v=12"></script>
-  <script src="js/modules/09-lifecycle.js?v=6"></script>
-  <script src="js/modules/10-bootstrap.js?v=12"></script>
-  <script src="js/modules/12-theme-studio.js?v=5"></script>
+  <script src="js/modules/01-core.js?v=12"></script>
+  <script src="js/modules/02-weather-data.js?v=12"></script>
+  <script src="js/modules/03-rendering.js?v=8"></script>
+  <script src="js/modules/04-chart.js?v=9"></script>
+  <script src="js/modules/05-hourly-alerts.js?v=4"></script>
+  <script src="js/modules/06-air.js?v=5"></script>
+  <script src="js/modules/07-effects.js?v=14"></script>
+  <script src="js/modules/08-search-modals.js?v=14"></script>
+  <script src="js/modules/09-lifecycle.js?v=7"></script>
+  <script src="js/modules/10-bootstrap.js?v=14"></script>
+  <script src="js/modules/12-theme-studio.js?v=7"></script>
 </body>
 </html>

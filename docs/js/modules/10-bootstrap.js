@@ -33,7 +33,7 @@ window.LiveSkyMap = (function () {
      fresh cache-buster — this is what ended the "still squares" staleness
      where a v6 module kept running after the file on disk was updated. */
   const PRECIP_STAMP = 'precip-engine-v13';
-  const MODULE_URL = 'js/modules/11-map-radar.js?v=13';
+  const MODULE_URL = 'js/modules/11-map-radar.js?v=15';
   const MAPLIBRE_URL = 'assets/vendor/maplibre-gl/maplibre-gl.js?v=4.7.1';
   const MAPLIBRE_CSS_URL = 'assets/vendor/maplibre-gl/maplibre-gl.css?v=4.7.1';
   const LOAD_TIMEOUT_MS = 20000;
@@ -329,20 +329,31 @@ function initConnectivity() {
 
 /* ---------------- Adaptive performance (FPS detector) --------------- */
 const PERF = {
-  raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0, started: false,
+  raf: 0, windowStart: 0, windowFrames: 0, lowStreak: 0, normalStreak: 0, started: false, lastTick: 0,
   start() {
     /* only run the FPS watchdog while the user is on Auto mode; it is pointless
        (and burns the battery) when Maximum/Eco is explicitly selected */
     if (motionReduce || this.started || state.effects !== 'auto') return;
     this.started = true;
     this.windowStart = performance.now();
+    this.lastTick = this.windowStart;
     const tick = (t) => {
+      const gap = t - this.lastTick;
+      this.lastTick = t;
+      /* If the browser paused rAF (tab backgrounded or window minimized), discard
+         this window so a background pause is never mistaken for low FPS. */
+      if (gap > 250 || (typeof document !== 'undefined' && document.hidden)) {
+        this.windowStart = t;
+        this.windowFrames = 0;
+        this.raf = requestAnimationFrame(tick);
+        return;
+      }
       this.windowFrames++;
       if (t - this.windowStart >= 2000) {
         const fps = (this.windowFrames * 1000) / Math.max(1, t - this.windowStart);
         this.windowFrames = 0; this.windowStart = t;
-        if (fps < 22) this.lowStreak++; else this.lowStreak = 0;
-        if (fps > 42) this.normalStreak++; else this.normalStreak = 0;
+        if (fps < 20) this.lowStreak++; else this.lowStreak = 0;
+        if (fps > 40) this.normalStreak++; else this.normalStreak = 0;
         this.evaluate();
       }
       this.raf = requestAnimationFrame(tick);

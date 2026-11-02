@@ -90,7 +90,7 @@ function studioDefaults(base) {
     card: '#0d1528', cardAlpha: 55,
     strokeColor: '#94a3b8', strokeAlpha: 13,
     text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5',
-    accent: '#38bdf8', accent2: '#818cf8', weatherTint: true,
+    accent: '#38bdf8', accent2: '#818cf8', weatherTint: false,
     btnBg: '#38bdf8', btnText: '#04101f',
     iconAccent: '#38bdf8',
     chartLine: '#38bdf8', chartFill: '#38bdf8',
@@ -100,7 +100,7 @@ function studioDefaults(base) {
     card: '#ffffff', cardAlpha: 72,
     strokeColor: '#0f172a', strokeAlpha: 9,
     text1: '#16202f', text2: '#33415a', text3: '#8b98ab',
-    accent: '#7c3aed', accent2: '#06b6d4', weatherTint: true,
+    accent: '#7c3aed', accent2: '#06b6d4', weatherTint: false,
     btnBg: '#7c3aed', btnText: '#ffffff',
     iconAccent: '#7c3aed',
     chartLine: '#7c3aed', chartFill: '#7c3aed',
@@ -141,7 +141,7 @@ function studioNormalize(raw) {
   th.radius = studioNum(th.radius, 28, 8, 32);
   th.shadow = studioNum(th.shadow, 70, 0, 100);
   th.aurora = studioNum(th.aurora, 90, 0, 100);
-  th.weatherTint = th.weatherTint !== false;
+  th.weatherTint = Boolean(raw && raw.weatherTint);
   return th;
 }
 
@@ -279,7 +279,12 @@ const CustomTheme = {
   clear() {
     const root = document.documentElement;
     STUDIO_VARS.forEach(k => root.style.removeProperty(k));
-    try { document.body.style.removeProperty('background'); } catch (e) { /* ignore */ }
+    try {
+      document.body.style.removeProperty('background');
+      const bgC = document.getElementById('bg-container');
+      if (bgC) bgC.style.removeProperty('background');
+      if (typeof lastBgKey !== 'undefined') lastBgKey = '';
+    } catch (e) { /* ignore */ }
     root.dataset.theme = state.theme;
     if (document.body) document.body.dataset.theme = state.theme;
   },
@@ -543,7 +548,13 @@ function studioRenderPreview() {
 
   host.innerHTML = `
     <div class="pv-bar">
-      <div class="pv-logo"><i class="ph-fill ph-cloud-sun"></i></div>
+      <div class="pv-logo">
+        <svg class="brand-wind-svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M 28 96 H 124 A 28 28 0 1 0 96 68" />
+          <path d="M 36 132 H 192 A 28 28 0 1 0 164 104" />
+          <path d="M 44 168 H 148 A 28 28 0 1 1 120 196" />
+        </svg>
+      </div>
       <div class="pv-search"></div>
       <button type="button" class="pv-btn">Обновить</button>
       <div class="pv-dot"></div>

@@ -848,8 +848,8 @@ function applyTheme() {
     if (typeof CustomTheme !== 'undefined') CustomTheme.clear();
   }
   updateThemeLabel();
-  if (window.LiveSkyMap) LiveSkyMap.refreshTiles();
   applyWeatherTheme();
+  if (window.LiveSkyMap) LiveSkyMap.refreshTiles();
   syncMenuChecks();
   store.set('livesky:theme', state.theme);
   const meta = document.querySelector('meta[name="theme-color"]');

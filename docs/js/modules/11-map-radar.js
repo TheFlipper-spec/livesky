@@ -49,34 +49,77 @@ function mapStyle() {
 function applyThemeToMap(map) {
   if (!map || typeof map.getLayer !== 'function') return;
   try {
-    const isLight = state.theme === 'light' ||
-      (state.theme === 'custom' && typeof CustomTheme !== 'undefined' && CustomTheme.isLight());
-    if (isLight) return;
-
     const root = document.documentElement;
+    const isCustom = state.theme === 'custom' && typeof CustomTheme !== 'undefined';
+    const isLight = state.theme === 'light' || (isCustom && CustomTheme.isLight());
     const isDay = state.theme === 'adaptive' && typeof isDayNow === 'function' && isDayNow();
-    const bg0 = root.style.getPropertyValue('--bg-0') || (isDay ? '#143862' : '#0a1020');
-    const bg1 = root.style.getPropertyValue('--bg-1') || '#05070f';
-    const landColor = isDay ? '#123458' : bg0;
-    const waterColor = isDay ? '#1a4979' : (bg1 || '#081426');
+    const wType = root.dataset.weatherType || 'clear';
 
-    if (map.getLayer('background')) {
-      map.setPaintProperty('background', 'background-color', landColor);
+    let landColor = '#081121';
+    let waterColor = '#0d1d38';
+    let parkColor = '#0a162a';
+    let bldgColor = '#0f1e36';
+    let roadColor = 'rgba(148, 163, 184, 0.16)';
+
+    if (isCustom) {
+      const th = CustomTheme.draft || CustomTheme.getActive();
+      if (th) {
+        landColor = th.bg0 || '#081121';
+        waterColor = th.bg1 || '#0d1d38';
+        parkColor = typeof studioMix === 'function' ? studioMix(landColor, th.accent || '#38bdf8', 0.10) : landColor;
+        bldgColor = typeof studioMix === 'function' ? studioMix(landColor, th.card || '#1e293b', 0.40) : waterColor;
+        roadColor = typeof studioRgba === 'function' ? studioRgba(th.text1 || '#ffffff', isLight ? 0.45 : 0.18) : roadColor;
+      }
+    } else if (isLight) {
+      landColor = '#eef4fb';
+      waterColor = '#cfe4f7';
+      parkColor = '#e2eff8';
+      bldgColor = '#dde8f3';
+      roadColor = 'rgba(255, 255, 255, 0.85)';
+    } else if (isDay) {
+      const dayPalettes = {
+        clear:  { land: '#154472', water: '#1e5b94', park: '#184d7f', bldg: '#1b5287', road: 'rgba(186, 230, 253, 0.24)' },
+        cloudy: { land: '#2e455c', water: '#3c5975', park: '#344e68', bldg: '#38526d', road: 'rgba(203, 213, 225, 0.22)' },
+        rain:   { land: '#223144', water: '#2c4058', park: '#26374c', bldg: '#2a3c52', road: 'rgba(148, 163, 184, 0.20)' },
+        storm:  { land: '#1c2536', water: '#253147', park: '#202a3d', bldg: '#232e42', road: 'rgba(167, 139, 250, 0.20)' },
+        snow:   { land: '#4d6a85', water: '#60809c', park: '#567591', bldg: '#5b7a96', road: 'rgba(241, 245, 249, 0.30)' },
+        fog:    { land: '#3d4a58', water: '#4c5b6b', park: '#435160', bldg: '#485666', road: 'rgba(203, 213, 225, 0.20)' }
+      };
+      const pal = dayPalettes[wType] || dayPalettes.clear;
+      landColor = pal.land;
+      waterColor = pal.water;
+      parkColor = pal.park;
+      bldgColor = pal.bldg;
+      roadColor = pal.road;
     }
-    if (map.getLayer('water')) {
-      map.setPaintProperty('water', 'fill-color', waterColor);
-    }
-    if (map.getLayer('waterway')) {
-      map.setPaintProperty('waterway', 'line-color', waterColor);
-    }
-    if (map.getLayer('landuse_residential')) {
-      map.setPaintProperty('landuse_residential', 'fill-color', isDay ? '#153b64' : '#0e182c');
-    }
-    if (map.getLayer('landcover_wood')) {
-      map.setPaintProperty('landcover_wood', 'fill-color', isDay ? '#16406c' : '#101c34');
-    }
-    if (map.getLayer('building')) {
-      map.setPaintProperty('building', 'fill-color', isDay ? '#194776' : '#13213c');
+
+    if (map.getLayer('background')) map.setPaintProperty('background', 'background-color', landColor);
+    if (map.getLayer('water')) map.setPaintProperty('water', 'fill-color', waterColor);
+    if (map.getLayer('waterway')) map.setPaintProperty('waterway', 'line-color', waterColor);
+    if (map.getLayer('landuse_residential')) map.setPaintProperty('landuse_residential', 'fill-color', parkColor);
+    if (map.getLayer('landcover_wood')) map.setPaintProperty('landcover_wood', 'fill-color', parkColor);
+    if (map.getLayer('building')) map.setPaintProperty('building', 'fill-color', bldgColor);
+
+    const style = typeof map.getStyle === 'function' ? map.getStyle() : null;
+    const layers = (style && Array.isArray(style.layers)) ? style.layers : [];
+    for (let i = 0; i < layers.length; i++) {
+      const lyr = layers[i];
+      const id = String(lyr && lyr.id || '');
+      if (!id || id.startsWith('precip')) continue;
+      try {
+        if (lyr.type === 'background') {
+          map.setPaintProperty(id, 'background-color', landColor);
+        } else if (id.includes('water')) {
+          if (lyr.type === 'fill') map.setPaintProperty(id, 'fill-color', waterColor);
+          else if (lyr.type === 'line') map.setPaintProperty(id, 'line-color', waterColor);
+        } else if (id.includes('park') || id.includes('landuse') || id.includes('landcover')) {
+          if (lyr.type === 'fill') map.setPaintProperty(id, 'fill-color', parkColor);
+        } else if (id.includes('building') && lyr.type === 'fill') {
+          map.setPaintProperty(id, 'fill-color', bldgColor);
+        } else if ((id.includes('road') || id.includes('highway') || id.includes('transportation')) && lyr.type === 'line') {
+          map.setPaintProperty(id, 'line-color', roadColor);
+        }
+      } catch (innerErr) { /* ignore individual layer paint mismatches */ }
     }
   } catch (e) {
     /* safely ignore if vector layers not yet loaded */

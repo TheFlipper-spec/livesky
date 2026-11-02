@@ -6,7 +6,7 @@
    ============================================================ */
 /* ---------- weather theme / background / effects ---------- */
 const ACCENTS = {
-  clear:  { day: ['#fbbf24', '#fb923c'], night: ['#a5b4fc', '#818cf8'] },
+  clear:  { day: ['#38bdf8', '#f59e0b'], night: ['#a5b4fc', '#818cf8'] },
   cloudy: { day: ['#94a3b8', '#38bdf8'], night: ['#818cf8', '#6366f1'] },
   rain:   { day: ['#38bdf8', '#60a5fa'], night: ['#6366f1', '#818cf8'] },
   snow:   { day: ['#7dd3fc', '#60a5fa'], night: ['#93c5fd', '#818cf8'] },
@@ -69,70 +69,65 @@ function applyWeatherTheme() {
     setBackground('linear-gradient(180deg, #e8f3fd 0%, #f7fafd 100%)', 'light');
     root.style.setProperty('--accent', '#7c3aed');
     root.style.setProperty('--accent-2', '#06b6d4');
-    ['--blob-1', '--blob-2', '--blob-3'].forEach((v, k) => root.style.removeProperty(v));
+    ['--blob-1', '--blob-2', '--blob-3'].forEach((v) => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    FX.stop(); stopStorm();
     state.accent = '#7c3aed'; state.accent2 = '#06b6d4';
-    duskInfo = null; updateDuskBlend();
-    return;
-  }
-  if (mode === 'dark') {
+    duskInfo = null;
+  } else if (mode === 'dark') {
     setBackground('linear-gradient(180deg, #070b16 0%, #04060d 100%)', 'dark');
     root.style.setProperty('--accent', '#38bdf8');
     root.style.setProperty('--accent-2', '#818cf8');
     ['--blob-1', '--blob-2', '--blob-3'].forEach(v => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    FX.stop(); stopStorm();
     state.accent = '#38bdf8'; state.accent2 = '#818cf8';
-    duskInfo = null; updateDuskBlend();
-    return;
-  }
-
-  /* adaptive */
-  const acc = ACCENTS[type] || ACCENTS.cloudy;
-  const [a1, a2] = acc[time];
-  root.style.setProperty('--accent', a1);
-  root.style.setProperty('--accent-2', a2);
-  state.accent = a1; state.accent2 = a2;
-  if (!customFixedAccents) {
-    const blobs = (BLOBS[type] || BLOBS.cloudy)[time];
-    root.style.setProperty('--blob-1', blobs[0]);
-    root.style.setProperty('--blob-2', blobs[1]);
-    root.style.setProperty('--blob-3', blobs[2]);
-  }
-  const logo = (LOGOS[type] || LOGOS.cloudy)[time];
-  root.style.setProperty('--grad-logo', logo);
-  if (isCustomTheme) {
-    const th = CustomTheme.draft || CustomTheme.getActive();
-    if (th) {
-      const bgGrad = `linear-gradient(180deg, ${th.bg0} 0%, ${th.bg1} 100%)`;
-      setBackground(bgGrad, 'custom-' + th.id);
-      try {
-        document.body.style.background = bgGrad;
-        const bgC = document.getElementById('bg-container');
-        if (bgC) bgC.style.background = bgGrad;
-      } catch (e) { /* ignore */ }
-    }
+    duskInfo = null;
   } else {
-    setBackground((BGS[type] || BGS.cloudy)[time], `${type}-${time}`);
-  }
-  if (customFixedAccents) CustomTheme.applyAccents();
-  /* dusk glide source data (adaptive only — fixed/custom modes hide the veil) */
-  if (isCustomTheme) { duskInfo = null; }
-  else {
-    const dAcc = ACCENTS[type] || ACCENTS.cloudy;
-    const dBlobs = BLOBS[type] || BLOBS.cloudy;
-    const dLogo = LOGOS[type] || LOGOS.cloudy;
-    duskInfo = {
-      nightBg: (BGS[type] || BGS.cloudy).night,
-      dayAcc: dAcc.day, nightAcc: dAcc.night,
-      dayBlobs: dBlobs.day, nightBlobs: dBlobs.night,
-      dayLogo: dLogo.day, nightLogo: dLogo.night
-    };
-    const veil = document.getElementById('dusk-veil');
-    if (veil && veil._duskBg !== duskInfo.nightBg) {
-      veil._duskBg = duskInfo.nightBg;
-      veil.style.background = duskInfo.nightBg;
+    /* adaptive or custom */
+    const acc = ACCENTS[type] || ACCENTS.cloudy;
+    const [a1, a2] = acc[time];
+    if (!customFixedAccents) {
+      root.style.setProperty('--accent', a1);
+      root.style.setProperty('--accent-2', a2);
+      state.accent = a1; state.accent2 = a2;
+      const blobs = (BLOBS[type] || BLOBS.cloudy)[time];
+      root.style.setProperty('--blob-1', blobs[0]);
+      root.style.setProperty('--blob-2', blobs[1]);
+      root.style.setProperty('--blob-3', blobs[2]);
+    }
+    const logo = (LOGOS[type] || LOGOS.cloudy)[time];
+    root.style.setProperty('--grad-logo', logo);
+    if (isCustomTheme) {
+      const th = CustomTheme.draft || CustomTheme.getActive();
+      if (th) {
+        const bgGrad = `linear-gradient(180deg, ${th.bg0} 0%, ${th.bg1} 100%)`;
+        setBackground(bgGrad, 'custom-' + th.id + '-' + th.bg0 + '-' + th.bg1);
+        try {
+          document.body.style.background = bgGrad;
+          const bgC = document.getElementById('bg-container');
+          if (bgC) bgC.style.background = bgGrad;
+        } catch (e) { /* ignore */ }
+      }
+    } else {
+      setBackground((BGS[type] || BGS.cloudy)[time], `${type}-${time}`);
+    }
+    if (customFixedAccents) CustomTheme.applyAccents();
+    /* dusk glide source data (adaptive only — fixed/custom modes hide the veil) */
+    if (isCustomTheme) { duskInfo = null; }
+    else {
+      const dAcc = ACCENTS[type] || ACCENTS.cloudy;
+      const dBlobs = BLOBS[type] || BLOBS.cloudy;
+      const dLogo = LOGOS[type] || LOGOS.cloudy;
+      duskInfo = {
+        nightBg: (BGS[type] || BGS.cloudy).night,
+        dayAcc: dAcc.day, nightAcc: dAcc.night,
+        dayBlobs: dBlobs.day, nightBlobs: dBlobs.night,
+        dayLogo: dLogo.day, nightLogo: dLogo.night
+      };
+      const veil = document.getElementById('dusk-veil');
+      if (veil && veil._duskBg !== duskInfo.nightBg) {
+        veil._duskBg = duskInfo.nightBg;
+        veil.style.background = duskInfo.nightBg;
+      }
     }
   }
 
@@ -149,11 +144,15 @@ function applyWeatherTheme() {
     FX.start(fx);
     if (type === 'storm') startStorm(); else stopStorm();
   }
-  /* ambient life: night fireflies + the after-rain rainbow */
+  /* ambient life: night fireflies, windy air-streams, and after-rain rainbow */
   const liveCode = typeof currentWeatherCodeLive === 'function' ? currentWeatherCodeLive() : code;
+  const windSpd = (state.weather && state.weather.hourly) ? (getVal(state.weather.hourly, 'windspeed_10m', state.nowIdx) || 0) : 0;
   if (effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
   else {
-    FX.setOverlay(night && (liveCode != null && liveCode <= 3) ? 'fireflies' : null);
+    let ov = null;
+    if (night && (liveCode != null && liveCode <= 3)) ov = 'fireflies';
+    else if (windSpd >= 4.5) ov = 'wind';
+    FX.setOverlay(ov);
     updateRainbowAftermath(liveCode, !night);
   }
   updateDuskBlend();
@@ -334,7 +333,7 @@ function startStorm() {
 
 /* ---------- FX canvas ---------- */
 const FX = {
-  parts: [], kind: null, raf: 0, last: 0, w: 0, h: 0, dpr: 1, shoot: null, intensity: 0.5,
+  parts: [], splashes: [], kind: null, raf: 0, last: 0, w: 0, h: 0, dpr: 1, shoot: null, intensity: 0.5,
   overlay: null, op: [], _fly: null,
   resize() {
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -347,39 +346,44 @@ const FX = {
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     if (this.kind) this.build(); /* reposition particles for the new viewport */
     if (this.overlay === 'fireflies') this.buildFireflies();
+    else if (this.overlay === 'wind') this.buildWind();
   },
   build() {
     this.parts = [];
+    this.splashes = [];
     /* Base particle counts scaled by intensity (0-1) */
-    const base = { rain: 110, snow: 85, stars: 110, clouds: 5, fog: 6, sunmotes: 32 }[this.kind] || 0;
-    const n = Math.max(1, Math.round(base * this.intensity));
+    const base = { rain: 120, snow: 95, stars: 125, clouds: 6, fog: 7, sunmotes: 48 }[this.kind] || 0;
+    const n = Math.max(1, Math.round(base * Math.max(0.35, this.intensity)));
     for (let i = 0; i < n; i++) {
       if (this.kind === 'rain') {
-        /* More intense = faster, thicker, more opaque drops */
-        const len = 14 + Math.random() * (18 + this.intensity * 12);
-        const sp = 780 + Math.random() * (420 + this.intensity * 200);
-        const a = 0.12 + this.intensity * (0.15 + Math.random() * 0.18);
-        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, len, sp, a });
+        const fg = Math.random() > 0.35;
+        const len = (fg ? 18 : 11) + Math.random() * (18 + this.intensity * 14);
+        const sp = (fg ? 840 : 620) + Math.random() * (420 + this.intensity * 220);
+        const a = (fg ? 0.16 : 0.09) + this.intensity * (0.16 + Math.random() * 0.18);
+        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, len, sp, a, w: fg ? 1.35 : 0.9 });
       } else if (this.kind === 'snow') {
-        const r = 1 + Math.random() * (2.4 + this.intensity * 1.5);
-        const sp = 26 + Math.random() * (34 + this.intensity * 20);
-        const a = 0.3 + this.intensity * (0.3 + Math.random() * 0.3);
-        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, r, sp, ph: Math.random() * Math.PI * 2, sw: 18 + Math.random() * 22, a });
-      } else if (this.kind === 'stars') this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h * 0.72, r: Math.random() * 1.5 + 0.4, tw: 0.6 + Math.random() * 2.2, ph: Math.random() * Math.PI * 2 });
-      else if (this.kind === 'sunmotes') {
+        const r = 1.2 + Math.random() * (2.8 + this.intensity * 1.6);
+        const sp = 24 + Math.random() * (36 + this.intensity * 20);
+        const a = 0.35 + this.intensity * (0.3 + Math.random() * 0.3);
+        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, r, sp, ph: Math.random() * Math.PI * 2, sw: 18 + Math.random() * 24, a });
+      } else if (this.kind === 'stars') {
+        this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h * 0.76, r: Math.random() * 1.6 + 0.4, tw: 0.6 + Math.random() * 2.2, ph: Math.random() * Math.PI * 2, flare: Math.random() < 0.12 });
+      } else if (this.kind === 'sunmotes') {
         this.parts.push({
           x: Math.random() * this.w,
           y: Math.random() * this.h,
-          r: 1.2 + Math.random() * 2.4,
-          spY: -6 - Math.random() * 14,
-          spX: 4 + Math.random() * 10,
+          r: 1.4 + Math.random() * 2.8,
+          spY: -7 - Math.random() * 15,
+          spX: 5 + Math.random() * 11,
           ph: Math.random() * Math.PI * 2,
-          tw: 0.6 + Math.random() * 1.6,
-          a: 0.25 + Math.random() * 0.45
+          tw: 0.7 + Math.random() * 1.6,
+          a: 0.32 + Math.random() * 0.48
         });
+      } else if (this.kind === 'clouds') {
+        this.parts.push({ x: Math.random() * this.w, y: 20 + Math.random() * this.h * 0.5, w: 240 + Math.random() * 340, sp: 8 + Math.random() * 16, a: 0.06 + Math.random() * 0.08 });
+      } else if (this.kind === 'fog') {
+        this.parts.push({ x: Math.random() * this.w, y: this.h * (0.25 + Math.random() * 0.65), w: this.w * (0.7 + Math.random() * 0.6), sp: 10 + Math.random() * 22, a: 0.06 + Math.random() * 0.06 });
       }
-      else if (this.kind === 'clouds') this.parts.push({ x: Math.random() * this.w, y: 20 + Math.random() * this.h * 0.5, w: 220 + Math.random() * 320, sp: 8 + Math.random() * 16, a: 0.05 + Math.random() * 0.07 });
-      else if (this.kind === 'fog') this.parts.push({ x: Math.random() * this.w, y: this.h * (0.3 + Math.random() * 0.6), w: this.w * (0.7 + Math.random() * 0.6), sp: 10 + Math.random() * 22, a: 0.05 + Math.random() * 0.05 });
     }
     this.shoot = null;
   },
@@ -401,7 +405,13 @@ const FX = {
   },
   start(kind) {
     if (kind === this.kind) return;
-    if (!kind) { this.stop(); return; }
+    if (!kind) {
+      this.kind = null;
+      this.parts = [];
+      this.splashes = [];
+      if (!this.overlay) this.stop();
+      return;
+    }
     this.kind = kind;
     this.resize();
     this.build();
@@ -414,6 +424,7 @@ const FX = {
   stop() {
     this.kind = null;
     this.parts = [];
+    this.splashes = [];
     this.overlay = null;
     this.op = [];
     this.running = false;
@@ -422,7 +433,7 @@ const FX = {
     if (ctx) ctx.clearRect(0, 0, this.w, this.h);
   },
   resume() {
-    if (!this.kind || this.running || (typeof document !== 'undefined' && document.hidden)) return;
+    if ((!this.kind && !this.overlay) || this.running || (typeof document !== 'undefined' && document.hidden)) return;
     this.running = true;
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.loop(t));
@@ -446,15 +457,33 @@ const FX = {
     const ctx = el.fxCanvas.getContext('2d');
     if (!ctx) { this.running = false; return; }
     ctx.clearRect(0, 0, this.w, this.h);
+    const isLight = document.documentElement.dataset.theme === 'light';
 
     if (this.kind === 'rain') {
-      ctx.lineWidth = 1.1;
+      const slant = 32 + this.intensity * 24;
       for (const p of this.parts) {
-        p.y += p.sp * dt; p.x -= 26 * dt;
-        if (p.y > this.h + 30) { p.y = -30; p.x = Math.random() * (this.w + 80); }
-        ctx.strokeStyle = `rgba(180,210,255,${p.a})`;
+        p.y += p.sp * dt; p.x -= slant * dt;
+        if (p.y > this.h - 6) {
+          if (this.splashes.length < 28 && Math.random() < 0.35) {
+            this.splashes.push({ x: p.x, y: this.h - 4 - Math.random() * 14, r: 1, maxR: 5 + Math.random() * 7, a: p.a * 1.2 });
+          }
+          p.y = -30; p.x = Math.random() * (this.w + 100);
+        }
+        ctx.lineWidth = p.w || 1.1;
+        ctx.strokeStyle = isLight ? `rgba(37, 99, 235, ${Math.min(0.45, p.a * 1.15)})` : `rgba(186, 220, 255, ${p.a})`;
         ctx.beginPath();
-        ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 3.5, p.y + p.len);
+        ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 4.2, p.y + p.len);
+        ctx.stroke();
+      }
+      for (let i = this.splashes.length - 1; i >= 0; i--) {
+        const sp = this.splashes[i];
+        sp.r += 22 * dt;
+        const k = 1 - sp.r / sp.maxR;
+        if (k <= 0) { this.splashes.splice(i, 1); continue; }
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = isLight ? `rgba(37, 99, 235, ${sp.a * k})` : `rgba(191, 219, 254, ${sp.a * k})`;
+        ctx.beginPath();
+        ctx.ellipse(sp.x, sp.y, sp.r, sp.r * 0.32, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
     } else if (this.kind === 'snow') {
@@ -463,52 +492,77 @@ const FX = {
         p.ph += dt * 1.4;
         p.x += Math.sin(p.ph) * p.sw * dt;
         if (p.y > this.h + 8) { p.y = -8; p.x = Math.random() * this.w; }
-        ctx.fillStyle = `rgba(240,246,255,${p.a})`;
+        ctx.fillStyle = isLight ? `rgba(59, 130, 246, ${Math.min(0.55, p.a * 0.75)})` : `rgba(240, 246, 255, ${p.a})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (this.kind === 'stars') {
       for (const p of this.parts) {
-        const a = p.a = 0.35 + 0.55 * (0.5 + 0.5 * Math.sin(t / 1000 * p.tw + p.ph));
-        ctx.fillStyle = `rgba(226,232,240,${a})`;
+        const a = p.a = 0.35 + 0.60 * (0.5 + 0.5 * Math.sin(t / 1000 * p.tw + p.ph));
+        ctx.fillStyle = isLight ? `rgba(99, 102, 241, ${a * 0.55})` : `rgba(226, 232, 240, ${a})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
+        if (p.flare && a > 0.75 && !isLight) {
+          ctx.strokeStyle = `rgba(255, 255, 255, ${(a - 0.7) * 1.2})`;
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          ctx.moveTo(p.x - p.r * 3.2, p.y); ctx.lineTo(p.x + p.r * 3.2, p.y);
+          ctx.moveTo(p.x, p.y - p.r * 3.2); ctx.lineTo(p.x, p.y + p.r * 3.2);
+          ctx.stroke();
+        }
       }
       /* occasional shooting star */
-      if (!this.shoot && Math.random() < 0.006) {
-        this.shoot = { x: this.w * (0.2 + Math.random() * 0.6), y: this.h * 0.15, vx: -260 - Math.random() * 160, vy: 90 + Math.random() * 70, life: 1 };
+      if (!this.shoot && Math.random() < 0.008) {
+        this.shoot = { x: this.w * (0.2 + Math.random() * 0.65), y: this.h * (0.08 + Math.random() * 0.2), vx: -280 - Math.random() * 180, vy: 95 + Math.random() * 80, life: 1 };
       }
       if (this.shoot) {
         const s = this.shoot;
-        s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt * 1.4;
-        const grad = ctx.createLinearGradient(s.x, s.y, s.x - s.vx * 0.16, s.y - s.vy * 0.16);
-        grad.addColorStop(0, `rgba(255,255,255,${Math.max(0, s.life)})`);
-        grad.addColorStop(1, 'rgba(255,255,255,0)');
+        s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt * 1.35;
+        const grad = ctx.createLinearGradient(s.x, s.y, s.x - s.vx * 0.18, s.y - s.vy * 0.18);
+        const col = isLight ? '99, 102, 241' : '255, 255, 255';
+        grad.addColorStop(0, `rgba(${col}, ${Math.max(0, s.life)})`);
+        grad.addColorStop(1, `rgba(${col}, 0)`);
         ctx.strokeStyle = grad;
-        ctx.lineWidth = 1.6;
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.moveTo(s.x, s.y);
-        ctx.lineTo(s.x - s.vx * 0.16, s.y - s.vy * 0.16);
+        ctx.lineTo(s.x - s.vx * 0.18, s.y - s.vy * 0.18);
         ctx.stroke();
         if (s.life <= 0) this.shoot = null;
       }
     } else if (this.kind === 'sunmotes') {
+      /* subtle warm solar beams from top-right */
+      const sec = t / 1000;
+      const beamAlpha = (isLight ? 0.06 : 0.09) * (0.8 + 0.2 * Math.sin(sec * 0.4));
+      const bg = ctx.createRadialGradient(this.w * 0.82, -20, 10, this.w * 0.82, -20, Math.max(this.w, this.h) * 0.75);
+      bg.addColorStop(0, `rgba(253, 224, 71, ${beamAlpha * 1.8})`);
+      bg.addColorStop(0.45, `rgba(251, 191, 36, ${beamAlpha * 0.7})`);
+      bg.addColorStop(1, 'rgba(245, 158, 11, 0)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, this.w, this.h);
+
       for (const p of this.parts) {
         p.y += p.spY * dt;
         p.ph += dt * p.tw;
-        p.x += Math.sin(p.ph) * 12 * dt + p.spX * dt;
+        p.x += Math.sin(p.ph) * 14 * dt + p.spX * dt;
         if (p.y < -12) { p.y = this.h + 12; p.x = Math.random() * this.w; }
         if (p.x > this.w + 12) { p.x = -12; }
-        const alpha = p.a * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(p.ph * 1.4)));
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.6);
-        g.addColorStop(0, `rgba(254, 240, 138, ${alpha})`);
-        g.addColorStop(0.45, `rgba(251, 191, 36, ${alpha * 0.45})`);
-        g.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        const alpha = p.a * (0.4 + 0.6 * (0.5 + 0.5 * Math.sin(p.ph * 1.4)));
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.8);
+        if (isLight) {
+          g.addColorStop(0, `rgba(245, 158, 11, ${Math.min(0.65, alpha * 0.9)})`);
+          g.addColorStop(0.5, `rgba(234, 88, 12, ${alpha * 0.35})`);
+          g.addColorStop(1, 'rgba(234, 88, 12, 0)');
+        } else {
+          g.addColorStop(0, `rgba(255, 251, 200, ${alpha})`);
+          g.addColorStop(0.45, `rgba(251, 191, 36, ${alpha * 0.55})`);
+          g.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        }
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r * 2.6, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, p.r * 2.8, 0, Math.PI * 2);
         ctx.fill();
       }
     } else if (this.kind === 'clouds') {
@@ -516,8 +570,9 @@ const FX = {
         p.x += p.sp * dt;
         if (p.x - p.w > this.w) { p.x = -p.w; p.y = 20 + Math.random() * this.h * 0.5; }
         const g = ctx.createRadialGradient(p.x, p.y, 10, p.x, p.y, p.w);
-        g.addColorStop(0, `rgba(226,232,240,${p.a})`);
-        g.addColorStop(1, 'rgba(226,232,240,0)');
+        const cCol = isLight ? '100, 116, 139' : '226, 232, 240';
+        g.addColorStop(0, `rgba(${cCol}, ${p.a})`);
+        g.addColorStop(1, `rgba(${cCol}, 0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.ellipse(p.x, p.y, p.w, p.w * 0.34, 0, 0, Math.PI * 2);
@@ -528,8 +583,9 @@ const FX = {
         p.x += p.sp * dt;
         if (p.x - p.w > this.w) { p.x = -p.w; }
         const g = ctx.createRadialGradient(p.x, p.y, 20, p.x, p.y, p.w * 0.5);
-        g.addColorStop(0, `rgba(200,212,228,${p.a})`);
-        g.addColorStop(1, 'rgba(200,212,228,0)');
+        const fCol = isLight ? '100, 116, 139' : '200, 212, 228';
+        g.addColorStop(0, `rgba(${fCol}, ${p.a})`);
+        g.addColorStop(1, `rgba(${fCol}, 0)`);
         ctx.fillStyle = g;
         ctx.beginPath();
         ctx.ellipse(p.x, p.y, p.w * 0.5, p.w * 0.16, 0, 0, Math.PI * 2);
@@ -537,38 +593,83 @@ const FX = {
       }
     }
     if (this.overlay === 'fireflies' && this.op.length) this.drawFireflies(ctx, t, dt);
+    else if (this.overlay === 'wind' && this.op.length) this.drawWind(ctx, t, dt, isLight);
     this.raf = requestAnimationFrame((tt) => this.loop(tt));
   },
-  /* ---- ambient overlay: fireflies drift above the base kind ---- */
+  /* ---- ambient overlays: fireflies at night or wind ribbons when breezy ---- */
   setOverlay(kind) {
     if (kind && effectsReduced()) kind = null;
     if (this.overlay === kind) return;
     this.overlay = kind;
     this.op = [];
-    if (kind === 'fireflies') {
+    if (kind === 'fireflies' || kind === 'wind') {
       if (!this.w) { try { this.resize(); } catch (e) { /* ignore */ } }
-      this.buildFireflies();
+      if (kind === 'fireflies') this.buildFireflies();
+      else this.buildWind();
       if (!this.running) {
         this.running = true;
         this.last = performance.now();
         this.raf = requestAnimationFrame((t) => this.loop(t));
       }
+    } else if (!this.kind && this.running) {
+      this.stop();
     }
   },
   buildFireflies() {
     this.op = [];
     const w = this.w || window.innerWidth, h = this.h || window.innerHeight;
-    const n = Math.max(10, Math.min(24, Math.round(w / 56)));
+    const n = Math.max(14, Math.min(28, Math.round(w / 48)));
     for (let i = 0; i < n; i++) {
       this.op.push({
-        x: Math.random() * w, y: h * (0.35 + Math.random() * 0.6),
-        r: 5 + Math.random() * 6,
+        x: Math.random() * w, y: h * (0.28 + Math.random() * 0.65),
+        r: 5.5 + Math.random() * 6.5,
         ph: Math.random() * Math.PI * 2,
-        blink: 0.22 + Math.random() * 0.4,
-        drift: 3 + Math.random() * 7,
-        rise: 1.5 + Math.random() * 3.5
+        blink: 0.25 + Math.random() * 0.45,
+        drift: 4 + Math.random() * 8,
+        rise: 1.8 + Math.random() * 3.8
       });
     }
+  },
+  buildWind() {
+    this.op = [];
+    const w = this.w || window.innerWidth, h = this.h || window.innerHeight;
+    const n = Math.max(8, Math.min(16, Math.round(w / 95)));
+    for (let i = 0; i < n; i++) {
+      this.op.push({
+        x: Math.random() * w,
+        y: h * (0.1 + Math.random() * 0.8),
+        len: 90 + Math.random() * 140,
+        sp: 180 + Math.random() * 160,
+        amp: 6 + Math.random() * 10,
+        ph: Math.random() * Math.PI * 2,
+        a: 0.10 + Math.random() * 0.14
+      });
+    }
+  },
+  drawWind(ctx, t, dt, isLight) {
+    const w = this.w, h = this.h, sec = t / 1000;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.4;
+    for (const p of this.op) {
+      p.x += p.sp * dt;
+      if (p.x - p.len > w + 40) {
+        p.x = -40;
+        p.y = h * (0.1 + Math.random() * 0.8);
+      }
+      const yOff = Math.sin(sec * 2 + p.ph) * p.amp;
+      const grad = ctx.createLinearGradient(p.x - p.len, p.y, p.x, p.y + yOff);
+      const col = isLight ? '71, 85, 105' : '226, 232, 240';
+      grad.addColorStop(0, `rgba(${col}, 0)`);
+      grad.addColorStop(0.5, `rgba(${col}, ${p.a})`);
+      grad.addColorStop(1, `rgba(${col}, 0)`);
+      ctx.strokeStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(p.x - p.len, p.y);
+      ctx.quadraticCurveTo(p.x - p.len * 0.5, p.y + yOff, p.x, p.y + yOff * 0.4);
+      ctx.stroke();
+    }
+    ctx.restore();
   },
   /* Pre-rendered glow sprite: one drawImage per firefly, no shadowBlur. */
   fireflySprite() {
@@ -599,15 +700,15 @@ const FX = {
       if (!still) {
         p.x += Math.sin(sec * 0.5 + p.ph) * p.drift * dt;
         p.y -= p.rise * dt;
-        if (p.y < h * 0.3) { p.y = h * (0.85 + Math.random() * 0.12); p.x = Math.random() * w; }
+        if (p.y < h * 0.25) { p.y = h * (0.85 + Math.random() * 0.12); p.x = Math.random() * w; }
         if (p.x < -20) p.x = w + 20; else if (p.x > w + 20) p.x = -20;
       }
       /* faint lantern breathing: dim, slow, never a sharp flash */
       const pulse = still ? 0.4 : Math.sin(sec * p.blink * 2 + p.ph * 3);
-      const glow = 0.12 + 0.55 * Math.pow(Math.max(0, pulse), 2);
+      const glow = 0.14 + 0.58 * Math.pow(Math.max(0, pulse), 2);
       if (glow < 0.04) continue;
-      const s = p.r * (0.8 + glow * 0.7);
-      ctx.globalAlpha = Math.min(0.75, glow * 1.3);
+      const s = p.r * (0.85 + glow * 0.75);
+      ctx.globalAlpha = Math.min(0.82, glow * 1.35);
       ctx.drawImage(spr, p.x - s, p.y - s, s * 2, s * 2);
     }
     ctx.restore();

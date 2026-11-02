@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-clouds-v28';
+const VERSION = 'livesky-v1.4-clouds-v30';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -121,7 +121,6 @@ const SHELL_ASSETS = [
   './assets/vendor/phosphor/fill/Phosphor-Fill.woff',
   './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff2',
   './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff',
-  './assets/brand-wind.png',
   './assets/flags/ru.svg',
   './assets/flags/gb.svg',
   './assets/flags/es.svg',
@@ -146,7 +145,7 @@ self.addEventListener('install', (event) => {
      forever and serves stale builds (the \"still squares\" bug). */
   event.waitUntil(
     caches.open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_ASSETS).catch(() => { /* keep going */ }))
+      .then((cache) => cache.addAll(SHELL_ASSETS.map((u) => new Request(u, { cache: 'reload' }))).catch(() => { /* keep going */ }))
       .then(() => self.skipWaiting())
   );
 });

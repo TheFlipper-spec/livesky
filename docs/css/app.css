@@ -264,20 +264,24 @@ body.no-scroll, body.menu-scroll-lock { overflow: hidden; }
   display: grid; place-items: center;
   background: transparent !important;
   box-shadow: none !important;
+  border: none !important;
   border-radius: 0 !important;
-  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  color: #ffffff;
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.3s ease;
 }
 .brand:hover .brand-logo { transform: scale(1.08) rotate(-4deg); }
-.brand-wind-img {
-  width: 38px; height: auto; max-height: 32px;
-  object-fit: contain;
-  /* Dark / adaptive / custom themes: crisp white silhouette */
-  filter: brightness(0) invert(1) drop-shadow(0 2px 8px rgba(255, 255, 255, 0.3));
-  transition: filter 0.3s ease;
+.brand-wind-svg {
+  width: 38px; height: 38px;
+  display: block;
+  color: inherit;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.28));
+  transition: color 0.3s ease, filter 0.3s ease;
 }
-[data-theme="light"] .brand-wind-img {
-  /* Light theme: deep dark slate silhouette */
-  filter: brightness(0) opacity(0.85);
+[data-theme="light"] .brand-logo {
+  color: #0f172a;
+}
+[data-theme="light"] .brand-wind-svg {
+  filter: drop-shadow(0 1px 3px rgba(15, 23, 42, 0.14));
 }
 .brand-name {
   font-family: var(--font-display); font-size: 19px; font-weight: 700;
@@ -1957,30 +1961,31 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 
 /* ---------- Rain radar overlay (fullscreen map) ---------- */
 .radar-toggle {
-  position: absolute; top: 72px; right: 18px; left: auto; bottom: auto; z-index: 1000;
+  position: absolute; left: 50%; bottom: 24px; top: auto; right: auto;
+  transform: translateX(-50%); z-index: 1000;
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 10px 16px; border-radius: 999px;
-  background: rgba(10, 24, 48, 0.78); backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: #fff; font-size: 13px; font-weight: 800;
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-  transition: transform 0.2s, background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  padding: 11px 20px; border-radius: 999px;
+  background: rgba(10, 24, 48, 0.86); backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #fff; font-size: 13.5px; font-weight: 800;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.55);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, background 0.2s, border-color 0.2s, box-shadow 0.2s;
   white-space: nowrap;
 }
-.radar-toggle i { color: #7db4f8; font-size: 16px; transition: color 0.2s; }
-.radar-toggle:hover { transform: translateY(-2px); background: rgba(14, 34, 68, 0.92); border-color: var(--stroke-accent); box-shadow: 0 12px 34px -8px rgba(0, 0, 0, 0.6); }
-.radar-toggle:active { transform: scale(0.96); }
+.radar-toggle i { color: #7db4f8; font-size: 17px; transition: color 0.2s; }
+.radar-toggle:hover { transform: translateX(-50%) translateY(-2px); background: rgba(14, 34, 68, 0.94); border-color: var(--stroke-accent); box-shadow: 0 16px 38px -8px rgba(0, 0, 0, 0.65); }
+.radar-toggle:active { transform: translateX(-50%) scale(0.96); }
 .radar-toggle.on {
-  background: linear-gradient(135deg, var(--accent, #38bdf8), var(--accent-2, #6366f1));
-  border-color: transparent;
-  box-shadow: 0 10px 28px -6px var(--glow-accent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(10px) scale(0.95);
 }
 .radar-toggle.on i { color: #fff; }
 .radar-toggle.loading i { animation: radarPulse 1s ease-in-out infinite; }
 @keyframes radarPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (max-width: 720px) {
-  .radar-toggle { top: max(68px, calc(env(safe-area-inset-top) + 52px)); right: 14px; left: auto; bottom: auto; padding: 9px 13px; font-size: 12px; }
+  .radar-toggle { left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); top: auto; right: auto; padding: 10px 18px; font-size: 12.5px; }
   .map-modal:has(.radar-panel:not(.hidden)) .maplibregl-ctrl-bottom-right {
     top: 124px; bottom: auto;
   }
@@ -2636,8 +2641,8 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .stack > * + * { margin-top: 16px; }
   .site-header { gap: 12px; margin-bottom: 18px; }
   .brand { gap: 10px; }
-  .brand-logo { width: 42px; height: 42px; border-radius: 14px; }
-  .brand-logo i { font-size: 22px; }
+  .brand-logo { width: 40px; height: 40px; border-radius: 0 !important; }
+  .brand-wind-svg { width: 34px; height: 34px; }
   .brand-name { font-size: 16px; }
   .brand-tag { font-size: 8.5px; letter-spacing: 0.22em; }
   .header-actions { margin-left: auto; }
@@ -2766,7 +2771,7 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
   .map-instr { padding: 8px 13px; }
   .map-instr span { display: none; }
   .map-close-btn { top: max(12px, env(safe-area-inset-top)); right: 14px; width: 44px; height: 44px; }
-  .radar-toggle { top: max(68px, calc(env(safe-area-inset-top) + 52px)); right: 14px; left: auto; bottom: auto; padding: 9px 13px; }
+  .radar-toggle { left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); top: auto; right: auto; padding: 10px 18px; }
   .radar-panel { bottom: calc(12px + env(safe-area-inset-bottom)); }
   .toast-wrap { bottom: calc(14px + env(safe-area-inset-bottom)); }
 
@@ -2979,11 +2984,18 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
 .pv-mini { display: flex; flex-direction: column; gap: 8px; max-width: 330px; margin: 0 auto; }
 .pv-bar { display: flex; align-items: center; gap: 7px; }
 .pv-logo {
-  width: 26px; height: 26px; border-radius: 9px; flex: none;
+  width: 28px; height: 28px; flex: none;
   display: grid; place-items: center;
-  background: var(--grad-logo, linear-gradient(135deg, #38bdf8, #6366f1));
-  color: #fff; font-size: 14px;
-  box-shadow: 0 5px 14px -6px var(--glow-accent);
+  background: transparent !important;
+  color: #ffffff;
+  box-shadow: none !important;
+}
+.pv-logo .brand-wind-svg {
+  width: 24px; height: 24px;
+}
+[data-base="light"] .pv-logo,
+[data-theme="light"] .pv-logo {
+  color: #0f172a;
 }
 .pv-search {
   flex: 1; height: 26px; border-radius: 999px;
@@ -3519,10 +3531,10 @@ input.st-hex:focus {
 .hero-icon.is-sun::before {
   content: '';
   position: absolute;
-  width: 125%;
-  height: 125%;
+  width: 130%;
+  height: 130%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(251, 191, 36, 0.45) 0%, rgba(245, 158, 11, 0.22) 45%, transparent 72%);
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.52) 0%, rgba(245, 158, 11, 0.26) 45%, transparent 72%);
   filter: blur(18px);
   pointer-events: none;
   z-index: 0;
@@ -3531,19 +3543,19 @@ input.st-hex:focus {
 .hero-icon.is-sun i {
   position: relative;
   z-index: 1;
-  background: radial-gradient(circle at 35% 35%, #ffe66d 0%, #fbbf24 35%, #f59e0b 70%, #d97706 100%);
+  background: radial-gradient(circle at 35% 35%, #fef08a 0%, #fbbf24 32%, #f59e0b 68%, #ea580c 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 6px 20px rgba(245, 158, 11, 0.5)) drop-shadow(0 1px 3px rgba(180, 83, 9, 0.4));
+  filter: drop-shadow(0 6px 22px rgba(245, 158, 11, 0.55)) drop-shadow(0 2px 4px rgba(180, 83, 9, 0.45));
 }
 [data-theme="light"] .hero-icon.is-sun::before {
-  background: radial-gradient(circle, rgba(245, 158, 11, 0.28) 0%, rgba(217, 119, 6, 0.14) 50%, transparent 70%);
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.42) 0%, rgba(234, 88, 12, 0.22) 48%, transparent 72%);
   filter: blur(14px);
 }
 [data-theme="light"] .hero-icon.is-sun i {
-  background: radial-gradient(circle at 35% 35%, #f59e0b 0%, #ea580c 55%, #c2410c 100%);
-  filter: drop-shadow(0 4px 14px rgba(234, 88, 12, 0.35)) drop-shadow(0 1px 2px rgba(154, 52, 18, 0.35));
+  background: radial-gradient(circle at 35% 35%, #f59e0b 0%, #ea580c 52%, #c2410c 100%);
+  filter: drop-shadow(0 6px 18px rgba(234, 88, 12, 0.48)) drop-shadow(0 2px 4px rgba(124, 45, 18, 0.45));
 }
 .hero-icon.is-moon::before {
   content: '';
