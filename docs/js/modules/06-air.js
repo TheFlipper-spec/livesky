@@ -46,11 +46,13 @@ function renderAir() {
   if (idx < 0) return;
   const aqi = getVal(h, 'european_aqi', idx);
   const lvl = aqiLevel(aqi);
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const mainCol = isLight ? '#000000' : lvl.color;
   const C = 263.9;
-  el.aqiRing.style.stroke = lvl.color;
+  el.aqiRing.style.stroke = mainCol;
   el.aqiRing.style.strokeDashoffset = String(C * (1 - Math.min(aqi, 120) / 120));
   el.aqiValue.textContent = Math.round(aqi);
-  el.aqiValue.style.color = lvl.color;
+  el.aqiValue.style.color = mainCol;
   el.aqiLabel.textContent = t(lvl.label);
   /* Plain words + simple level, not raw µg/m³ formulas. */
   AIR_POLLS.forEach(p => {
@@ -59,7 +61,7 @@ function renderAir() {
     const v = getVal(h, p.key, idx);
     const lv = pollLevel(v, p.good, p.bad);
     node.textContent = t(lv.key);
-    node.style.color = lv.color;
+    node.style.color = isLight ? '#000000' : lv.color;
     const label = node.previousElementSibling;
     if (label && label.tagName === 'SPAN') label.textContent = t(p.nameKey);
   });
@@ -70,11 +72,13 @@ function renderAir() {
 /* Simple 24h quality bars — one coloured pill per hour, no abstract graphs. */
 function airDayStrip(series) {
   if (!series.length) return '';
+  const isLight = document.documentElement.dataset.theme === 'light';
   const cells = series.map((s, k) => {
     const lvl = aqiLevel(s.aqi == null ? 999 : s.aqi);
     const title = `${s.time.slice(11, 16)} · ${t(lvl.label)}`;
     const isNow = k === 0;
-    return `<i class="air-hour${isNow ? ' now' : ''}" style="background:${lvl.color}" title="${escHtml(title)}"></i>`;
+    const col = isLight ? (isNow ? '#000000' : '#475569') : lvl.color;
+    return `<i class="air-hour${isNow ? ' now' : ''}" style="background:${col}" title="${escHtml(title)}"></i>`;
   }).join('');
   return `<div class="air-day-strip" role="img" aria-label="${escHtml(t('air_trend_plain'))}">${cells}</div>
     <div class="air-day-axis"><span>${t('now')}</span><span>+6h</span><span>+12h</span><span>+18h</span></div>`;
@@ -85,9 +89,11 @@ function airLevelBar(val, good, bad, color) {
   const max = Math.max(bad * 1.25, v, 1);
   const pct = Math.min(100, (v / max) * 100);
   const okPct = Math.min(100, (good / max) * 100);
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const barCol = isLight ? '#000000' : color;
   return `<div class="air-bar" aria-hidden="true">
     <i class="air-bar-ok" style="width:${okPct.toFixed(1)}%"></i>
-    <b class="air-bar-fill" style="width:${pct.toFixed(1)}%;background:${color}"></b>
+    <b class="air-bar-fill" style="width:${pct.toFixed(1)}%;background:${barCol}"></b>
   </div>`;
 }
 
@@ -118,6 +124,8 @@ function showAirDetails() {
   const nowS = series[0];
   const aqi = nowS.aqi || 0;
   const lvl = aqiLevel(aqi);
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const mainCol = isLight ? '#000000' : lvl.color;
   const healthKey = lvl.label.replace('aqi_', 'air_health_');
   const C = 263.9;
 
@@ -132,13 +140,15 @@ function showAirDetails() {
   const pollCards = AIR_POLLS.map(p => {
     const cur = nowS[p.short];
     const lv = pollLevel(cur, p.good, p.bad);
+    const pCol = isLight ? '#000000' : p.color;
+    const lvCol = isLight ? '#000000' : lv.color;
     return `
       <div class="air-poll-card anim-pop">
         <div class="ap-head">
-          <span class="ap-name" style="color:${p.color}">${t(p.nameKey)}</span>
-          <span class="ap-val" style="color:${lv.color}">${t(lv.key)}</span>
+          <span class="ap-name" style="color:${pCol}">${t(p.nameKey)}</span>
+          <span class="ap-val" style="color:${lvCol}">${t(lv.key)}</span>
         </div>
-        ${airLevelBar(cur, p.good, p.bad, p.color)}
+        ${airLevelBar(cur, p.good, p.bad, pCol)}
         <div class="ap-note">${t(p.tipKey)}</div>
       </div>`;
   }).join('');
@@ -148,9 +158,9 @@ function showAirDetails() {
       <div class="aqi-ring-box">
         <svg viewBox="0 0 100 100">
           <circle class="aqi-ring-bg" cx="50" cy="50" r="42"></circle>
-          <circle class="aqi-ring-fg" cx="50" cy="50" r="42" stroke="${lvl.color}" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.min(aqi, 120) / 120)}"></circle>
+          <circle class="aqi-ring-fg" cx="50" cy="50" r="42" stroke="${mainCol}" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.min(aqi, 120) / 120)}"></circle>
         </svg>
-        <div class="aqi-center"><b style="color:${lvl.color}">${Math.round(aqi)}</b><span>${t(lvl.label)}</span></div>
+        <div class="aqi-center"><b style="color:${mainCol}">${Math.round(aqi)}</b><span>${t(lvl.label)}</span></div>
       </div>
       <div class="air-hero-info">
         <div class="ah-title">${lvl.emoji || ''} ${t(lvl.label)}</div>
@@ -160,10 +170,10 @@ function showAirDetails() {
     </div>
 
     <div class="air-tips anim-pop">
-      <div class="air-tip"><i class="ph-fill ph-thumbs-up" style="color:#34d399"></i>
+      <div class="air-tip"><i class="ph-fill ph-thumbs-up" style="color:${isLight ? '#000000' : '#34d399'}"></i>
         <div><b>${t('air_best_hour')}</b><span>${best.time.slice(11, 16)} · ${t(aqiLevel(best.aqi || 0).label)}</span></div>
       </div>
-      <div class="air-tip"><i class="ph-fill ph-warning" style="color:#fbbf24"></i>
+      <div class="air-tip"><i class="ph-fill ph-warning" style="color:${isLight ? '#000000' : '#fbbf24'}"></i>
         <div><b>${t('air_worst_hour')}</b><span>${worst.time.slice(11, 16)} · ${t(aqiLevel(worst.aqi || 0).label)}</span></div>
       </div>
     </div>
@@ -172,9 +182,9 @@ function showAirDetails() {
       <div class="at-title"><i class="ph ph-clock-afternoon"></i>${t('air_trend_plain')}</div>
       ${airDayStrip(series)}
       <div class="air-legend">
-        <span><i style="background:#34d399"></i>${t('aqi_good')}</span>
-        <span><i style="background:#fbbf24"></i>${t('aqi_moderate')}</span>
-        <span><i style="background:#f87171"></i>${t('aqi_poor')}</span>
+        <span><i style="background:${isLight ? '#000000' : '#34d399'}"></i>${t('aqi_good')}</span>
+        <span><i style="background:${isLight ? '#475569' : '#fbbf24'}"></i>${t('aqi_moderate')}</span>
+        <span><i style="background:${isLight ? '#94a3b8' : '#f87171'}"></i>${t('aqi_poor')}</span>
       </div>
     </div>
 
@@ -186,5 +196,3 @@ function showAirDetails() {
     </div>`;
   openModal(t('air_quality'), state.locationName, body);
 }
-
-

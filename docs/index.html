@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=70" />
+  <link rel="stylesheet" href="css/app.css?v=72" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -206,10 +206,13 @@
               <section class="mm-group">
                 <div class="mm-label"><i class="ph ph-app-window"></i><span data-translate="app_icon_title">Иконка приложения</span></div>
                 <div class="app-icon-presets" id="app-icon-picker">
-                  <button type="button" class="app-icon-chip active" data-icon-color="#38bdf8" title="Небесный" style="--chip-c: #38bdf8"></button>
+                  <button type="button" class="app-icon-chip active" data-icon-color="auto" title="По умолчанию" style="--chip-c: linear-gradient(135deg, #ffffff 50%, #0f172a 50%)"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#38bdf8" title="Небесный" style="--chip-c: #38bdf8"></button>
                   <button type="button" class="app-icon-chip" data-icon-color="#f59e0b" title="Янтарный" style="--chip-c: #f59e0b"></button>
                   <button type="button" class="app-icon-chip" data-icon-color="#10b981" title="Изумрудный" style="--chip-c: #10b981"></button>
                   <button type="button" class="app-icon-chip" data-icon-color="#8b5cf6" title="Аметист" style="--chip-c: #8b5cf6"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#ec4899" title="Розовый" style="--chip-c: #ec4899"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#ef4444" title="Алый" style="--chip-c: #ef4444"></button>
                   <button type="button" class="app-icon-chip" data-icon-color="#0f172a" title="Тёмный" style="--chip-c: #0f172a"></button>
                   <button type="button" class="app-icon-chip" data-icon-color="#ffffff" title="Белый" style="--chip-c: #ffffff; border-color: rgba(0,0,0,0.2)"></button>
                   <label class="app-icon-custom-label" title="Свой цвет">
@@ -697,16 +700,16 @@
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=13"></script>
-  <script src="js/modules/02-weather-data.js?v=13"></script>
-  <script src="js/modules/03-rendering.js?v=9"></script>
-  <script src="js/modules/04-chart.js?v=10"></script>
-  <script src="js/modules/05-hourly-alerts.js?v=5"></script>
-  <script src="js/modules/06-air.js?v=6"></script>
-  <script src="js/modules/07-effects.js?v=15"></script>
-  <script src="js/modules/08-search-modals.js?v=15"></script>
-  <script src="js/modules/09-lifecycle.js?v=8"></script>
-  <script src="js/modules/10-bootstrap.js?v=15"></script>
-  <script src="js/modules/12-theme-studio.js?v=8"></script>
+  <script src="js/modules/01-core.js?v=14"></script>
+  <script src="js/modules/02-weather-data.js?v=14"></script>
+  <script src="js/modules/03-rendering.js?v=11"></script>
+  <script src="js/modules/04-chart.js?v=12"></script>
+  <script src="js/modules/05-hourly-alerts.js?v=6"></script>
+  <script src="js/modules/06-air.js?v=8"></script>
+  <script src="js/modules/07-effects.js?v=17"></script>
+  <script src="js/modules/08-search-modals.js?v=17"></script>
+  <script src="js/modules/09-lifecycle.js?v=9"></script>
+  <script src="js/modules/10-bootstrap.js?v=17"></script>
+  <script src="js/modules/12-theme-studio.js?v=9"></script>
 </body>
 </html>

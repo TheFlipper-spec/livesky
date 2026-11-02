@@ -202,8 +202,14 @@ function renderChart() {
   const hatchStroke = Math.max(0.35, 1.6 / sx); /* ~1.6px on screen */
 
   let rainDefs = '';
+  const isLight = document.documentElement.dataset.theme === 'light';
   /* One shared hatch pattern per kind (aspect-corrected). */
-  const hatchKinds = {
+  const hatchKinds = isLight ? {
+    rain: 'rgba(15, 23, 42, 0.55)',
+    heavy: 'rgba(0, 0, 0, 0.72)',
+    storm: 'rgba(0, 0, 0, 0.75)',
+    snow: 'rgba(51, 65, 85, 0.55)'
+  } : {
     rain: 'rgba(56,189,248,0.62)',
     heavy: 'rgba(37,99,235,0.72)',
     storm: 'rgba(167,139,250,0.72)',
@@ -211,7 +217,8 @@ function renderChart() {
   };
   Object.keys(hatchKinds).forEach((kind) => {
     const stroke = hatchKinds[kind];
-    const tint = kind === 'snow' ? 'rgba(125,211,252,0.16)'
+    const tint = isLight ? 'rgba(15, 23, 42, 0.08)'
+      : kind === 'snow' ? 'rgba(125,211,252,0.16)'
       : kind === 'storm' ? 'rgba(167,139,250,0.18)'
       : kind === 'heavy' ? 'rgba(37,99,235,0.16)'
       : 'rgba(56,189,248,0.14)';
@@ -236,7 +243,7 @@ function renderChart() {
     if (ph <= 0.4) continue;
     const bw = (100 / hours) * 0.48;
     const wet = hourIsWet(codes[k], precs[k]);
-    const col = SNOW_CODES.includes(codes[k]) ? '#7dd3fc' : '#60a5fa';
+    const col = isLight ? '#0f172a' : (SNOW_CODES.includes(codes[k]) ? '#7dd3fc' : '#60a5fa');
     bars += `<rect x="${(X(k) - bw / 2).toFixed(2)}" y="${(100 - ph).toFixed(2)}" width="${bw.toFixed(2)}" height="${ph.toFixed(2)}" rx="1.5" fill="${col}" opacity="${wet ? 0.65 : 0.4}"/>`;
   }
 

@@ -6,7 +6,7 @@
    ============================================================ */
 /* ---------- weather theme / background / effects ---------- */
 const ACCENTS = {
-  clear:  { day: ['#38bdf8', '#f59e0b'], night: ['#a5b4fc', '#818cf8'] },
+  clear:  { day: ['#38bdf8', '#0284c7'], night: ['#a5b4fc', '#818cf8'] },
   cloudy: { day: ['#94a3b8', '#38bdf8'], night: ['#818cf8', '#6366f1'] },
   rain:   { day: ['#38bdf8', '#60a5fa'], night: ['#6366f1', '#818cf8'] },
   snow:   { day: ['#7dd3fc', '#60a5fa'], night: ['#93c5fd', '#818cf8'] },
@@ -51,6 +51,27 @@ function setBackground(gradient, key) {
   next.classList.add('active');
 }
 
+function syncAccentDerivedVars(root, hex, mode) {
+  if (mode === 'light') {
+    root.style.setProperty('--glow-accent', 'rgba(0, 0, 0, 0.14)');
+    root.style.setProperty('--accent-soft', 'rgba(0, 0, 0, 0.08)');
+    root.style.setProperty('--stroke-accent', '#000000');
+    root.style.setProperty('--accent-contrast', '#ffffff');
+    return;
+  }
+  try {
+    const clean = (hex || '#38bdf8').replace('#', '');
+    const r = parseInt(clean.slice(0, 2), 16) || 56;
+    const g = parseInt(clean.slice(2, 4), 16) || 189;
+    const b = parseInt(clean.slice(4, 6), 16) || 248;
+    root.style.setProperty('--glow-accent', `rgba(${r}, ${g}, ${b}, 0.38)`);
+    root.style.setProperty('--accent-soft', `rgba(${r}, ${g}, ${b}, 0.14)`);
+    root.style.setProperty('--stroke-accent', `rgba(${r}, ${g}, ${b}, 0.42)`);
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    root.style.setProperty('--accent-contrast', lum > 0.52 ? '#04101f' : '#ffffff');
+  } catch (e) {}
+}
+
 function applyWeatherTheme() {
   const root = document.documentElement;
   const code = currentWeatherCode();
@@ -69,6 +90,7 @@ function applyWeatherTheme() {
     setBackground('linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', 'light');
     root.style.setProperty('--accent', '#000000');
     root.style.setProperty('--accent-2', '#334155');
+    syncAccentDerivedVars(root, '#000000', 'light');
     ['--blob-1', '--blob-2', '--blob-3'].forEach((v) => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
     state.accent = '#000000'; state.accent2 = '#334155';
@@ -77,6 +99,7 @@ function applyWeatherTheme() {
     setBackground('linear-gradient(180deg, #070b16 0%, #04060d 100%)', 'dark');
     root.style.setProperty('--accent', '#38bdf8');
     root.style.setProperty('--accent-2', '#818cf8');
+    syncAccentDerivedVars(root, '#38bdf8', 'dark');
     ['--blob-1', '--blob-2', '--blob-3'].forEach(v => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
     state.accent = '#38bdf8'; state.accent2 = '#818cf8';
@@ -88,6 +111,7 @@ function applyWeatherTheme() {
     if (!customFixedAccents) {
       root.style.setProperty('--accent', a1);
       root.style.setProperty('--accent-2', a2);
+      syncAccentDerivedVars(root, a1, 'adaptive');
       state.accent = a1; state.accent2 = a2;
       const blobs = (BLOBS[type] || BLOBS.cloudy)[time];
       root.style.setProperty('--blob-1', blobs[0]);
@@ -301,6 +325,7 @@ function updateDuskBlend() {
     const a2 = duskMixHex(di.dayAcc[1], di.nightAcc[1], f);
     root.style.setProperty('--accent', a1);
     root.style.setProperty('--accent-2', a2);
+    syncAccentDerivedVars(root, a1, 'adaptive');
     for (let i = 0; i < 3; i++) root.style.setProperty('--blob-' + (i + 1), duskMixRgba(di.dayBlobs[i], di.nightBlobs[i], f));
     const side = f < 0.5 ? 'day' : 'night';
     if (side !== duskLogoSide) { duskLogoSide = side; root.style.setProperty('--grad-logo', side === 'day' ? di.dayLogo : di.nightLogo); }
@@ -311,6 +336,7 @@ function updateDuskBlend() {
     const acc = night ? di.nightAcc : di.dayAcc;
     root.style.setProperty('--accent', acc[0]);
     root.style.setProperty('--accent-2', acc[1]);
+    syncAccentDerivedVars(root, acc[0], 'adaptive');
     const blobs = night ? di.nightBlobs : di.dayBlobs;
     for (let i = 0; i < 3; i++) root.style.setProperty('--blob-' + (i + 1), blobs[i]);
     duskLogoSide = night ? 'night' : 'day';

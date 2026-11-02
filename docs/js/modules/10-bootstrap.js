@@ -286,18 +286,42 @@ function registerServiceWorker() {
     navigator.serviceWorker.register('sw.js').catch(() => { /* non-critical */ });
   });
 }
+function isStandalonePwa() {
+  try {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      window.navigator.standalone === true;
+  } catch (e) { return false; }
+}
 function updateInstallItem() {
-  if (el.installItem) el.installItem.classList.toggle('hidden', !deferredInstallPrompt);
+  if (!el.installItem) return;
+  if (isNativeApp() || isStandalonePwa()) {
+    el.installItem.classList.add('hidden');
+  } else {
+    el.installItem.classList.remove('hidden');
+  }
 }
 function promptInstall() {
-  if (!deferredInstallPrompt) return;
-  const p = deferredInstallPrompt;
-  p.prompt();
-  p.userChoice && p.userChoice.then(() => { deferredInstallPrompt = null; updateInstallItem(); });
+  if (deferredInstallPrompt) {
+    const p = deferredInstallPrompt;
+    try { p.prompt(); } catch (e) {}
+    if (p.userChoice) {
+      p.userChoice.then(() => { deferredInstallPrompt = null; updateInstallItem(); }).catch(() => {});
+    }
+    return;
+  }
+  /* Fallback when Chrome has not yet fired beforeinstallprompt (e.g. right after uninstall or on iOS) */
+  if (typeof toast === 'function') {
+    const msg = state.lang === 'en'
+      ? 'Use the browser menu (⋮) → "Install app" or the install icon in the address bar'
+      : state.lang === 'es'
+      ? 'Usa el menú del navegador (⋮) → "Instalar aplicación"'
+      : 'Нажмите на значок установки в адресной строке или меню браузера (⋮) → «Установить приложение»';
+    toast(msg, 'info');
+  }
 }
 function initInstallPrompt() {
   window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
+    /* Keep Chrome's native install banner/icon active while saving the event for #install-item */
     deferredInstallPrompt = e;
     updateInstallItem();
   });
@@ -305,12 +329,7 @@ function initInstallPrompt() {
     deferredInstallPrompt = null;
     updateInstallItem();
   });
-  /* Show install button even without beforeinstallprompt as a hint */
-  if (!deferredInstallPrompt && !isNativeApp()) {
-    setTimeout(() => {
-      if (el.installItem) el.installItem.classList.remove('hidden');
-    }, 3000);
-  }
+  updateInstallItem();
 }
 
 /* ---------------- Offline / online banner --------------- */
@@ -855,7 +874,7 @@ function init() {
   syncEffectsSelect();
   updateFavIcon();
   if (typeof setAppIconColor === 'function') {
-    setAppIconColor(store.get('livesky:app_icon_color', '#38bdf8'), false);
+    setAppIconColor(store.get('livesky:icon_color_v2', 'auto'), false);
   }
   updateNotifItem();
   startClock();

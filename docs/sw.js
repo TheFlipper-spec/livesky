@@ -3,9 +3,10 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-clouds-v32';
+const VERSION = 'livesky-v1.4-clouds-v35';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
+const CUSTOM_ICON_CACHE = 'livesky-custom-icons-v1';
 
 /* index.html loads the shell with cache-buster query strings (?v=25, ?v=21…).
    We store every same-origin asset under a query-free key so all versions of a
@@ -160,7 +161,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => !k.startsWith(VERSION)).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => !k.startsWith(VERSION) && k !== CUSTOM_ICON_CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -202,10 +203,30 @@ self.addEventListener('fetch', (event) => {
   }
 
   /* Same-origin app requests (navigation + static). Network-first; on failure
-     fall back to the query-stripped cache key. */
+     fall back to the query-stripped cache key. Custom PWA icons are served
+     from CUSTOM_ICON_CACHE first when present. */
   if (url.origin === self.location.origin) {
     const reqMode = req.mode;
     const cacheKey = (url.search || url.hash) ? trimCacheUrl(url) : url.href;
+    if (/\/icons\/icon-\d+\.png$|\/favicon\.ico$/.test(url.pathname)) {
+      event.respondWith(
+        caches.open(CUSTOM_ICON_CACHE)
+          .then((c) => c.match(cacheKey))
+          .then((customHit) => {
+            if (customHit) return customHit;
+            return fetch(req)
+              .then((res) => {
+                if (res && res.ok) {
+                  const clone = res.clone();
+                  caches.open(SHELL_CACHE).then((cache) => cache.put(cacheKey, clone));
+                }
+                return res;
+              })
+              .catch(() => caches.match(cacheKey).then((hit) => hit || Response.error()));
+          })
+      );
+      return;
+    }
     event.respondWith(
       fetch(req)
         .then((res) => {

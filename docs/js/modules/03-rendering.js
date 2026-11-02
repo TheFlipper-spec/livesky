@@ -223,14 +223,20 @@ function renderSunArc() {
   const nowMin = now.hour * 60 + now.minute;
   const p = (nowMin - srMin) / (dayLen || 1);
   const isDay = p >= 0 && p <= 1;
+  const isLight = document.documentElement.dataset.theme === 'light';
+  const sunStop1 = isLight ? '#000000' : '#fde68a';
+  const sunStop2 = isLight ? '#334155' : '#fb923c';
+  const arcStop1 = isLight ? '#000000' : '#fb923c';
+  const arcStop2 = isLight ? '#64748b' : '#818cf8';
+  const starCol = isLight ? '#334155' : '#e2e8f0';
 
   let svg = `
     <defs>
       <linearGradient id="sunGrad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#fde68a"/><stop offset="100%" stop-color="#fb923c"/>
+        <stop offset="0%" stop-color="${sunStop1}"/><stop offset="100%" stop-color="${sunStop2}"/>
       </linearGradient>
       <linearGradient id="arcGrad" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stop-color="#fb923c"/><stop offset="100%" stop-color="#818cf8"/>
+        <stop offset="0%" stop-color="${arcStop1}"/><stop offset="100%" stop-color="${arcStop2}"/>
       </linearGradient>
       <mask id="moonMask"><rect width="220" height="118" fill="#fff"/><circle cx="117" cy="30" r="9.5" fill="#000"/></mask>
     </defs>
@@ -247,12 +253,12 @@ function renderSunArc() {
     const c2 = [c1[0] + (mid[0] - c1[0]) * p, c1[1] + (mid[1] - c1[1]) * p];
     svg += `<path d="M ${SUN_P0[0]} ${SUN_P0[1]} C ${c1[0].toFixed(1)} ${c1[1].toFixed(1)}, ${c2[0].toFixed(1)} ${c2[1].toFixed(1)}, ${sun[0].toFixed(1)} ${sun[1].toFixed(1)}"
       fill="none" stroke="url(#arcGrad)" stroke-width="3.5" stroke-linecap="round"/>`;
-    svg += `<circle cx="${sun[0].toFixed(1)}" cy="${sun[1].toFixed(1)}" r="15" fill="#fb923c" opacity="0.18"/>`;
+    svg += `<circle cx="${sun[0].toFixed(1)}" cy="${sun[1].toFixed(1)}" r="15" fill="${sunStop2}" opacity="${isLight ? '0.12' : '0.18'}"/>`;
     svg += `<circle cx="${sun[0].toFixed(1)}" cy="${sun[1].toFixed(1)}" r="8" fill="url(#sunGrad)" stroke="#fff" stroke-width="1.6"/>`;
   } else {
     /* night: moon on the arc */
     svg += `<circle class="moon-body" cx="106" cy="32" r="12" mask="url(#moonMask)" opacity="0.95"/>`;
-    svg += `<circle cx="70" cy="12" r="1.3" fill="#e2e8f0" opacity="0.8"/><circle cx="150" cy="8" r="1" fill="#e2e8f0" opacity="0.6"/><circle cx="178" cy="20" r="1.4" fill="#e2e8f0" opacity="0.7"/>`;
+    svg += `<circle cx="70" cy="12" r="1.3" fill="${starCol}" opacity="0.8"/><circle cx="150" cy="8" r="1" fill="${starCol}" opacity="0.6"/><circle cx="178" cy="20" r="1.4" fill="${starCol}" opacity="0.7"/>`;
     /* The countdown goes into the big number, the short caption stays short:
        stuffing "5ч 12м до восхода" into the 9.5px label wrapped it over 3 lines
        and broke the sun-times row every night. */

@@ -849,6 +849,14 @@ function applyTheme() {
   }
   updateThemeLabel();
   applyWeatherTheme();
+  if (state.weather) {
+    try { if (typeof renderSunArc === 'function') renderSunArc(); } catch (e) {}
+    try { if (typeof renderChart === 'function') renderChart(); } catch (e) {}
+    try { if (typeof renderAir === 'function') renderAir(); } catch (e) {}
+  }
+  if (typeof state.appIconColor === 'string' && typeof setAppIconColor === 'function') {
+    setAppIconColor(state.appIconColor, false);
+  }
   if (window.LiveSkyMap) LiveSkyMap.refreshTiles();
   syncMenuChecks();
   store.set('livesky:theme', state.theme);
@@ -991,16 +999,66 @@ function updateFsIcon() {
   el.fsIcon.classList.toggle('ph-corners-in', isFullscreen);
 }
 
-/* ---------------- Dynamic App Icon ---------------- */
-function renderAppIconCanvas(color, size) {
+/* ---------------- Dynamic App Icon (uses real icons/LiveSky_icon.png) ---------------- */
+let _liveSkyIconImg = null;
+let _liveSkyIconWaiters = [];
+function loadLiveSkyIconImg() {
+  if (_liveSkyIconImg && _liveSkyIconImg.complete && _liveSkyIconImg.naturalWidth > 0) {
+    return Promise.resolve(_liveSkyIconImg);
+  }
+  return new Promise((resolve) => {
+    _liveSkyIconWaiters.push(resolve);
+    if (_liveSkyIconWaiters.length > 1) return;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      _liveSkyIconImg = img;
+      const list = _liveSkyIconWaiters.slice();
+      _liveSkyIconWaiters = [];
+      list.forEach(fn => fn(img));
+    };
+    img.onerror = () => {
+      const list = _liveSkyIconWaiters.slice();
+      _liveSkyIconWaiters = [];
+      list.forEach(fn => fn(null));
+    };
+    img.src = 'icons/LiveSky_icon.png?v=3';
+  });
+}
+
+function createTintedSilhouetteUrl(img, color) {
+  if (!img || !img.naturalWidth) return null;
+  const c = document.createElement('canvas');
+  c.width = img.naturalWidth;
+  c.height = img.naturalHeight;
+  const ctx = c.getContext ? c.getContext('2d') : null;
+  if (!ctx) return null;
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, 0, 0);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, c.width, c.height);
+  try { return c.toDataURL('image/png'); } catch (e) { return null; }
+}
+
+function renderAppIconCanvas(color, size, img) {
+  if (!img || !img.naturalWidth) return null;
   const c = document.createElement('canvas');
   c.width = size; c.height = size;
   const ctx = c.getContext ? c.getContext('2d') : null;
   if (!ctx) return null;
 
-  // Squircle rounded background
-  const r = size * 0.23;
-  ctx.fillStyle = color;
+  let isDarkStroke = false;
+  try {
+    const hex = color.replace('#', '');
+    const num = parseInt(hex.length === 3 ? hex.split('').map(x => x + x).join('') : hex, 16);
+    const red = (num >> 16) & 255, green = (num >> 8) & 255, blue = num & 255;
+    isDarkStroke = (red * 299 + green * 587 + blue * 114) / 1000 < 48;
+  } catch (e) {}
+
+  /* Rounded squircle badge so PWA home-screen & desktop icons look crisp on any OS wallpaper */
+  const r = size * 0.22;
+  ctx.fillStyle = isDarkStroke ? '#f8fafc' : '#0b1326';
   ctx.beginPath();
   ctx.moveTo(r, 0);
   ctx.lineTo(size - r, 0);
@@ -1014,102 +1072,111 @@ function renderAppIconCanvas(color, size) {
   ctx.closePath();
   ctx.fill();
 
-  // Determine silhouette stroke color based on background brightness
-  let isLightBg = false;
-  try {
-    const hex = color.replace('#', '');
-    const num = parseInt(hex.length === 3 ? hex.split('').map(x=>x+x).join('') : hex, 16);
-    const red = (num >> 16) & 255, green = (num >> 8) & 255, blue = num & 255;
-    isLightBg = (red * 299 + green * 587 + blue * 114) / 1000 > 175;
-  } catch (e) {}
-
-  const strokeColor = isLightBg ? '#0f172a' : '#ffffff';
-  ctx.strokeStyle = strokeColor;
-  ctx.lineWidth = size * 0.082;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  // 3 wind lines matching LiveSky silhouette
-  ctx.beginPath();
-  ctx.moveTo(size * 0.22, size * 0.38);
-  ctx.lineTo(size * 0.58, size * 0.38);
-  ctx.arc(size * 0.58, size * 0.27, size * 0.11, Math.PI * 0.5, -Math.PI * 0.5, true);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(size * 0.15, size * 0.52);
-  ctx.lineTo(size * 0.73, size * 0.52);
-  ctx.arc(size * 0.73, size * 0.41, size * 0.11, Math.PI * 0.5, -Math.PI * 0.5, true);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.moveTo(size * 0.25, size * 0.66);
-  ctx.lineTo(size * 0.55, size * 0.66);
-  ctx.arc(size * 0.55, size * 0.77, size * 0.11, -Math.PI * 0.5, Math.PI * 0.5, false);
-  ctx.stroke();
-
+  /* Draw the user's real LiveSky_icon.png tinted in `color` centered at 76% width */
+  const off = document.createElement('canvas');
+  off.width = img.naturalWidth;
+  off.height = img.naturalHeight;
+  const octx = off.getContext('2d');
+  if (octx) {
+    octx.drawImage(img, 0, 0);
+    octx.globalCompositeOperation = 'source-in';
+    octx.fillStyle = color;
+    octx.fillRect(0, 0, off.width, off.height);
+    const targetW = size * 0.76;
+    const aspect = img.naturalHeight / img.naturalWidth;
+    const targetH = targetW * aspect;
+    const dx = (size - targetW) / 2;
+    const dy = (size - targetH) / 2;
+    ctx.drawImage(off, dx, dy, targetW, targetH);
+  }
   return c;
 }
 
+function updateCachedPwaIcons(color, img) {
+  if (typeof caches === 'undefined' || !caches.open) return;
+  if (!color || color === 'auto') {
+    caches.delete('livesky-custom-icons-v1').catch(() => {});
+    return;
+  }
+  if (!img) return;
+  const sizes = [32, 64, 96, 128, 180, 192, 512];
+  caches.open('livesky-custom-icons-v1').then(cache => {
+    sizes.forEach(sz => {
+      const c = renderAppIconCanvas(color, sz, img);
+      if (!c || typeof c.toBlob !== 'function') return;
+      c.toBlob(blob => {
+        if (!blob) return;
+        const headers = { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' };
+        const url = new URL(`icons/icon-${sz}.png`, location.href).href;
+        cache.put(url, new Response(blob, { headers })).catch(() => {});
+        if (sz === 32) {
+          const favUrl = new URL('favicon.ico', location.href).href;
+          cache.put(favUrl, new Response(blob, { headers })).catch(() => {});
+        }
+      }, 'image/png');
+    });
+  }).catch(() => {});
+}
+
 function setAppIconColor(color, persist = true) {
-  if (!color) color = '#38bdf8';
+  if (!color) color = 'auto';
   if (persist) {
-    try { store.set('livesky:app_icon_color', color); } catch (e) {}
+    try { store.set('livesky:icon_color_v2', color); } catch (e) {}
   }
   state.appIconColor = color;
+  syncAppIconUI(color);
 
   if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('jsdom')) {
-    syncAppIconUI(color);
     return;
   }
 
-  try {
-    const c32 = renderAppIconCanvas(color, 32);
-    const c192 = renderAppIconCanvas(color, 192);
-    if (c32 && c192) {
-      let url32 = null, url192 = null;
-      try {
-        url32 = c32.toDataURL('image/png');
-        url192 = c192.toDataURL('image/png');
-      } catch (err) {
-        /* Headless environments without node-canvas implementation */
-      }
+  const isLightTheme = document.documentElement.dataset.theme === 'light';
+  const brandImgs = document.querySelectorAll('.brand-wind-img, .pv-wind-img');
 
-      if (url32 && url192) {
+  if (color === 'auto' || isLightTheme) {
+    brandImgs.forEach(node => {
+      node.classList.remove('custom-tinted');
+      if (node.getAttribute('src') !== 'icons/LiveSky_icon.png') {
+        node.setAttribute('src', 'icons/LiveSky_icon.png');
+      }
+    });
+    if (color === 'auto') {
+      updateCachedPwaIcons('auto', null);
+      return;
+    }
+  }
+
+  loadLiveSkyIconImg().then(img => {
+    if (!img) return;
+    const nowLight = document.documentElement.dataset.theme === 'light';
+    const activeColor = state.appIconColor || 'auto';
+    if (activeColor === 'auto') return;
+
+    const tintedSilhouette = createTintedSilhouetteUrl(img, activeColor);
+    if (tintedSilhouette && !nowLight) {
+      document.querySelectorAll('.brand-wind-img, .pv-wind-img').forEach(node => {
+        node.src = tintedSilhouette;
+        node.classList.add('custom-tinted');
+      });
+    }
+
+    const c32 = renderAppIconCanvas(activeColor, 32, img);
+    const c192 = renderAppIconCanvas(activeColor, 192, img);
+    if (c32 && c192) {
+      try {
+        const url32 = c32.toDataURL('image/png');
+        const url192 = c192.toDataURL('image/png');
         document.querySelectorAll('link[rel*="icon"]').forEach(l => {
           const sz = l.getAttribute('sizes');
-          l.href = (sz === '192x192' || sz === '180x180') ? url192 : url32;
+          l.href = (sz === '192x192' || sz === '180x180') ? url192 : (tintedSilhouette || url32);
         });
         document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(l => {
           l.href = url192;
         });
-
-        const manifestLink = document.querySelector('link[rel="manifest"]');
-        if (manifestLink && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
-          const manifestObj = {
-            name: 'LiveSky — Weather Pro',
-            short_name: 'LiveSky',
-            start_url: './index.html',
-            scope: './',
-            display: 'standalone',
-            orientation: 'any',
-            background_color: '#05070f',
-            theme_color: color,
-            icons: [
-              { src: url192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-              { src: url192, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
-            ]
-          };
-          const blob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
-          manifestLink.href = URL.createObjectURL(blob);
-        }
-      }
+      } catch (e) {}
     }
-  } catch (e) {
-    /* safely ignore on environments without canvas/toDataURL */
-  }
-
-  syncAppIconUI(color);
+    updateCachedPwaIcons(activeColor, img);
+  });
 }
 
 function syncAppIconUI(color) {

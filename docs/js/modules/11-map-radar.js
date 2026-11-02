@@ -71,11 +71,11 @@ function applyThemeToMap(map) {
         roadColor = typeof studioRgba === 'function' ? studioRgba(th.text1 || '#ffffff', isLight ? 0.45 : 0.18) : roadColor;
       }
     } else if (isLight) {
-      landColor = '#eef4fb';
-      waterColor = '#cfe4f7';
-      parkColor = '#e2eff8';
-      bldgColor = '#dde8f3';
-      roadColor = 'rgba(255, 255, 255, 0.85)';
+      landColor = '#f8fafc';
+      waterColor = '#cbd5e1';
+      parkColor = '#e2e8f0';
+      bldgColor = '#e2e8f0';
+      roadColor = 'rgba(255, 255, 255, 0.92)';
     } else if (isDay) {
       const dayPalettes = {
         clear:  { land: '#154472', water: '#1e5b94', park: '#184d7f', bldg: '#1b5287', road: 'rgba(186, 230, 253, 0.24)' },
