@@ -3,9 +3,9 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-alpha-v36';
+const VERSION = 'livesky-v1.4-alpha-v37';
 const SHELL_CACHE = `${VERSION}-shell`;
-const FORECAST_CACHE = `${VERSION}-forecast`;
+const FORECAST_CACHE = 'livesky-forecast-cache-v1';
 const CUSTOM_ICON_CACHE = 'livesky-custom-icons-v1';
 
 /* index.html loads the shell with cache-buster query strings (?v=25, ?v=21…).
@@ -129,16 +129,34 @@ const SHELL_ASSETS = [
   './assets/img/rain-glass-day-sm.webp',
   './assets/img/rain-glass-day-lg.webp',
   './assets/img/rain-glass-night-sm.webp',
-  './assets/img/rain-glass-night-lg.webp'
+  './assets/img/rain-glass-night-lg.webp',
+  './data/snapshot.json',
+  './data/snapshot/moskva.json',
+  './data/snapshot/sankt-peterburg.json',
+  './data/snapshot/kazan.json'
 ];
 
-/* Open-Meteo hosts whose responses we mirror into the forecast cache
+/* Weather hosts whose responses we mirror into the forecast cache
    so the last loaded forecast stays available offline. */
 function isDataApi(url) {
-  return /(api|air-quality-api|geocoding-api|historical-forecast-api)\.open-meteo\.com/.test(url.host + url.pathname);
+  return /(api|air-quality-api|geocoding-api|historical-forecast-api|seasonal-api|ensemble-api)\.open-meteo\.com|api\.met\.no/.test(url.host + url.pathname);
 }
 function isForecastApi(url) {
-  return /(api|air-quality-api|historical-forecast-api)\.open-meteo\.com/.test(url.host + url.pathname);
+  return /(api|air-quality-api|historical-forecast-api|seasonal-api|ensemble-api)\.open-meteo\.com|api\.met\.no/.test(url.host + url.pathname);
+}
+async function matchForecastCache(req, url) {
+  const direct = await caches.match(req);
+  if (direct) return direct;
+  try {
+    const cache = await caches.open(FORECAST_CACHE);
+    const keys = await cache.keys();
+    const targetPath = url.pathname + url.search;
+    for (const k of keys) {
+      const ku = new URL(k.url);
+      if (ku.pathname + ku.search === targetPath) return cache.match(k);
+    }
+  } catch (e) { /* ignore */ }
+  return null;
 }
 
 self.addEventListener('install', (event) => {
@@ -161,7 +179,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => !k.startsWith(VERSION) && k !== CUSTOM_ICON_CACHE).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => !k.startsWith(VERSION) && k !== CUSTOM_ICON_CACHE && k !== FORECAST_CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -175,12 +193,10 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  /* Data APIs (Open-Meteo): network first, then the last good response for the
-     very same request. A JSON request must NEVER fall back to the HTML shell —
-     returning index.html here made the page parse markup as weather data and
-     report "bad payload", hiding the fact that it had perfectly good cached
-     numbers on disk. When nothing is cached, answer with an explicit 503 so
-     the app's own retry/failover logic takes over. */
+  /* Data APIs (Open-Meteo / MET Norway): network first, then the last good
+     response for the same path+query across mirrors. A JSON request must NEVER
+     fall back to the HTML shell — when nothing is cached, answer with an
+     explicit 503 so the app's own retry/failover logic takes over. */
   if (isDataApi(url)) {
     event.respondWith(
       fetch(req)
@@ -193,7 +209,7 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() =>
-          caches.match(req).then((hit) => hit || new Response(
+          matchForecastCache(req, url).then((hit) => hit || new Response(
             JSON.stringify({ error: 'offline', offline: true }),
             { status: 503, headers: { 'Content-Type': 'application/json' } }
           ))

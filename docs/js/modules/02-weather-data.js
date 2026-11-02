@@ -71,6 +71,16 @@ function rememberHost(group, host) {
     if (changed && /^https?:/.test(host)) console.info(`[LiveSky] источник «${group}»: ${host}`);
   } catch (e) { /* private mode — the memory is a nicety, not a requirement */ }
 }
+function forgetHost(group, host) {
+  if (!group) return;
+  try {
+    const mem = hostMemory();
+    if (mem[group] && (!host || mem[group].host === host)) {
+      delete mem[group];
+      store.set('livesky:hosts', mem);
+    }
+  } catch (e) { /* ignore */ }
+}
 function orderedHosts(hosts, group) {
   const list = (hosts && hosts.length) ? hosts.slice() : [''];
   if (!group || list.length < 2) return list;
@@ -83,6 +93,7 @@ function orderedHosts(hosts, group) {
 
 /* fetch that can never hang forever */
 async function fetchWithTimeout(url, ms) {
+  if (typeof fetch !== 'function') throw new Error('fetch unavailable');
   const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), ms || FETCH_MS) : null;
   try {
@@ -103,46 +114,65 @@ const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
    provider's rate limit, so it fails fast and the caller can report honestly. */
 /* While the app does not yet know which host works, a censored host is the
    expensive one: it does not refuse, it hangs, so a sequential walk would sit
-   in the timeout of every blocked host before reaching a working one. In that
-   case all hosts are asked at once and the first answer wins; once a host has
-   been remembered, requests go to it directly. */
+   in the timeout of every blocked host before reaching a working one.
+   We use Happy Eyeballs (RFC 8305) staggered racing: start the primary host
+   immediately and stagger secondary hosts by ~350ms (or immediately on primary
+   error) so healthy networks don't fire duplicate heavy queries that trigger
+   429 rate-limits, while blocked primary hosts still fail over in ~350ms. */
 function raceHosts(list, path, ms, group) {
   return new Promise((resolve, reject) => {
     let pending = list.length;
     let settled = false;
+    let nextIdx = 0;
+    const timers = [];
+    const clearTimers = () => { while (timers.length) clearTimeout(timers.pop()); };
     const fail = (err) => {
       if (settled) return;
       settled = true;
+      clearTimers();
       reject(err);
     };
-    list.forEach((host) => {
+    const launchNext = () => {
+      if (settled || nextIdx >= list.length) return;
+      const host = list[nextIdx++];
       fetchWithTimeout(host + path, ms).then((res) => {
         if (settled) return;
         if (res && res.ok) {
           settled = true;
+          clearTimers();
           rememberHost(group, host);
           resolve(res);
           return;
         }
-        /* A host may answer 4xx (different path support) while another host
-           serves the same request fine, so in a race every failure — 4xx
-           included — counts as "this host is out", never as "stop racing". */
+        /* Kick off the next candidate immediately if this host failed before its hedge timer */
+        launchNext();
         const err = new Error('API ' + (res ? res.status : '?'));
         if (--pending === 0) fail(err);
       }).catch((e) => {
         if (settled) return;
+        launchNext();
         if (--pending === 0) fail(e);
       });
-    });
+    };
+    const hedgeMs = window.LIVE_HEDGE_MS != null ? window.LIVE_HEDGE_MS : (RETRY_MS < 100 ? 15 : 350);
+    launchNext();
+    for (let i = 1; i < list.length; i++) {
+      timers.push(setTimeout(launchNext, i * hedgeMs));
+    }
   });
 }
 
 async function fetchResilient(hosts, path, ms, group) {
+  const remembered = lastHost(group);
   const list = orderedHosts(hosts, group);
-  if (group && list.length > 1 && !lastHost(group)) return raceHosts(list, path, ms, group);
+  if (group && list.length > 1 && !remembered) return raceHosts(list, path, ms, group);
   let lastErr = null;
   for (const host of list) {
-    for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    const isRemembered = remembered && host === remembered;
+    /* If a remembered host starts failing (e.g. 429 rate-limit or ISP drop),
+       evict it immediately and move to the sibling host after 1 attempt. */
+    const maxAttempts = (isRemembered && list.length > 1) ? 1 : RETRY_ATTEMPTS;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const res = await fetchWithTimeout(host + path, ms);
         if (res && res.ok) { rememberHost(group, host); return res; }
@@ -150,13 +180,78 @@ async function fetchResilient(hosts, path, ms, group) {
       } catch (e) {
         lastErr = e;
       }
+      if (isRemembered) forgetHost(group, host);
       const msg = String((lastErr && lastErr.message) || '');
       if (/API 4\d\d/.test(msg) && !/API 429/.test(msg)) throw lastErr; /* bad request — retry is pointless */
-      const lastTry = host === list[list.length - 1] && attempt === RETRY_ATTEMPTS;
+      const lastTry = host === list[list.length - 1] && attempt === maxAttempts;
       if (!lastTry) await sleepMs(RETRY_MS * attempt + Math.floor(Math.random() * 250));
     }
   }
   throw lastErr || new Error('network unavailable');
+}
+
+/* ---------------- persistent local forecast cache ----------------
+   Saves the last successful weather + air quality payload for up to 5 recent
+   cities in localStorage (`livesky:weather_cache_v1`). When the user reloads
+   or opens the app during an ISP block, captive portal, or provider rate-limit,
+   their exact city's cached forecast is available immediately even if the city
+   is not in the static docs/data/snapshot.json bundle. */
+const LOCAL_CACHE_KEY = 'livesky:weather_cache_v1';
+function saveLocalWeatherCache(forecast, air) {
+  if (!forecast || !forecast.hourly || !forecast.daily || !Array.isArray(forecast.hourly.time)) return;
+  try {
+    const bag = store.get(LOCAL_CACHE_KEY, { entries: [] });
+    const entries = Array.isArray(bag && bag.entries) ? bag.entries : [];
+    const h = forecast.hourly;
+    const startH = Math.max(0, (state.nowIdx || 0) - 24);
+    const endH = Math.min(h.time.length, (state.nowIdx || 0) + 168);
+    const trimmedHourly = {};
+    for (const k of Object.keys(h)) {
+      if (Array.isArray(h[k])) trimmedHourly[k] = h[k].slice(startH, endH);
+    }
+    const compactForecast = {
+      timezone: forecast.timezone || state.tz,
+      elevation: forecast.elevation,
+      hourly: trimmedHourly,
+      daily: forecast.daily
+    };
+    const item = {
+      name: state.locationName || 'Москва',
+      lat: state.lat,
+      lon: state.lon,
+      cc: state.countryCode || '',
+      admin: state.admin || '',
+      generated: new Date().toISOString(),
+      forecast: compactForecast,
+      air: air || state.air || null
+    };
+    const filtered = entries.filter((e) => e && typeof e.lat === 'number' && kmBetween(e.lat, e.lon, state.lat, state.lon) > 15);
+    filtered.unshift(item);
+    store.set(LOCAL_CACHE_KEY, { entries: filtered.slice(0, 5) });
+  } catch (e) { /* quota exceeded or private mode — non-fatal */ }
+}
+
+function loadLocalWeatherCache(maxKm) {
+  try {
+    const bag = store.get(LOCAL_CACHE_KEY, null);
+    if (!bag || !Array.isArray(bag.entries) || !bag.entries.length) return null;
+    let best = null, bestKm = Infinity;
+    for (const e of bag.entries) {
+      if (!e || typeof e.lat !== 'number' || typeof e.lon !== 'number' || !e.forecast || !e.forecast.hourly) continue;
+      if (!snapshotCoversNow(e.forecast)) continue;
+      const km = kmBetween(state.lat, state.lon, e.lat, e.lon);
+      if (km < bestKm) { bestKm = km; best = e; }
+    }
+    if (!best || bestKm > (maxKm != null ? maxKm : SNAPSHOT_MAX_KM)) return null;
+    return {
+      meta: { name: best.name, lat: best.lat, lon: best.lon, generated: best.generated },
+      forecast: best.forecast,
+      air: best.air || null,
+      km: Math.round(bestKm)
+    };
+  } catch (e) {
+    return null;
+  }
 }
 
 /* ---------------- same-origin snapshot fallback ----------------
@@ -205,13 +300,15 @@ function snapshotCoversNow(forecast) {
 /* Nearest snapshot city for the current coordinates, or null when the place
    is outside the covered radius (then the normal error path applies). */
 async function loadSnapshot() {
+  const localNear = loadLocalWeatherCache(60);
+  if (localNear) return localNear;
   if (snapCity && kmBetween(snapCity.meta.lat, snapCity.meta.lon, state.lat, state.lon) <= SNAPSHOT_MAX_KM) return snapCity;
   try {
     if (!snapIndex) {
       const res = await fetchWithTimeout(SNAPSHOT_URL + '?t=' + Date.now(), SNAPSHOT_SHOW_MS);
-      if (!res || !res.ok) return null;
+      if (!res || !res.ok) return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
       const json = await res.json();
-      if (!json || !Array.isArray(json.cities) || !json.cities.length) return null;
+      if (!json || !Array.isArray(json.cities) || !json.cities.length) return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
       snapIndex = json;
     }
     let best = null, bestKm = Infinity;
@@ -220,22 +317,22 @@ async function loadSnapshot() {
       const km = kmBetween(state.lat, state.lon, c.lat, c.lon);
       if (km < bestKm) { bestKm = km; best = c; }
     }
-    if (!best || bestKm > SNAPSHOT_MAX_KM) return null;
+    if (!best || bestKm > SNAPSHOT_MAX_KM) return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
     const res = await fetchWithTimeout(best.file + '?t=' + encodeURIComponent(best.generated || snapIndex.generated || ''), SNAPSHOT_SHOW_MS);
-    if (!res || !res.ok) return null;
+    if (!res || !res.ok) return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
     const payload = await res.json();
-    if (!payload || !payload.forecast || !payload.forecast.hourly || !payload.forecast.hourly.time) return null;
+    if (!payload || !payload.forecast || !payload.forecast.hourly || !payload.forecast.hourly.time) return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
     /* An archive that no longer covers the current hour must not be shown as
        "now": honest failure beats a three-day-old forecast in the hero tile. */
     if (!snapshotCoversNow(payload.forecast)) {
       console.warn('snapshot is older than its coverage window — ignoring it (refresh with scripts/build-snapshot.js)');
-      return null;
+      return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
     }
     snapCity = { meta: best, forecast: payload.forecast, air: payload.air || null, km: Math.round(bestKm) };
     return snapCity;
   } catch (e) {
     console.warn('snapshot fallback unavailable:', e);
-    return null;
+    return loadLocalWeatherCache(SNAPSHOT_MAX_KM);
   }
 }
 
@@ -342,7 +439,9 @@ function showLoader() {
     console.warn('LiveSky: loading watchdog fired — falling back');
     hideLoader();
     toast(t('toast_network'), 'error', t('toast_retry'), () => fetchWeather());
-    if (!state.weather) fetchWeather();
+    /* Only trigger a fresh request if none is currently running — otherwise
+       bumping fetchSeq would abort an in-flight failover right before it finishes. */
+    if (!state.weather && state.loading === 0) fetchWeather();
   }, WATCHDOG_MS);
 }
 function hideLoader() {
@@ -528,6 +627,185 @@ function applyForecastPayload(data) {
   syncNowIdx();
 }
 
+/* ---------------- emergency live fallbacks (Tier 2 & Tier 3) ----------------
+   If the primary 32-day + 15-min nowcast request fails across FORECAST_HOSTS
+   (e.g. HTTP 429 on heavy multi-model queries or ISP block on primary mirrors):
+   Tier 2 tries a fast, lightweight 10-day Open-Meteo query across additional
+   mirrors (`seasonal-api.open-meteo.com`, `ensemble-api.open-meteo.com`).
+   Tier 3 falls back to MET Norway (`api.met.no` — Norwegian Meteorological
+   Institute global ECMWF forecast, CORS-enabled, no key required) and reshapes
+   its response into the exact `{ timezone, hourly, daily }` format. */
+const LITE_FORECAST_HOSTS = [
+  'https://seasonal-api.open-meteo.com',
+  'https://ensemble-api.open-meteo.com',
+  'https://api.open-meteo.com',
+  'https://historical-forecast-api.open-meteo.com'
+];
+
+function metSymbolToWmo(sym) {
+  const s = String(sym || '').toLowerCase();
+  if (!s || s.startsWith('clearsky')) return 0;
+  if (s.startsWith('fair')) return 1;
+  if (s.startsWith('partlycloudy')) return 2;
+  if (s.startsWith('cloudy')) return 3;
+  if (s.startsWith('fog')) return 45;
+  if (s.includes('thunder')) return 95;
+  if (s.includes('heavysnow')) return 75;
+  if (s.includes('lightsnow')) return 71;
+  if (s.includes('snow') || s.includes('sleet')) return 73;
+  if (s.includes('heavyrain')) return 65;
+  if (s.includes('lightrain') || s.includes('drizzle')) return 61;
+  if (s.includes('rainshowers')) return 80;
+  if (s.includes('rain')) return 63;
+  return 2;
+}
+
+function convertMetNorwayToOpenMeteo(json, tz) {
+  if (!json || !json.properties || !Array.isArray(json.properties.timeseries) || !json.properties.timeseries.length) {
+    throw new Error('Invalid MET Norway payload');
+  }
+  const useTz = tz && tz !== 'auto' ? tz : (state.tz || 'UTC');
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: useTz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', hour12: false
+  });
+  const toLocalIsoHour = (utcIso) => {
+    const d = new Date(utcIso);
+    const p = {};
+    for (const part of fmt.formatToParts(d)) if (part.type !== 'literal') p[part.type] = part.value;
+    const h = p.hour === '24' ? '00' : p.hour;
+    return `${p.year}-${p.month}-${p.day}T${h}:00`;
+  };
+  const hourly = {
+    time: [], temperature_2m: [], apparent_temperature: [],
+    precipitation_probability: [], precipitation: [], weathercode: [],
+    windspeed_10m: [], windgusts_10m: [], winddirection_10m: [],
+    relativehumidity_2m: [], surface_pressure: [], dewpoint_2m: [],
+    visibility: [], uv_index: [], is_day: []
+  };
+  const seenHours = new Set();
+  for (const slot of json.properties.timeseries) {
+    if (!slot || !slot.time || !slot.data || !slot.data.instant || !slot.data.instant.details) continue;
+    const localIso = toLocalIsoHour(slot.time);
+    if (seenHours.has(localIso)) continue;
+    seenHours.add(localIso);
+    const det = slot.data.instant.details;
+    const n1 = slot.data.next_1_hours || slot.data.next_6_hours || slot.data.next_12_hours || {};
+    const sym = (n1.summary && n1.summary.symbol_code) || '';
+    const pDet = n1.details || {};
+    const temp = det.air_temperature != null ? det.air_temperature : 10;
+    const rh = det.relative_humidity != null ? det.relative_humidity : 70;
+    const ws = det.wind_speed != null ? det.wind_speed : 2;
+    const wg = det.wind_speed_of_gust != null ? det.wind_speed_of_gust : +(ws * 1.35).toFixed(1);
+    const wd = det.wind_from_direction != null ? det.wind_from_direction : 180;
+    const press = det.air_pressure_at_sea_level != null ? det.air_pressure_at_sea_level : 1013;
+    const precip = pDet.precipitation_amount != null ? pDet.precipitation_amount : 0;
+    const code = metSymbolToWmo(sym);
+    const prob = pDet.probability_of_precipitation != null
+      ? Math.round(pDet.probability_of_precipitation)
+      : (precip >= 1 ? 85 : precip > 0 ? 55 : code >= 51 ? 45 : 5);
+    /* Steadman apparent temperature approximation (wind + humidity) */
+    const eVap = (rh / 100) * 6.105 * Math.exp((17.27 * temp) / (237.7 + temp));
+    const feels = +(temp + 0.33 * eVap - 0.70 * ws - 4.00).toFixed(1);
+    const dew = det.dew_point_temperature != null
+      ? det.dew_point_temperature
+      : +(temp - (100 - rh) / 5).toFixed(1);
+    const hh = parseInt(localIso.slice(11, 13), 10);
+    const isDay = sym.includes('_night') ? 0 : sym.includes('_day') ? 1 : (hh >= 7 && hh < 20 ? 1 : 0);
+    const uv = det.ultraviolet_index_clear_sky != null ? det.ultraviolet_index_clear_sky : (isDay ? 2 : 0);
+    const vis = code === 45 ? 800 : precip > 2 ? 4500 : 15000;
+
+    hourly.time.push(localIso);
+    hourly.temperature_2m.push(temp);
+    hourly.apparent_temperature.push(feels);
+    hourly.precipitation_probability.push(prob);
+    hourly.precipitation.push(precip);
+    hourly.weathercode.push(code);
+    hourly.windspeed_10m.push(ws);
+    hourly.windgusts_10m.push(wg);
+    hourly.winddirection_10m.push(wd);
+    hourly.relativehumidity_2m.push(rh);
+    hourly.surface_pressure.push(press);
+    hourly.dewpoint_2m.push(dew);
+    hourly.visibility.push(vis);
+    hourly.uv_index.push(uv);
+    hourly.is_day.push(isDay);
+  }
+  if (!hourly.time.length) throw new Error('Empty MET Norway series');
+
+  /* Aggregate into daily arrays */
+  const byDay = new Map();
+  for (let i = 0; i < hourly.time.length; i++) {
+    const d = hourly.time[i].slice(0, 10);
+    if (!byDay.has(d)) {
+      byDay.set(d, {
+        temps: [], codes: [], probs: [], precips: [], uvs: [], winds: [], dirs: []
+      });
+    }
+    const b = byDay.get(d);
+    b.temps.push(hourly.temperature_2m[i]);
+    b.codes.push(hourly.weathercode[i]);
+    b.probs.push(hourly.precipitation_probability[i]);
+    b.precips.push(hourly.precipitation[i]);
+    b.uvs.push(hourly.uv_index[i]);
+    b.winds.push(hourly.windspeed_10m[i]);
+    b.dirs.push(hourly.winddirection_10m[i]);
+  }
+  const daily = {
+    time: [], weathercode: [], temperature_2m_max: [], temperature_2m_min: [],
+    sunrise: [], sunset: [], precipitation_probability_max: [], precipitation_sum: [],
+    uv_index_max: [], windspeed_10m_max: [], winddirection_10m_dominant: []
+  };
+  for (const [d, b] of byDay.entries()) {
+    daily.time.push(d);
+    daily.weathercode.push(Math.max(...b.codes));
+    daily.temperature_2m_max.push(Math.max(...b.temps));
+    daily.temperature_2m_min.push(Math.min(...b.temps));
+    daily.sunrise.push(`${d}T06:45`);
+    daily.sunset.push(`${d}T18:30`);
+    daily.precipitation_probability_max.push(Math.max(...b.probs));
+    daily.precipitation_sum.push(+b.precips.reduce((a, v) => a + v, 0).toFixed(1));
+    daily.uv_index_max.push(Math.max(...b.uvs));
+    daily.windspeed_10m_max.push(Math.max(...b.winds));
+    daily.winddirection_10m_dominant.push(b.dirs[Math.floor(b.dirs.length / 2)] || 180);
+  }
+  const elev = json.geometry && Array.isArray(json.geometry.coordinates) ? json.geometry.coordinates[2] : null;
+  return { timezone: useTz, elevation: elev, hourly, daily };
+}
+
+async function fetchEmergencyLiveWeather() {
+  /* Tier 2: lightweight Open-Meteo query across seasonal/ensemble/canonical mirrors */
+  const liteParams = new URLSearchParams({
+    latitude: state.lat, longitude: state.lon,
+    hourly: 'temperature_2m,apparent_temperature,precipitation_probability,precipitation,weathercode,windspeed_10m,windgusts_10m,winddirection_10m,relativehumidity_2m,surface_pressure,dewpoint_2m,visibility,uv_index,is_day',
+    daily: 'weathercode,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,precipitation_sum,uv_index_max,windspeed_10m_max,winddirection_10m_dominant',
+    wind_speed_unit: 'ms',
+    timezone: 'auto', forecast_days: 10, past_days: 1, models: 'best_match'
+  });
+  for (const host of LITE_FORECAST_HOSTS) {
+    try {
+      const r = await fetchWithTimeout(`${host}/v1/forecast?${liteParams}`, 5500);
+      if (r && r.ok) {
+        const d = await r.json();
+        if (d && d.hourly && Array.isArray(d.hourly.time) && d.hourly.time.length && d.daily && Array.isArray(d.daily.time)) {
+          console.info(`[LiveSky] резервный источник Open-Meteo Lite: ${host}`);
+          return d;
+        }
+      }
+    } catch (e) { /* try next mirror */ }
+  }
+  /* Tier 3: independent global weather provider — MET Norway (api.met.no) */
+  const metUrl = `https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=${Number(state.lat).toFixed(4)}&lon=${Number(state.lon).toFixed(4)}`;
+  const metRes = await fetchWithTimeout(metUrl, 6500);
+  if (metRes && metRes.ok) {
+    const metJson = await metRes.json();
+    const converted = convertMetNorwayToOpenMeteo(metJson, state.tz);
+    console.info('[LiveSky] резервный источник MET Norway (api.met.no) активирован');
+    return converted;
+  }
+  throw new Error('All live weather providers unreachable');
+}
+
 async function fetchWeather(silent) {
   const seq = ++fetchSeq;
   if (!silent) setLoading(true);
@@ -553,23 +831,26 @@ async function fetchWeather(silent) {
       wind_speed_unit: 'ms',
       timezone: 'auto', forecast_days: 16, past_days: 16
     });
-    /* Accuracy: ask Open-Meteo for the skill-ranked "best_match" model. In Auto
-       mode we also nudge the baseline toward the region's strongest model
-       (ECMWF over Europe, GFS over N.America); in manual modes we blend the
-       chosen model with best_match (getVal prefers the chosen model first).
-       getVal/getMinVal read the plain key, the model suffix and _best_match. */
+    /* Accuracy & speed: in Auto mode ask Open-Meteo for `best_match` (which
+       already selects ECMWF/ICON/GFS by region without doubling server compute
+       time or rate-limit weight). In manual modes blend the chosen model with
+       `best_match` so `getVal` falls back cleanly if a variable is missing. */
     if (state.model && state.model !== 'auto') params.append('models', `${state.model},best_match`);
-    else {
-      const rm = regionModel();
-      params.append('models', rm ? `${rm},best_match` : 'best_match');
-    }
+    else params.append('models', 'best_match');
 
-    const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, state.weather ? FETCH_MS : FIRST_FETCH_MS, 'forecast');
-    const data = await res.json();
-    if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
+    let data = null;
+    try {
+      const res = await fetchResilient(FORECAST_HOSTS, `/v1/forecast?${params}`, state.weather ? FETCH_MS : FIRST_FETCH_MS, 'forecast');
+      data = await res.json();
+      if (!data || !data.hourly || !data.daily) throw new Error('Bad payload');
+    } catch (primaryErr) {
+      if (seq !== fetchSeq) return;
+      data = await fetchEmergencyLiveWeather();
+    }
     if (seq !== fetchSeq) return; /* a newer request is in flight */
 
     applyForecastPayload(data);
+    saveLocalWeatherCache(data, state.air);
     /* Live data is back: the saved-forecast notice is no longer true. */
     state.weatherStale = null;
     clearTimeout(snapRetryTimer);
@@ -630,6 +911,7 @@ async function fetchAir(seq, isRetry) {
     if (!data || !data.hourly) throw new Error('Bad payload');
     if (seq && seq !== fetchSeq) return;
     state.air = data;
+    if (state.weather && !state.weatherStale) saveLocalWeatherCache(state.weather, data);
     renderAirError(false);
     renderAir();
   } catch (e) {
@@ -642,9 +924,11 @@ async function fetchAir(seq, isRetry) {
     }
     console.warn('fetchAir failed:', e);
     /* Air quality is part of the "app is broken" impression too: when the
-       provider is unreachable, reuse the air block that came with the saved
-       snapshot instead of an empty card. */
-    if (!state.air && state.weatherStale) {
+       provider is unreachable, reuse the air block from the local cache or
+       saved snapshot instead of an empty card. */
+    if (!state.air) {
+      const cached = loadLocalWeatherCache(80);
+      if (cached && cached.air) { state.air = cached.air; renderAirError(false); renderAir(); return; }
       const snap = await loadSnapshot().catch(() => null);
       if (snap && snap.air) { state.air = snap.air; renderAirError(false); renderAir(); return; }
     }
@@ -652,7 +936,7 @@ async function fetchAir(seq, isRetry) {
        slowly, so stale-but-real beats a card full of dashes. Only the very
        first load (no data at all) shows the explicit unavailable state. */
     renderAirError(!state.air);
-    if (!state.air) toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
+    if (!state.air && !state.weatherStale) toast(t('toast_air_error'), 'error', t('toast_retry'), () => fetchAir(fetchSeq, false));
   }
 }
 /* Explicit "no data" state for the AQI card instead of a silent, permanent "--". */
