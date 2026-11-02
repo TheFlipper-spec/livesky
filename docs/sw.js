@@ -53,6 +53,7 @@ const SHELL_ASSETS = [
   './js/modules/09-lifecycle.js',
   './js/modules/10-bootstrap.js',
   './js/modules/11-map-radar.js',
+  './js/modules/12-theme-studio.js',
   './legal/privacy.html',
   './legal/terms.html',
   './manifest.webmanifest',

@@ -39,7 +39,9 @@ let tempLat = null, tempLon = null;
    requests, no registration, no watermark). CARTO's raster basemaps now
    require a paid API key, so they are no longer usable here. */
 function mapStyle() {
-  return state.theme === 'light'
+  const light = state.theme === 'light' ||
+    (state.theme === 'custom' && typeof CustomTheme !== 'undefined' && CustomTheme.isLight());
+  return light
     ? 'https://tiles.openfreemap.org/styles/positron'
     : 'https://tiles.openfreemap.org/styles/dark';
 }

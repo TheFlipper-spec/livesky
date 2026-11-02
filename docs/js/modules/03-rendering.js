@@ -231,11 +231,17 @@ function renderSunArc() {
     /* night: moon on the arc */
     svg += `<circle class="moon-body" cx="106" cy="32" r="12" mask="url(#moonMask)" opacity="0.95"/>`;
     svg += `<circle cx="70" cy="12" r="1.3" fill="#e2e8f0" opacity="0.8"/><circle cx="150" cy="8" r="1" fill="#e2e8f0" opacity="0.6"/><circle cx="178" cy="20" r="1.4" fill="#e2e8f0" opacity="0.7"/>`;
-    let label;
-    if (p < 0) { label = `${fmtDur(srMin - nowMin, true)} ${t('hours_to_sunrise')}`; }
-    else { label = `${fmtDur(nowMin - ssMin, true)} ${t('hours_after_sunset')}`; }
+    /* The countdown goes into the big number, the short caption stays short:
+       stuffing "5ч 12м до восхода" into the 9.5px label wrapped it over 3 lines
+       and broke the sun-times row every night. */
+    if (p < 0) {
+      el.dayLength.textContent = fmtDur(Math.max(0, srMin - nowMin), true);
+      el.dayLengthLabel.textContent = t('hours_to_sunrise');
+    } else {
+      el.dayLength.textContent = fmtDur(Math.max(0, nowMin - ssMin), true);
+      el.dayLengthLabel.textContent = t('hours_after_sunset');
+    }
     el.dayLengthLabel.dataset.translate = '';
-    el.dayLengthLabel.textContent = label;
   }
 
   /* moon phase chip (night only) */

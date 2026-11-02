@@ -399,7 +399,7 @@ function showAdvice() {
   if (raining || upcomingRain) wear += ' · ' + t('wear_rain_gear');
 
   const list = items.map(it => `
-    <div class="m-list-row" style="cursor:default">
+    <div class="m-list-row advice-row">
       <span class="row-ico" style="background:var(--accent-soft)"><i class="ph-fill ${it[0]}" style="color:${it[1].split(':')[1]}"></i></span>
       <span class="row-main"><b>${it[2]}</b></span>
     </div>`).join('');
@@ -780,7 +780,7 @@ function showLifeSkySlot(index, type) {
         <p><b>${t('life_score')} ${score}/100</b> · ${scoreLabel(score)}<br>${riskAdvice}</p>
       </div>
       <div class="m-grid">
-        ${mTile('ph-cloud-rain', t('rain_risk_title') + ' · 24ч', Math.round(risk) + '%')}
+        ${mTile('ph-cloud-rain', t('rain_risk_title'), Math.round(risk) + '%')}
         ${mTile('ph-wind', t('wind'), fmtWind(wind) + (gust && gust > wind ? ' · ' + t('wind_gusts') + ' ' + fmtWind(gust) : ''))}
         ${mTile('ph-thermometer', t('temp'), fmtTempDeg(temp))}
         ${mTile('ph-eye', t('visibility'), fmtVis(vis))}
@@ -829,19 +829,31 @@ function showLifeSkySlot(index, type) {
    talks to the facade, which is a safe no-op until the subsystem loads. */
 
 /* ---------------- theme / lang / settings ---------------- */
-const THEME_CYCLE = { adaptive: 'light', light: 'dark', dark: 'adaptive' };
-const THEME_KEYS = { adaptive: 'theme_adaptive', light: 'theme_light', dark: 'theme_dark' };
+const THEME_CYCLE = { adaptive: 'light', light: 'dark', dark: 'custom', custom: 'adaptive' };
+const THEME_KEYS = { adaptive: 'theme_adaptive', light: 'theme_light', dark: 'theme_dark', custom: 'theme_custom' };
 
 function applyTheme() {
-  document.documentElement.dataset.theme = state.theme;
-  document.body.dataset.theme = state.theme;
+  /* Custom themes keep the light/dark BASE in data-theme (so every existing
+     [data-theme="light"] component override applies) and layer the user's
+     palette on top as inline variables. */
+  const custom = state.theme === 'custom' && typeof CustomTheme !== 'undefined';
+  const base = custom ? CustomTheme.base() : state.theme;
+  document.documentElement.dataset.theme = base;
+  document.body.dataset.theme = base;
+  if (custom) {
+    document.documentElement.dataset.custom = '1';
+    CustomTheme.applyActive();
+  } else {
+    document.documentElement.removeAttribute('data-custom');
+    if (typeof CustomTheme !== 'undefined') CustomTheme.clear();
+  }
   updateThemeLabel();
   if (window.LiveSkyMap) LiveSkyMap.refreshTiles();
   applyWeatherTheme();
   syncMenuChecks();
   store.set('livesky:theme', state.theme);
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', state.theme === 'light' ? '#eef4fb' : '#05070f');
+  if (meta) meta.setAttribute('content', base === 'light' ? '#eef4fb' : '#05070f');
   if (window.pywebview && window.pywebview.api && window.pywebview.api.set_window_theme) {
     window.pywebview.api.set_window_theme(state.theme).catch(() => {});
   }
@@ -1028,7 +1040,13 @@ function bindEvents() {
     const langBtn = e.target.closest('[data-lang]');
     if (langBtn) { setLang(langBtn.dataset.lang); return; }
     const themeBtn = e.target.closest('[data-theme-pick]');
-    if (themeBtn) { setTheme(themeBtn.dataset.themePick); setMenuOpen(false); return; }
+    if (themeBtn) {
+      setTheme(themeBtn.dataset.themePick);
+      setMenuOpen(false);
+      /* picking the custom theme drops straight into the studio */
+      if (themeBtn.dataset.themePick === 'custom' && typeof openThemeStudio === 'function') openThemeStudio();
+      return;
+    }
     const unitsBtn = e.target.closest('[data-units]');
     if (unitsBtn) { setUnits(unitsBtn.dataset.units); return; }
     const modelBtn = e.target.closest('[data-model]');
@@ -1041,6 +1059,7 @@ function bindEvents() {
   });
   on(el.menuClose, 'click', () => setMenuOpen(false));
   on(el.menuBackdrop, 'click', () => setMenuOpen(false));
+  on(document.getElementById('studio-btn'), 'click', () => { setMenuOpen(false); if (typeof openThemeStudio === 'function') openThemeStudio(); });
   on(el.fsItem, 'click', () => { setMenuOpen(false); toggleFullscreen(); });
   on(el.refreshItem, 'click', () => { setMenuOpen(false); fetchWeather(true); });
   on(el.geoItem, 'click', () => { setMenuOpen(false); getUserLocation(true); });
