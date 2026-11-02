@@ -991,8 +991,157 @@ function updateFsIcon() {
   el.fsIcon.classList.toggle('ph-corners-in', isFullscreen);
 }
 
+/* ---------------- Dynamic App Icon ---------------- */
+function renderAppIconCanvas(color, size) {
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext ? c.getContext('2d') : null;
+  if (!ctx) return null;
+
+  // Squircle rounded background
+  const r = size * 0.23;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(size - r, 0);
+  ctx.quadraticCurveTo(size, 0, size, r);
+  ctx.lineTo(size, size - r);
+  ctx.quadraticCurveTo(size, size, size - r, size);
+  ctx.lineTo(r, size);
+  ctx.quadraticCurveTo(0, size, 0, size - r);
+  ctx.lineTo(0, r);
+  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // Determine silhouette stroke color based on background brightness
+  let isLightBg = false;
+  try {
+    const hex = color.replace('#', '');
+    const num = parseInt(hex.length === 3 ? hex.split('').map(x=>x+x).join('') : hex, 16);
+    const red = (num >> 16) & 255, green = (num >> 8) & 255, blue = num & 255;
+    isLightBg = (red * 299 + green * 587 + blue * 114) / 1000 > 175;
+  } catch (e) {}
+
+  const strokeColor = isLightBg ? '#0f172a' : '#ffffff';
+  ctx.strokeStyle = strokeColor;
+  ctx.lineWidth = size * 0.082;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // 3 wind lines matching LiveSky silhouette
+  ctx.beginPath();
+  ctx.moveTo(size * 0.22, size * 0.38);
+  ctx.lineTo(size * 0.58, size * 0.38);
+  ctx.arc(size * 0.58, size * 0.27, size * 0.11, Math.PI * 0.5, -Math.PI * 0.5, true);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(size * 0.15, size * 0.52);
+  ctx.lineTo(size * 0.73, size * 0.52);
+  ctx.arc(size * 0.73, size * 0.41, size * 0.11, Math.PI * 0.5, -Math.PI * 0.5, true);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(size * 0.25, size * 0.66);
+  ctx.lineTo(size * 0.55, size * 0.66);
+  ctx.arc(size * 0.55, size * 0.77, size * 0.11, -Math.PI * 0.5, Math.PI * 0.5, false);
+  ctx.stroke();
+
+  return c;
+}
+
+function setAppIconColor(color, persist = true) {
+  if (!color) color = '#38bdf8';
+  if (persist) {
+    try { store.set('livesky:app_icon_color', color); } catch (e) {}
+  }
+  state.appIconColor = color;
+
+  if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.includes('jsdom')) {
+    syncAppIconUI(color);
+    return;
+  }
+
+  try {
+    const c32 = renderAppIconCanvas(color, 32);
+    const c192 = renderAppIconCanvas(color, 192);
+    if (c32 && c192) {
+      let url32 = null, url192 = null;
+      try {
+        url32 = c32.toDataURL('image/png');
+        url192 = c192.toDataURL('image/png');
+      } catch (err) {
+        /* Headless environments without node-canvas implementation */
+      }
+
+      if (url32 && url192) {
+        document.querySelectorAll('link[rel*="icon"]').forEach(l => {
+          const sz = l.getAttribute('sizes');
+          l.href = (sz === '192x192' || sz === '180x180') ? url192 : url32;
+        });
+        document.querySelectorAll('link[rel="apple-touch-icon"]').forEach(l => {
+          l.href = url192;
+        });
+
+        const manifestLink = document.querySelector('link[rel="manifest"]');
+        if (manifestLink && typeof Blob !== 'undefined' && typeof URL !== 'undefined' && URL.createObjectURL) {
+          const manifestObj = {
+            name: 'LiveSky — Weather Pro',
+            short_name: 'LiveSky',
+            start_url: './index.html',
+            scope: './',
+            display: 'standalone',
+            orientation: 'any',
+            background_color: '#05070f',
+            theme_color: color,
+            icons: [
+              { src: url192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+              { src: url192, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+            ]
+          };
+          const blob = new Blob([JSON.stringify(manifestObj)], { type: 'application/manifest+json' });
+          manifestLink.href = URL.createObjectURL(blob);
+        }
+      }
+    }
+  } catch (e) {
+    /* safely ignore on environments without canvas/toDataURL */
+  }
+
+  syncAppIconUI(color);
+}
+
+function syncAppIconUI(color) {
+  const container = document.getElementById('app-icon-picker');
+  if (!container) return;
+  const chips = container.querySelectorAll('.app-icon-chip');
+  chips.forEach(btn => {
+    const c = btn.getAttribute('data-icon-color');
+    btn.classList.toggle('active', Boolean(c && c.toLowerCase() === color.toLowerCase()));
+  });
+  const custom = document.getElementById('app-icon-custom-color');
+  if (custom && color.startsWith('#')) custom.value = color;
+}
+
 /* ---------------- events ---------------- */
 function bindEvents() {
+  const iconPicker = document.getElementById('app-icon-picker');
+  if (iconPicker) {
+    on(iconPicker, 'click', (e) => {
+      const chip = e.target.closest('.app-icon-chip');
+      if (chip) {
+        const c = chip.getAttribute('data-icon-color');
+        if (c) setAppIconColor(c);
+      }
+    });
+    const customInp = document.getElementById('app-icon-custom-color');
+    if (customInp) {
+      on(customInp, 'input', (e) => {
+        setAppIconColor(e.target.value);
+      });
+    }
+  }
   on(el.searchForm, 'submit', handleSearch);
   on(el.input, 'input', handleInput);
   on(el.input, 'focus', () => {

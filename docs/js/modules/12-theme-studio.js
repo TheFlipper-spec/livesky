@@ -549,11 +549,7 @@ function studioRenderPreview() {
   host.innerHTML = `
     <div class="pv-bar">
       <div class="pv-logo">
-        <svg class="brand-wind-svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M 28 96 H 124 A 28 28 0 1 0 96 68" />
-          <path d="M 36 132 H 192 A 28 28 0 1 0 164 104" />
-          <path d="M 44 168 H 148 A 28 28 0 1 1 120 196" />
-        </svg>
+        <img src="icons/LiveSky_icon.png" class="pv-wind-img" alt="" />
       </div>
       <div class="pv-search"></div>
       <button type="button" class="pv-btn">Обновить</button>

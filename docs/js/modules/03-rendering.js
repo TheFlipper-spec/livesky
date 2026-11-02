@@ -8,26 +8,26 @@
    ============================================================ */
 /* ---------------- rendering ---------------- */
 function renderAll() {
-  applyWeatherTheme();
-  updateHero();
-  updateMetrics();
-  renderSunArc();
+  try { applyWeatherTheme(); } catch (e) { console.error('applyWeatherTheme failed:', e); }
+  try { updateHero(); } catch (e) { console.error('updateHero failed:', e); }
+  try { updateMetrics(); } catch (e) { console.error('updateMetrics failed:', e); }
+  try { renderSunArc(); } catch (e) { console.error('renderSunArc failed:', e); }
   /* The heavy forecast (chart + hourly blocks) and daily renderers are routed
      through the Section Manager so off-screen sections are skipped (and
      re-rendered lazily when they scroll back into view) instead of always
      rebuilding their DOM. */
-  SECTION_MANAGER.renderSection('forecast');
-  SECTION_MANAGER.renderSection('daily');
-  renderAlerts();
-  updateFavIcon();
-  document.title = `${cleanCityTitle(state.locationName)} · LiveSky`;
+  try { SECTION_MANAGER.renderSection('forecast'); } catch (e) { console.error('renderSection forecast failed:', e); }
+  try { SECTION_MANAGER.renderSection('daily'); } catch (e) { console.error('renderSection daily failed:', e); }
+  try { renderAlerts(); } catch (e) { console.error('renderAlerts failed:', e); }
+  try { updateFavIcon(); } catch (e) { console.error('updateFavIcon failed:', e); }
+  try { document.title = `${cleanCityTitle(state.locationName)} · LiveSky`; } catch (e) {}
 
   /* Update FX intensity based on actual weather data */
-  updateFXIntensity();
+  try { updateFXIntensity(); } catch (e) { console.error('updateFXIntensity failed:', e); }
 
   /* Notify Section Manager — trigger re-entry animations for visible sections */
   if (SECTION_MANAGER && SECTION_MANAGER.refreshVisible) {
-    SECTION_MANAGER.refreshVisible();
+    try { SECTION_MANAGER.refreshVisible(); } catch (e) {}
   }
 }
 

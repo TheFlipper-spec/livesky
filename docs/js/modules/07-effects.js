@@ -66,12 +66,12 @@ function applyWeatherTheme() {
   const customFixedAccents = isCustomTheme && !CustomTheme.weatherTint();
 
   if (mode === 'light') {
-    setBackground('linear-gradient(180deg, #e8f3fd 0%, #f7fafd 100%)', 'light');
-    root.style.setProperty('--accent', '#7c3aed');
-    root.style.setProperty('--accent-2', '#06b6d4');
+    setBackground('linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', 'light');
+    root.style.setProperty('--accent', '#000000');
+    root.style.setProperty('--accent-2', '#334155');
     ['--blob-1', '--blob-2', '--blob-3'].forEach((v) => root.style.removeProperty(v));
     root.style.removeProperty('--grad-logo');
-    state.accent = '#7c3aed'; state.accent2 = '#06b6d4';
+    state.accent = '#000000'; state.accent2 = '#334155';
     duskInfo = null;
   } else if (mode === 'dark') {
     setBackground('linear-gradient(180deg, #070b16 0%, #04060d 100%)', 'dark');
@@ -150,10 +150,11 @@ function applyWeatherTheme() {
   if (effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
   else {
     let ov = null;
-    if (night && (liveCode != null && liveCode <= 3)) ov = 'fireflies';
+    const isLight = mode === 'light' || document.documentElement.dataset.theme === 'light';
+    if (!isLight && night && (liveCode != null && liveCode <= 3)) ov = 'fireflies';
     else if (windSpd >= 4.5) ov = 'wind';
     FX.setOverlay(ov);
-    updateRainbowAftermath(liveCode, !night);
+    updateRainbowAftermath(liveCode, !night && !isLight);
   }
   updateDuskBlend();
 }
@@ -338,12 +339,15 @@ const FX = {
   resize() {
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.w = window.innerWidth; this.h = window.innerHeight;
+    if (!el.fxCanvas) return;
     el.fxCanvas.width = this.w * this.dpr;
     el.fxCanvas.height = this.h * this.dpr;
     el.fxCanvas.style.width = this.w + 'px';
     el.fxCanvas.style.height = this.h + 'px';
-    const ctx = el.fxCanvas.getContext('2d');
-    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const ctx = el.fxCanvas.getContext ? el.fxCanvas.getContext('2d') : null;
+    if (ctx && typeof ctx.setTransform === 'function') {
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
     if (this.kind) this.build(); /* reposition particles for the new viewport */
     if (this.overlay === 'fireflies') this.buildFireflies();
     else if (this.overlay === 'wind') this.buildWind();
@@ -429,7 +433,7 @@ const FX = {
     this.op = [];
     this.running = false;
     cancelAnimationFrame(this.raf);
-    const ctx = el.fxCanvas.getContext('2d');
+    const ctx = el.fxCanvas && el.fxCanvas.getContext ? el.fxCanvas.getContext('2d') : null;
     if (ctx) ctx.clearRect(0, 0, this.w, this.h);
   },
   resume() {

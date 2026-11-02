@@ -31,7 +31,7 @@
   <link rel="stylesheet" href="assets/vendor/phosphor/fill/style.css?v=2.1.2" />
   <link rel="stylesheet" href="assets/vendor/phosphor/duotone/style.css?v=2.1.2" />
 
-  <link rel="stylesheet" href="css/app.css?v=68" />
+  <link rel="stylesheet" href="css/app.css?v=70" />
 
   <!-- Legal gate: lock the UI before anything renders, unlock only for a valid
        current Terms of Service record. Privacy / geolocation is requested
@@ -147,11 +147,7 @@
     <header class="site-header">
       <div class="brand" id="brand" title="LiveSky — перезагрузить">
         <div class="brand-logo" id="logo-box">
-          <svg class="brand-wind-svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M 28 96 H 124 A 28 28 0 1 0 96 68" />
-            <path d="M 36 132 H 192 A 28 28 0 1 0 164 104" />
-            <path d="M 44 168 H 148 A 28 28 0 1 1 120 196" />
-          </svg>
+          <img src="icons/LiveSky_icon.png" alt="LiveSky" class="brand-wind-img" />
         </div>
         <div>
           <div class="brand-name">LiveSky</div>
@@ -204,6 +200,22 @@
                   <button type="button" class="seg-btn" data-theme-pick="light" role="radio" aria-checked="false"><i class="ph ph-sun"></i><span data-translate="theme_light">Светлая</span><i class="ph-bold ph-check seg-check"></i></button>
                   <button type="button" class="seg-btn" data-theme-pick="custom" role="radio" aria-checked="false"><i class="ph ph-palette"></i><span data-translate="theme_custom">Своя</span><i class="ph-bold ph-check seg-check"></i></button>
                   <button type="button" class="seg-btn st-open-btn" id="studio-btn"><i class="ph ph-sliders-horizontal"></i><span data-translate="studio_open">Студия темы</span></button>
+                </div>
+              </section>
+
+              <section class="mm-group">
+                <div class="mm-label"><i class="ph ph-app-window"></i><span data-translate="app_icon_title">Иконка приложения</span></div>
+                <div class="app-icon-presets" id="app-icon-picker">
+                  <button type="button" class="app-icon-chip active" data-icon-color="#38bdf8" title="Небесный" style="--chip-c: #38bdf8"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#f59e0b" title="Янтарный" style="--chip-c: #f59e0b"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#10b981" title="Изумрудный" style="--chip-c: #10b981"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#8b5cf6" title="Аметист" style="--chip-c: #8b5cf6"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#0f172a" title="Тёмный" style="--chip-c: #0f172a"></button>
+                  <button type="button" class="app-icon-chip" data-icon-color="#ffffff" title="Белый" style="--chip-c: #ffffff; border-color: rgba(0,0,0,0.2)"></button>
+                  <label class="app-icon-custom-label" title="Свой цвет">
+                    <input type="color" id="app-icon-custom-color" value="#38bdf8" />
+                    <i class="ph-bold ph-plus"></i>
+                  </label>
                 </div>
               </section>
 
@@ -679,22 +691,22 @@
   <!-- ==== Toasts ==== -->
   <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
 
-  <script src="js/i18n.js?v=45"></script>
+  <script src="js/i18n.js?v=46"></script>
   <!-- Classic scripts deliberately stay ordered: later modules use bindings from earlier ones.
        The map/radar module (js/modules/11-map-radar.js) is intentionally NOT
        here — the LiveSkyMap loader inside 10-bootstrap.js fetches it (plus the
        MapLibre GL library) on the first map/radar interaction. The service
        worker still precaches it, so offline map opens keep working. -->
-  <script src="js/modules/01-core.js?v=12"></script>
-  <script src="js/modules/02-weather-data.js?v=12"></script>
-  <script src="js/modules/03-rendering.js?v=8"></script>
-  <script src="js/modules/04-chart.js?v=9"></script>
-  <script src="js/modules/05-hourly-alerts.js?v=4"></script>
-  <script src="js/modules/06-air.js?v=5"></script>
-  <script src="js/modules/07-effects.js?v=14"></script>
-  <script src="js/modules/08-search-modals.js?v=14"></script>
-  <script src="js/modules/09-lifecycle.js?v=7"></script>
-  <script src="js/modules/10-bootstrap.js?v=14"></script>
-  <script src="js/modules/12-theme-studio.js?v=7"></script>
+  <script src="js/modules/01-core.js?v=13"></script>
+  <script src="js/modules/02-weather-data.js?v=13"></script>
+  <script src="js/modules/03-rendering.js?v=9"></script>
+  <script src="js/modules/04-chart.js?v=10"></script>
+  <script src="js/modules/05-hourly-alerts.js?v=5"></script>
+  <script src="js/modules/06-air.js?v=6"></script>
+  <script src="js/modules/07-effects.js?v=15"></script>
+  <script src="js/modules/08-search-modals.js?v=15"></script>
+  <script src="js/modules/09-lifecycle.js?v=8"></script>
+  <script src="js/modules/10-bootstrap.js?v=15"></script>
+  <script src="js/modules/12-theme-studio.js?v=8"></script>
 </body>
 </html>

@@ -854,6 +854,9 @@ function init() {
   syncMenuChecks();
   syncEffectsSelect();
   updateFavIcon();
+  if (typeof setAppIconColor === 'function') {
+    setAppIconColor(store.get('livesky:app_icon_color', '#38bdf8'), false);
+  }
   updateNotifItem();
   startClock();
   startLiveTicker();

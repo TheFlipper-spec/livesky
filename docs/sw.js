@@ -3,7 +3,7 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-clouds-v30';
+const VERSION = 'livesky-v1.4-clouds-v32';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = `${VERSION}-forecast`;
 
@@ -66,6 +66,7 @@ const SHELL_ASSETS = [
   './icons/icon-64.png',
   './icons/icon-32.png',
   './icons/icon-16.png',
+  './icons/LiveSky_icon.png',
   './assets/fonts/fonts.css',
   './assets/fonts/files/montserrat-cyrillic-400-normal.woff2',
   './assets/fonts/files/montserrat-cyrillic-500-normal.woff2',
@@ -133,19 +134,25 @@ const SHELL_ASSETS = [
 /* Open-Meteo hosts whose responses we mirror into the forecast cache
    so the last loaded forecast stays available offline. */
 function isDataApi(url) {
-  return /(api|air-quality-api|geocoding-api)\.open-meteo\.com\//.test(url.host + url.pathname);
+  return /(api|air-quality-api|geocoding-api|historical-forecast-api)\.open-meteo\.com/.test(url.host + url.pathname);
 }
 function isForecastApi(url) {
-  return /(api|air-quality-api)\.open-meteo\.com\//.test(url.host + url.pathname);
+  return /(api|air-quality-api|historical-forecast-api)\.open-meteo\.com/.test(url.host + url.pathname);
 }
 
 self.addEventListener('install', (event) => {
-  /* Resilient install: if ONE optional asset fails (font/icon/…), the worker
-     must still activate — otherwise the old worker keeps controlling the page
-     forever and serves stale builds (the \"still squares\" bug). */
+  /* Resilient install: cache every available shell asset without failing on individual errors */
   event.waitUntil(
     caches.open(SHELL_CACHE)
-      .then((cache) => cache.addAll(SHELL_ASSETS.map((u) => new Request(u, { cache: 'reload' }))).catch(() => { /* keep going */ }))
+      .then((cache) =>
+        Promise.all(
+          SHELL_ASSETS.map((url) =>
+            fetch(url)
+              .then((res) => { if (res && res.ok) return cache.put(url, res); })
+              .catch(() => { /* keep going */ })
+          )
+        )
+      )
       .then(() => self.skipWaiting())
   );
 });
