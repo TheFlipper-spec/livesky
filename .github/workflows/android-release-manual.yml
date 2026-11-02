@@ -1,15 +1,4 @@
-# LiveSky — Android Release Build (ручной шаблон)
-#
-# Это ШАБЛОН. Скопируйте его в .github/workflows/android-release-manual.yml,
-# настройте секреты в Settings → Secrets and variables → Actions, и можно запускать.
-#
-# Необходимые секреты (Settings → Secrets → Actions):
-#   KEYSTORE_BASE64    — keystore в base64: base64 -w 0 release.jks
-#   KEYSTORE_PASSWORD  — пароль от keystore
-#   KEY_ALIAS          — alias ключа внутри keystore
-#   KEY_PASSWORD       — пароль от ключа (обычно совпадает с KEYSTORE_PASSWORD)
-#
-# Как запустить: Actions → "Android Release Build (Manual)" → Run workflow
+# LiveSky — Android Release Build (Manual & Tag)
 
 name: Android Release Build (Manual)
 
@@ -17,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Версия релиза (например v1.3.1) — оставьте пустым, чтобы не публиковать в Releases'
+        description: 'Версия релиза (например v1.4-alpha) — оставьте пустым, чтобы не публиковать в Releases'
         required: false
-        default: ''
+        default: 'v1.4-alpha'
 
 permissions:
   contents: write
@@ -47,11 +36,16 @@ jobs:
           java-version: 21
           cache: gradle
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install Android SDK platform + build-tools
-        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMGR=$(ls -d "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -n 1)
+          yes | "$SDKMGR" --licenses > /dev/null || true
+          "$SDKMGR" --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install npm dependencies
         run: npm ci
@@ -62,42 +56,65 @@ jobs:
       - name: Sync Capacitor
         run: npm run cap:sync
 
-      - name: Decode keystore
+      - name: Prepare signing keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          mkdir -p android/app
-          echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
-
-      - name: Build signed APK
-        working-directory: android
-        env:
-          KEYSTORE_FILE: release.keystore
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p android/app
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+            echo "BUILD_KS_PASS=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "BUILD_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "BUILD_KEY_PASS=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}" >> "$GITHUB_ENV"
+          else
+            keytool -genkeypair -v \
+              -keystore android/app/release.keystore \
+              -alias livesky \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass livesky123 -keypass livesky123 \
+              -dname "CN=LiveSky Weather Pro, OU=Mobile, O=LiveSky, L=Almetyevsk, S=Tatarstan, C=RU"
+            echo "BUILD_KS_PASS=livesky123" >> "$GITHUB_ENV"
+            echo "BUILD_KEY_ALIAS=livesky" >> "$GITHUB_ENV"
+            echo "BUILD_KEY_PASS=livesky123" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build signed APK
+        working-directory: android
+        env:
+          KEYSTORE_FILE: app/release.keystore
+          KEYSTORE_PASSWORD: ${{ env.BUILD_KS_PASS }}
+          KEY_ALIAS: ${{ env.BUILD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ env.BUILD_KEY_PASS }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Collect artifact
         run: |
           mkdir -p artifacts
-          cp android/app/build/outputs/apk/release/app-release.apk artifacts/LiveSky-release.apk
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk artifacts/LiveSky-1.4-Alpha.apk
+            cp android/app/build/outputs/apk/release/app-release.apk artifacts/LiveSky-release.apk
+          else
+            cp android/app/build/outputs/apk/release/*.apk artifacts/LiveSky-release.apk
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: LiveSky-release-${{ github.sha }}
-          path: artifacts/LiveSky-release.apk
+          path: artifacts/*.apk
           if-no-files-found: error
           retention-days: 30
 
-      # Публикует APK в GitHub Release только если передан тег
       - name: Publish to GitHub Release
         if: ${{ github.event.inputs.tag != '' }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag }}
-          files: artifacts/LiveSky-release.apk
+          files: |
+            artifacts/LiveSky-1.4-Alpha.apk
+            artifacts/LiveSky-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
