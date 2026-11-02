@@ -1,5 +1,5 @@
 /* ============================================================
-   LiveSky Weather Pro — THEME STUDIO (layer 3, eager)
+   LiveSky Weather Pro — THEME STUDIO PRO (layer 3, eager)
    ------------------------------------------------------------
    Custom user themes + the visual builder:
      • `CustomTheme` — storage (multiple named themes), active-theme
@@ -8,7 +8,8 @@
        `data-theme` keeps carrying the base so every existing
        `[data-theme="light"]` component override keeps applying).
      • `openThemeStudio` / `closeThemeStudio` — the builder modal with a
-       live mini-preview of the site and instant-apply controls.
+       live mini-preview of the site, weather scenarios, contrast checks,
+       manual HEX inputs, export/import, and deep granular controls.
    Consumes: kernel (store/state/t), settings (setTheme/applyTheme,
    trapFocus, applyTranslations), effects (applyWeatherTheme re-asserts
    custom accents unless weather-tint is on), data (toast).
@@ -43,6 +44,10 @@ function studioLum(hex) {
   });
   return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 }
+function studioContrast(c1, c2) {
+  const l1 = studioLum(c1), l2 = studioLum(c2);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}
 function studioHsl(h, s, l) {
   h = ((h % 360) + 360) % 360 / 360;
   s = Math.max(0, Math.min(1, s)); l = Math.max(0, Math.min(1, l));
@@ -63,32 +68,51 @@ function studioHsl(h, s, l) {
 const STUDIO_STORE_KEY = 'livesky:custom_themes';
 /* Every CSS variable the studio manages — cleared when leaving custom mode
    so the built-in themes render exactly as authored. */
-const STUDIO_VARS = ['--bg-0', '--bg-1', '--surface', '--surface-2', '--surface-3', '--surface-hover', '--surface-input', '--menu-bg',
-  '--text-1', '--text-2', '--text-3', '--accent', '--accent-2', '--accent-soft',
-  '--accent-contrast', '--stroke-accent', '--glow-accent', '--grad-logo',
+const STUDIO_VARS = [
+  '--bg-0', '--bg-1', '--surface', '--surface-2', '--surface-3', '--surface-hover', '--surface-input', '--menu-bg',
+  '--stroke', '--stroke-strong',
+  '--text-1', '--text-2', '--text-3',
+  '--accent', '--accent-2', '--accent-soft', '--accent-contrast', '--stroke-accent', '--glow-accent', '--grad-logo',
+  '--btn-bg', '--btn-text',
+  '--icon-accent',
+  '--chart-line', '--chart-fill',
   '--glass-blur', '--radius-lg', '--radius-md', '--radius-sm',
-  '--shadow-card', '--shadow-pop', '--aurora-o'];
+  '--shadow-card', '--shadow-pop', '--aurora-o'
+];
+
+const SWATCH_PALETTE = ['#38bdf8', '#6366f1', '#a855f7', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#64748b', '#ffffff', '#0f172a'];
 
 function studioDefaults(base) {
   const dark = base !== 'light';
   return dark ? {
-    base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55,
+    base: 'dark', bg0: '#05070f', bg1: '#0a1020',
+    card: '#0d1528', cardAlpha: 55,
+    strokeColor: '#94a3b8', strokeAlpha: 13,
     text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5',
     accent: '#38bdf8', accent2: '#818cf8', weatherTint: true,
+    btnBg: '#38bdf8', btnText: '#04101f',
+    iconAccent: '#38bdf8',
+    chartLine: '#38bdf8', chartFill: '#38bdf8',
     blur: 18, radius: 28, shadow: 70, aurora: 90
   } : {
-    base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72,
+    base: 'light', bg0: '#eef4fb', bg1: '#f7fafd',
+    card: '#ffffff', cardAlpha: 72,
+    strokeColor: '#0f172a', strokeAlpha: 9,
     text1: '#16202f', text2: '#33415a', text3: '#8b98ab',
     accent: '#7c3aed', accent2: '#06b6d4', weatherTint: true,
+    btnBg: '#7c3aed', btnText: '#ffffff',
+    iconAccent: '#7c3aed',
+    chartLine: '#7c3aed', chartFill: '#7c3aed',
     blur: 18, radius: 28, shadow: 60, aurora: 55
   };
 }
 const STUDIO_PRESETS = [
-  { name: 'Neon Night', base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55, text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5', accent: '#38bdf8', accent2: '#818cf8' },
-  { name: 'Sunset', base: 'dark', bg0: '#170b12', bg1: '#251016', card: '#2b1420', cardAlpha: 60, text1: '#fff5f0', text2: '#e8c4b8', text3: '#a07a70', accent: '#fb7185', accent2: '#fbbf24' },
-  { name: 'Forest', base: 'dark', bg0: '#04120c', bg1: '#07231a', card: '#0a2a1e', cardAlpha: 60, text1: '#eefbf3', text2: '#bfe3cf', text3: '#7ba58f', accent: '#34d399', accent2: '#a3e635' },
-  { name: 'Pure Light', base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72, text1: '#16202f', text2: '#33415a', text3: '#8b98ab', accent: '#7c3aed', accent2: '#06b6d4' },
-  { name: 'Sakura', base: 'light', bg0: '#fdf0f4', bg1: '#fff7fa', card: '#ffffff', cardAlpha: 70, text1: '#3d2233', text2: '#7a4a63', text3: '#b08aa0', accent: '#ec4899', accent2: '#8b5cf6' }
+  { name: 'Neon Night', base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55, strokeColor: '#94a3b8', strokeAlpha: 13, text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5', accent: '#38bdf8', accent2: '#818cf8', btnBg: '#38bdf8', btnText: '#04101f', iconAccent: '#38bdf8', chartLine: '#38bdf8' },
+  { name: 'Sunset Rose', base: 'dark', bg0: '#170b12', bg1: '#251016', card: '#2b1420', cardAlpha: 60, strokeColor: '#fb7185', strokeAlpha: 16, text1: '#fff5f0', text2: '#e8c4b8', text3: '#a07a70', accent: '#fb7185', accent2: '#fbbf24', btnBg: '#fb7185', btnText: '#251016', iconAccent: '#fbbf24', chartLine: '#fb7185' },
+  { name: 'Emerald Forest', base: 'dark', bg0: '#04120c', bg1: '#07231a', card: '#0a2a1e', cardAlpha: 60, strokeColor: '#34d399', strokeAlpha: 14, text1: '#eefbf3', text2: '#bfe3cf', text3: '#7ba58f', accent: '#34d399', accent2: '#a3e635', btnBg: '#34d399', btnText: '#04120c', iconAccent: '#34d399', chartLine: '#34d399' },
+  { name: 'Pure Light', base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72, strokeColor: '#0f172a', strokeAlpha: 9, text1: '#16202f', text2: '#33415a', text3: '#8b98ab', accent: '#7c3aed', accent2: '#06b6d4', btnBg: '#7c3aed', btnText: '#ffffff', iconAccent: '#7c3aed', chartLine: '#7c3aed' },
+  { name: 'Sakura Blossom', base: 'light', bg0: '#fdf0f4', bg1: '#fff7fa', card: '#ffffff', cardAlpha: 70, strokeColor: '#ec4899', strokeAlpha: 10, text1: '#3d2233', text2: '#7a4a63', text3: '#b08aa0', accent: '#ec4899', accent2: '#8b5cf6', btnBg: '#ec4899', btnText: '#ffffff', iconAccent: '#ec4899', chartLine: '#ec4899' },
+  { name: 'Midnight Amethyst', base: 'dark', bg0: '#0b061a', bg1: '#140c2e', card: '#1b103d', cardAlpha: 65, strokeColor: '#a855f7', strokeAlpha: 18, text1: '#faf5ff', text2: '#d8b4fe', text3: '#9333ea', accent: '#c084fc', accent2: '#38bdf8', btnBg: '#a855f7', btnText: '#ffffff', iconAccent: '#c084fc', chartLine: '#c084fc' }
 ];
 function studioNewId() {
   return 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
@@ -107,8 +131,11 @@ function studioNormalize(raw) {
   th.id = typeof th.id === 'string' && th.id ? th.id : studioNewId();
   th.name = typeof th.name === 'string' && th.name.trim() ? th.name.slice(0, 40) : 'Custom';
   th.base = base;
-  ['bg0', 'bg1', 'card', 'text1', 'text2', 'text3', 'accent', 'accent2'].forEach(k => { th[k] = studioHex(th[k]); });
+  ['bg0', 'bg1', 'card', 'strokeColor', 'text1', 'text2', 'text3', 'accent', 'accent2', 'btnBg', 'btnText', 'iconAccent', 'chartLine', 'chartFill'].forEach(k => {
+    if (th[k]) th[k] = studioHex(th[k]);
+  });
   th.cardAlpha = studioNum(th.cardAlpha, d.cardAlpha, 5, 100);
+  th.strokeAlpha = studioNum(th.strokeAlpha, d.strokeAlpha, 0, 100);
   th.blur = studioNum(th.blur, 18, 0, 30);
   th.radius = studioNum(th.radius, 28, 8, 32);
   th.shadow = studioNum(th.shadow, 70, 0, 100);
@@ -135,7 +162,7 @@ const CustomTheme = {
     this.draft = studioClone(this.getActive());
   },
   persist() {
-    try { store.set(STUDIO_STORE_KEY, { v: 1, list: this.list, activeId: this.activeId }); } catch (e) { /* ignore */ }
+    try { store.set(STUDIO_STORE_KEY, { v: 2, list: this.list, activeId: this.activeId }); } catch (e) { /* ignore */ }
   },
   saveSoon() {
     clearTimeout(this._saveTimer);
@@ -156,8 +183,7 @@ const CustomTheme = {
   isLight() { return this.base() === 'light'; },
   weatherTint() { return this.getActive().weatherTint !== false; },
 
-  /* Push a theme onto the page as inline custom properties (they win over
-     every stylesheet rule, including the [data-theme] token blocks). */
+  /* Push a theme onto the page as inline custom properties */
   apply(th) {
     th = studioNormalize(th || this.draft || this.getActive());
     const root = document.documentElement;
@@ -165,24 +191,43 @@ const CustomTheme = {
     root.dataset.theme = th.base;
     if (document.body) document.body.dataset.theme = th.base;
     const set = (k, v) => root.style.setProperty(k, v);
+
     set('--bg-0', th.bg0);
     set('--bg-1', th.bg1);
     try { document.body.style.background = `linear-gradient(180deg, ${th.bg0} 0%, ${th.bg1} 100%)`; } catch (e) { /* ignore */ }
     const a = th.cardAlpha / 100;
     set('--surface', studioRgba(th.card, a));
-    /* inner tiles (metrics, hourly/daily cards, modal rows) live on
-       --surface-2/3 — derive them from the block color so the setting
-       visibly repaints them on either base (mixed slightly toward the text
-       color so tiles keep separating from their parent card). */
     const tile = studioMix(th.card, th.text1, 0.12);
     set('--surface-2', studioRgba(tile, Math.max(0.05, Math.min(0.55, a * 0.45))));
     set('--surface-3', studioRgba(tile, Math.max(0.08, Math.min(0.75, a * 0.7))));
     set('--surface-hover', studioRgba(tile, Math.max(0.12, Math.min(0.9, a * 0.85 + 0.06))));
     set('--surface-input', studioRgba(th.card, Math.min(1, a + 0.22)));
     set('--menu-bg', studioRgba(studioMix(th.bg1, th.card, 0.55), 0.96));
+
+    // Custom borders
+    const sColor = th.strokeColor || (light ? '#0f172a' : '#94a3b8');
+    const sA = (th.strokeAlpha != null ? th.strokeAlpha : (light ? 9 : 13)) / 100;
+    set('--stroke', studioRgba(sColor, sA));
+    set('--stroke-strong', studioRgba(sColor, Math.min(1, sA * 2)));
+
+    // Custom typography
     set('--text-1', th.text1);
     set('--text-2', th.text2);
     set('--text-3', th.text3);
+
+    // Custom buttons & actions
+    const btnBg = th.btnBg || th.accent;
+    set('--btn-bg', btnBg);
+    set('--btn-text', th.btnText || (studioLum(btnBg) > 0.45 ? '#04101f' : '#ffffff'));
+
+    // Custom icons
+    set('--icon-accent', th.iconAccent || th.accent);
+
+    // Custom charts
+    const cLine = th.chartLine || th.accent;
+    set('--chart-line', cLine);
+    set('--chart-fill', th.chartFill ? studioRgba(th.chartFill, 0.18) : studioRgba(cLine, 0.14));
+
     this.applyAccents(th);
     set('--glass-blur', `${Math.round(th.blur)}px`);
     const r = Math.round(th.radius);
@@ -197,8 +242,7 @@ const CustomTheme = {
     try { studioRenderDiag(); } catch (e) { /* studio may be closed */ }
     return th;
   },
-  /* Accents alone — re-asserted after every weather-theme pass when the
-     theme opts out of the weather tint, so storm/sun never hijack them. */
+
   applyAccents(th) {
     th = th || this.draft || this.getActive();
     const root = document.documentElement;
@@ -223,6 +267,8 @@ const CustomTheme = {
     const root = document.documentElement;
     STUDIO_VARS.forEach(k => root.style.removeProperty(k));
     try { document.body.style.removeProperty('background'); } catch (e) { /* ignore */ }
+    root.dataset.theme = state.theme;
+    if (document.body) document.body.dataset.theme = state.theme;
   },
 
   setActive(id) {
@@ -235,7 +281,7 @@ const CustomTheme = {
   },
   create(source, name) {
     this.saveNow();
-    const th = studioNormalize(Object.assign({}, source || this.draft || this.getActive()));
+    const th = studioNormalize(Object.assign({}, source || studioDefaults(this.base())));
     th.id = studioNewId();
     th.name = (name || `${typeof t === 'function' ? t('theme_custom') : 'Custom'} ${this.list.length + 1}`).slice(0, 40);
     this.list.push(th);
@@ -266,33 +312,67 @@ const CustomTheme = {
     this.apply(this.draft);
     this.saveNow();
   },
-  /* Harmless fun: a harmonious random palette on the current base. */
   randomize() {
     this.ensureLoaded();
     const d = this.draft;
     const light = d.base === 'light';
     const h = Math.floor(Math.random() * 360);
-    d.accent = studioHsl(h, light ? 0.72 : 0.85, light ? 0.5 : 0.65);
+    d.accent = studioHsl(h, light ? 0.75 : 0.85, light ? 0.5 : 0.65);
     d.accent2 = studioHsl(h + 45 + Math.random() * 60, light ? 0.7 : 0.8, light ? 0.45 : 0.62);
-    d.bg0 = studioHsl(h, light ? 0.35 : 0.45, light ? 0.93 : 0.05);
+    d.btnBg = d.accent;
+    d.btnText = studioLum(d.btnBg) > 0.45 ? '#04101f' : '#ffffff';
+    d.iconAccent = d.accent;
+    d.chartLine = d.accent;
+    d.chartFill = d.accent;
+    d.bg0 = studioHsl(h, light ? 0.35 : 0.45, light ? 0.94 : 0.05);
     d.bg1 = studioHsl((h + 25) % 360, light ? 0.3 : 0.5, light ? 0.96 : 0.09);
     d.card = light ? '#ffffff' : studioHsl(h, 0.4, 0.1);
-    d.cardAlpha = light ? 72 : 58;
-    if (light) { d.text1 = '#16202f'; d.text2 = '#33415a'; d.text3 = '#8b98ab'; }
-    else { d.text1 = '#f4f7fb'; d.text2 = '#c7d2e0'; d.text3 = '#8ca0b5'; }
+    d.cardAlpha = light ? 75 : 58;
+    if (light) { d.text1 = '#16202f'; d.text2 = '#33415a'; d.text3 = '#8b98ab'; d.strokeColor = '#0f172a'; d.strokeAlpha = 9; }
+    else { d.text1 = '#f4f7fb'; d.text2 = '#c7d2e0'; d.text3 = '#8ca0b5'; d.strokeColor = '#94a3b8'; d.strokeAlpha = 13; }
     this.apply(d);
     this.saveNow();
+  },
+  exportActive() {
+    const th = this.draft || this.getActive();
+    return JSON.stringify(th, null, 2);
+  },
+  importTheme(rawJson) {
+    try {
+      const parsed = JSON.parse(rawJson);
+      if (!parsed || typeof parsed !== 'object') return null;
+      const th = studioNormalize(parsed);
+      th.id = studioNewId();
+      th.name = (th.name || 'Imported').slice(0, 40);
+      this.list.push(th);
+      this.activeId = th.id;
+      this.draft = studioClone(th);
+      this.apply(this.draft);
+      this.persist();
+      return th;
+    } catch (e) {
+      return null;
+    }
   }
 };
 
 /* ---------------- studio modal ---------------- */
-let studioEl = null, studioBound = false, studioChartT = null;
+let studioEl = null, studioBound = false, studioChartT = null, studioScenario = 'clear';
 
-function studioColorRow(key, labelKey) {
-  return `<div class="st-row"><label data-translate="${labelKey}"></label>
-    <span class="st-color"><input type="color" data-k="${key}" value="#38bdf8" aria-label="${key}">
-    <code class="st-hex" data-hex="${key}">#38BDF8</code></span></div>`;
+function studioColorRow(key, labelKey, withSwatches) {
+  const swatchesHtml = withSwatches ? `
+    <div class="st-swatches" data-swatch-for="${key}">
+      ${SWATCH_PALETTE.map(c => `<button type="button" class="st-swatch" style="background:${c}" data-color="${c}" title="${c}"></button>`).join('')}
+    </div>` : '';
+  return `<div class="st-row">
+    <label data-translate="${labelKey}"></label>
+    <span class="st-color">
+      <input type="color" data-k="${key}" value="#38bdf8" aria-label="${key}">
+      <input type="text" class="st-hex" data-hex-input="${key}" maxlength="7" spellcheck="false" aria-label="HEX code">
+    </span>
+  </div>${swatchesHtml}`;
 }
+
 function studioRangeRow(key, labelKey, min, max, unit) {
   return `<div class="st-row"><label data-translate="${labelKey}"></label>
     <span class="st-range-wrap"><input type="range" class="st-range" data-k="${key}" data-unit="${unit}"
@@ -321,17 +401,45 @@ function studioBuild() {
         <button type="button" data-stab="preview" role="tab" aria-selected="true"><i class="ph ph-eye"></i><span data-translate="studio_preview"></span></button>
         <button type="button" data-stab="tune" role="tab" aria-selected="false"><i class="ph ph-sliders-horizontal"></i><span data-translate="studio_tune"></span></button>
       </div>
+
+      <!-- Mobile mini live preview indicator shown on Tune tab -->
+      <div class="st-mobile-mini-pv" id="st-mobile-mini-pv">
+        <span class="st-mini-pv-temp" id="st-m-temp">21°</span>
+        <span class="st-mini-pv-cond" id="st-m-cond">Ясно</span>
+        <span class="st-mini-pv-icon" id="st-m-icon"><i class="ph-fill ph-sun"></i></span>
+        <button type="button" class="st-mini-pv-btn">Кнопка</button>
+      </div>
+
       <div class="studio-preview">
         <div class="studio-preview-cap"><span class="live-dot"></span><span data-translate="studio_preview"></span></div>
+        
+        <!-- Weather scenario switchers -->
+        <div class="pv-scenarios" id="pv-scenarios">
+          <button type="button" class="pv-scen active" data-scen="clear">☀️ Ясно</button>
+          <button type="button" class="pv-scen" data-scen="rain">🌧️ Дождь</button>
+          <button type="button" class="pv-scen" data-scen="storm">⚡ Гроза</button>
+          <button type="button" class="pv-scen" data-scen="snow">❄️ Снег</button>
+          <button type="button" class="pv-scen" data-scen="night">🌙 Ночь</button>
+        </div>
+
         <div class="pv-stage"><div class="pv-mini" id="pv-mini"></div></div>
         <p class="pv-hint" data-translate="studio_hint"></p>
       </div>
       <div class="st-controls" id="st-controls">
         ${studioGroup('ph-swatches', 'studio_mine', `
           <div class="st-themes" id="st-themes"></div>
-          <div class="st-name-row" style="margin-top:10px">
-            <button class="st-btn st-btn-ghost" id="st-duplicate" type="button" style="flex:1;height:40px"><i class="ph ph-copy"></i><span data-translate="studio_duplicate"></span></button>
-            <button class="st-btn st-btn-ghost" id="st-delete" type="button" style="flex:1;height:40px"><i class="ph ph-trash"></i><span data-translate="studio_delete"></span></button>
+          <div class="st-name-row" style="margin-top:10px; flex-wrap:wrap; gap:8px;">
+            <button class="st-btn st-btn-ghost" id="st-duplicate" type="button" style="flex:1;min-width:110px;height:38px"><i class="ph ph-copy"></i><span data-translate="studio_duplicate"></span></button>
+            <button class="st-btn st-btn-ghost" id="st-export" type="button" style="flex:1;min-width:100px;height:38px"><i class="ph ph-export"></i><span data-translate="studio_export"></span></button>
+            <button class="st-btn st-btn-ghost" id="st-import-btn" type="button" style="flex:1;min-width:100px;height:38px"><i class="ph ph-download"></i><span data-translate="studio_import"></span></button>
+            <button class="st-btn st-btn-ghost" id="st-delete" type="button" style="flex:1;min-width:110px;height:38px"><i class="ph ph-trash"></i><span data-translate="studio_delete"></span></button>
+          </div>
+          <div class="st-io-panel hidden" id="st-io-panel">
+            <textarea id="st-io-text" placeholder=""></textarea>
+            <div class="st-io-actions">
+              <button type="button" class="st-btn st-btn-ghost" id="st-io-cancel" style="height:32px;font-size:11.5px">Отмена</button>
+              <button type="button" class="st-btn st-btn-primary" id="st-io-apply" style="height:32px;font-size:11.5px">Импортировать</button>
+            </div>
           </div>`)}
         ${studioGroup('ph-sparkle', 'studio_presets', `<div class="st-presets" id="st-presets"></div>`)}
         ${studioGroup('ph-circle-half', 'studio_base', `
@@ -339,16 +447,34 @@ function studioBuild() {
             <button type="button" data-base="dark"><i class="ph ph-moon"></i><span data-translate="studio_dark"></span></button>
             <button type="button" data-base="light"><i class="ph ph-sun"></i><span data-translate="studio_light"></span></button>
           </div>`)}
-        ${studioGroup('ph-image', 'studio_bg', studioColorRow('bg0', 'studio_bg_top') + studioColorRow('bg1', 'studio_bg_bottom'))}
+        ${studioGroup('ph-image', 'studio_bg',
+          studioColorRow('bg0', 'studio_bg_top', true) +
+          studioColorRow('bg1', 'studio_bg_bottom', false))}
         ${studioGroup('ph-squares-four', 'studio_blocks',
-          studioColorRow('card', 'studio_card_color') + studioRangeRow('cardAlpha', 'studio_card_alpha', 5, 100, '%'))}
-        ${studioGroup('ph-text-aa', 'studio_text',
-          studioColorRow('text1', 'studio_text_main') + studioColorRow('text2', 'studio_text_sub') + studioColorRow('text3', 'studio_text_mute'))}
+          studioColorRow('card', 'studio_card_color', true) +
+          studioRangeRow('cardAlpha', 'studio_card_alpha', 5, 100, '%'))}
+        ${studioGroup('ph-bounding-box', 'studio_borders',
+          studioColorRow('strokeColor', 'studio_stroke_color', false) +
+          studioRangeRow('strokeAlpha', 'studio_stroke_alpha', 0, 100, '%'))}
+        ${studioGroup('ph-text-aa', 'studio_text', `
+          ${studioColorRow('text1', 'studio_text_main', false)}
+          ${studioColorRow('text2', 'studio_text_sub', false)}
+          ${studioColorRow('text3', 'studio_text_mute', false)}
+          <div class="st-contrast-box" id="st-contrast-box">
+            <span class="st-contrast-label" data-translate="studio_contrast"></span>
+            <span class="st-contrast-badge good" id="st-contrast-badge">7.2:1 · AAA</span>
+          </div>`)}
         ${studioGroup('ph-palette', 'studio_accents', `
-          ${studioColorRow('accent', 'studio_accent1')}
-          ${studioColorRow('accent2', 'studio_accent2')}
+          ${studioColorRow('accent', 'studio_accent1', true)}
+          ${studioColorRow('accent2', 'studio_accent2', true)}
           <div class="st-row"><label><span data-translate="studio_weather_tint"></span><small data-translate="studio_weather_tint_d"></small></label>
           <span class="st-switch"><input type="checkbox" data-k="weatherTint"><span class="st-track"></span></span></div>`)}
+        ${studioGroup('ph-cursor-click', 'studio_buttons', `
+          ${studioColorRow('btnBg', 'studio_btn_bg', true)}
+          ${studioColorRow('btnText', 'studio_btn_text', false)}`)}
+        ${studioGroup('ph-sparkle', 'studio_icons', `
+          ${studioColorRow('iconAccent', 'studio_icon_accent', true)}
+          ${studioColorRow('chartLine', 'studio_chart_line', false)}`)}
         ${studioGroup('ph-sliders-horizontal', 'studio_shape',
           studioRangeRow('blur', 'studio_blur', 0, 30, 'px') +
           studioRangeRow('radius', 'studio_radius', 8, 32, 'px') +
@@ -365,7 +491,6 @@ function studioBuild() {
   </div>`;
   document.body.appendChild(wrap);
   studioEl = wrap;
-  /* placeholders aren't covered by applyTranslations — sync by hand */
   const ph = wrap.querySelector('[data-translate-ph]');
   if (ph && typeof t === 'function') ph.setAttribute('placeholder', t(ph.dataset.translatePh));
   studioBind();
@@ -373,48 +498,78 @@ function studioBuild() {
   return studioEl;
 }
 
-/* A tiny mirror of the site. Every painted value comes from the live CSS
-   variables, so the mock (and the blurred real site behind the overlay)
-   updates on every control tick with zero extra wiring. */
+/* Dynamic weather preview mock */
 function studioRenderPreview() {
   const host = document.getElementById('pv-mini');
   if (!host) return;
   const T = (k, fb) => { try { const v = t(k); return v === k ? fb : v; } catch (e) { return fb; } };
-  let cond = 'Clear sky', d0 = 'Today', d1 = 'Tomorrow', d2 = '';
-  try { cond = wmoLabel(0); } catch (e) { /* ignore */ }
+
+  let cond = 'Ясно', temp = '21°', sub = 'H:24° · L:16°', mainIcon = 'ph-sun';
+  if (studioScenario === 'rain') {
+    cond = 'Дождь'; temp = '14°'; sub = 'H:16° · L:11°'; mainIcon = 'ph-cloud-rain';
+  } else if (studioScenario === 'storm') {
+    cond = 'Гроза'; temp = '17°'; sub = 'H:19° · L:13°'; mainIcon = 'ph-cloud-lightning';
+  } else if (studioScenario === 'snow') {
+    cond = 'Снегопад'; temp = '-3°'; sub = 'H:-1° · L:-6°'; mainIcon = 'ph-snowflake';
+  } else if (studioScenario === 'night') {
+    cond = 'Ясно · Ночь'; temp = '12°'; sub = 'Осадки: 0%'; mainIcon = 'ph-moon-stars';
+  }
+
+  let d0 = 'Сегодня', d1 = 'Завтра', d2 = '';
   try {
     const locale = loc();
-    d0 = T('today', 'Today');
+    d0 = T('today', 'Сегодня');
     const plus1 = new Date(Date.now() + 864e5).toLocaleDateString(locale, { weekday: 'long' });
     const plus2 = new Date(Date.now() + 2 * 864e5).toLocaleDateString(locale, { weekday: 'long' });
     d1 = plus1.charAt(0).toUpperCase() + plus1.slice(1);
     d2 = plus2.charAt(0).toUpperCase() + plus2.slice(1);
   } catch (e) { /* ignore */ }
+
   const hours = [14, 20, 30, 42, 36, 26].map((h, i) =>
-    `<div class="pv-hour"><i style="height:${h}px"></i><span>${String(i * 3).padStart(2, '0')}</span></div>`).join('');
+    `<div class="pv-hour"><i style="height:${h}px; background:linear-gradient(180deg, var(--chart-line, var(--accent)), var(--accent-2));"></i><span>${String(i * 3).padStart(2, '0')}</span></div>`).join('');
+
   host.innerHTML = `
-    <div class="pv-bar"><div class="pv-logo"><i class="ph-fill ph-cloud-sun"></i></div><div class="pv-search"></div><div class="pv-dot"></div><div class="pv-dot"></div></div>
-    <div class="pv-card"><div class="pv-hero">
-      <div><div class="pv-temp">21°</div><div class="pv-cond">${cond}</div><div class="pv-sub">H:24° · L:16°</div></div>
-      <div class="pv-icon"><i class="ph-fill ph-sun"></i></div>
+    <div class="pv-bar">
+      <div class="pv-logo"><i class="ph-fill ph-cloud-sun"></i></div>
+      <div class="pv-search"></div>
+      <button type="button" class="pv-btn">Обновить</button>
+      <div class="pv-dot"></div>
     </div>
-    <svg class="pv-chart" viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true">
-      <path d="M0,34 C25,30 35,16 60,19 S95,31 120,24 S165,7 200,11 L200,44 L0,44 Z" fill="var(--accent-soft)" stroke="none"/>
-      <path d="M0,34 C25,30 35,16 60,19 S95,31 120,24 S165,7 200,11" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"/>
-      <circle cx="120" cy="24" r="3.5" fill="var(--accent-2)"/>
-    </svg></div>
+    <div class="pv-card">
+      <div class="pv-hero">
+        <div>
+          <div class="pv-temp">${temp}</div>
+          <div class="pv-cond">${cond}</div>
+          <div class="pv-sub">${sub}</div>
+        </div>
+        <div class="pv-icon"><i class="ph-fill ${mainIcon}"></i></div>
+      </div>
+      <svg class="pv-chart" viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,34 C25,30 35,16 60,19 S95,31 120,24 S165,7 200,11 L200,44 L0,44 Z" fill="var(--chart-fill, var(--accent-soft))" stroke="none"/>
+        <path d="M0,34 C25,30 35,16 60,19 S95,31 120,24 S165,7 200,11" fill="none" stroke="var(--chart-line, var(--accent))" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="120" cy="24" r="3.5" fill="var(--accent-2)"/>
+      </svg>
+    </div>
     <div class="pv-chips">
-      <div class="pv-chip"><b>19°</b><span>${T('feels_like', 'Feels')}</span></div>
-      <div class="pv-chip"><b>4 m/s</b><span>${T('wind', 'Wind')}</span></div>
-      <div class="pv-chip"><b>62%</b><span>${T('humidity', 'Hum')}</span></div>
-      <div class="pv-chip"><b>3</b><span>UV</span></div>
+      <div class="pv-chip"><b>${temp}</b><span>${T('feels_like', 'Ощущается')}</span></div>
+      <div class="pv-chip"><b>4 м/с</b><span>${T('wind', 'Ветер')}</span></div>
+      <div class="pv-chip"><b>62%</b><span>${T('humidity', 'Влажность')}</span></div>
+      <div class="pv-chip"><b>3</b><span>УФ</span></div>
     </div>
     <div class="pv-card"><div class="pv-hours">${hours}</div></div>
     <div class="pv-card"><div class="pv-rows">
-      <div class="pv-row"><i class="ph-fill ph-sun"></i><span>${d0}</span><b>24°</b></div>
+      <div class="pv-row"><i class="ph-fill ${mainIcon}"></i><span>${d0}</span><b>${temp}</b></div>
       <div class="pv-row"><i class="ph-fill ph-cloud"></i><span>${d1}</span><b>21°</b></div>
       <div class="pv-row"><i class="ph-fill ph-cloud-rain"></i><span>${d2}</span><b>18°</b></div>
     </div></div>`;
+
+  // Update mobile mini preview
+  const mTemp = document.getElementById('st-m-temp');
+  const mCond = document.getElementById('st-m-cond');
+  const mIcon = document.getElementById('st-m-icon');
+  if (mTemp) mTemp.textContent = temp;
+  if (mCond) mCond.textContent = cond;
+  if (mIcon) mIcon.innerHTML = `<i class="ph-fill ${mainIcon}"></i>`;
 }
 
 function studioRenderChips() {
@@ -426,7 +581,15 @@ function studioRenderChips() {
       <span class="st-dot" style="background:linear-gradient(135deg, ${th.accent}, ${th.accent2})"></span>
       <span>${th.name.replace(/</g, '&lt;')}</span>
     </button>`).join('') + `
-    <button type="button" class="st-chip st-chip-add" data-add="1"><i class="ph ph-plus"></i><span data-translate="studio_new">${typeof t === 'function' ? t('studio_new') : 'New'}</span></button>`;
+    <button type="button" class="st-chip st-chip-add" data-add="1"><i class="ph ph-plus"></i><span data-translate="studio_new">${typeof t === 'function' ? t('studio_new') : 'Новая'}</span></button>`;
+
+  const delBtn = document.getElementById('st-delete');
+  if (delBtn) {
+    const single = CustomTheme.list.length <= 1;
+    delBtn.style.opacity = single ? '0.45' : '1';
+    delBtn.style.cursor = single ? 'not-allowed' : 'pointer';
+    delBtn.title = single ? (typeof t === 'function' ? t('studio_delete_only_one') : 'Нельзя удалить единственную тему') : '';
+  }
 }
 
 function studioRenderPresets() {
@@ -445,11 +608,11 @@ function studioSyncControls() {
   studioEl.querySelectorAll('input[type="color"][data-k]').forEach(inp => {
     inp.value = studioHex(d[inp.dataset.k] || '#38bdf8');
   });
-  studioEl.querySelectorAll('.st-hex[data-hex]').forEach(code => {
-    code.textContent = studioHex(d[code.dataset.hex] || '').toUpperCase();
+  studioEl.querySelectorAll('input.st-hex[data-hex-input]').forEach(inp => {
+    inp.value = studioHex(d[inp.dataset.hexInput] || '').toUpperCase();
   });
   studioEl.querySelectorAll('input[type="range"][data-k]').forEach(inp => {
-    const v = Number(d[inp.dataset.k] || 0);
+    const v = Number(d[inp.dataset.k] != null ? d[inp.dataset.k] : 0);
     inp.value = v;
     const pct = (v - Number(inp.min)) / (Number(inp.max) - Number(inp.min)) * 100;
     inp.style.setProperty('--p', pct + '%');
@@ -468,11 +631,22 @@ function studioSyncControls() {
   if (sw) sw.checked = d.weatherTint !== false;
   const name = document.getElementById('studio-name');
   if (name && document.activeElement !== name) name.value = d.name || '';
+
+  // Calculate and update contrast badge
+  const crBadge = document.getElementById('st-contrast-badge');
+  if (crBadge) {
+    const cardBg = d.card || (d.base === 'light' ? '#ffffff' : '#0d1528');
+    const textCol = d.text1 || (d.base === 'light' ? '#16202f' : '#f4f7fb');
+    const ratio = studioContrast(cardBg, textCol);
+    const rNum = ratio.toFixed(1);
+    crBadge.className = 'st-contrast-badge ' + (ratio >= 7 ? 'good' : (ratio >= 4.5 ? 'warn' : 'bad'));
+    const verdict = ratio >= 7 ? 'AAA · Отлично' : (ratio >= 4.5 ? 'AA · Хорошо' : '⚠️ Слабый контраст');
+    crBadge.textContent = `${rNum}:1 · ${verdict}`;
+  }
+
   studioRenderDiag();
 }
 
-/* Visible build + theme-state readout (footer). Proves which build paints
-   and what the live variables hold — decisive in bug-report screenshots. */
 function studioRenderDiag() {
   if (!studioEl) return;
   const node = studioEl.querySelector('#studio-diag');
@@ -491,8 +665,8 @@ function studioApplyInput(node) {
   const d = CustomTheme.draft;
   if (node.type === 'color') {
     d[k] = studioHex(node.value);
-    const code = studioEl.querySelector(`[data-hex="${k}"]`);
-    if (code) code.textContent = d[k].toUpperCase();
+    const hexInput = studioEl.querySelector(`input.st-hex[data-hex-input="${k}"]`);
+    if (hexInput && document.activeElement !== hexInput) hexInput.value = d[k].toUpperCase();
   } else if (node.type === 'range') {
     d[k] = Number(node.value);
     const pct = (d[k] - Number(node.min)) / (Number(node.max) - Number(node.min)) * 100;
@@ -502,21 +676,19 @@ function studioApplyInput(node) {
   } else if (node.type === 'checkbox') {
     d[k] = node.checked;
   }
-  /* Base flips need the full theme pass (dataset + weather accents). */
   if (k === 'base') {
     if (typeof applyTheme === 'function') applyTheme();
   } else {
     CustomTheme.apply(d);
   }
-  /* Weather-tint toggles re-run the weather pass so accents snap immediately. */
   if (k === 'weatherTint' && typeof applyWeatherTheme === 'function') applyWeatherTheme();
-  /* Accent edits repaint the forecast chart behind the modal (debounced). */
-  if ((k === 'accent' || k === 'accent2') && typeof SECTION_MANAGER !== 'undefined') {
+  if ((k === 'accent' || k === 'accent2' || k === 'chartLine') && typeof SECTION_MANAGER !== 'undefined') {
     clearTimeout(studioChartT);
     studioChartT = setTimeout(() => {
       try { if (state.weather) SECTION_MANAGER.renderSection('forecast'); } catch (e) { /* ignore */ }
     }, 600);
   }
+  studioRenderPreview();
   CustomTheme.saveSoon();
 }
 
@@ -524,34 +696,79 @@ function studioBind() {
   if (studioBound || !studioEl) return;
   studioBound = true;
   const controls = document.getElementById('st-controls');
-  /* Both `input` (live) and `change` (commit): most pickers fire `input`
-     continuously, but some flows (keyboard, exotic webviews, picker-dismiss)
-     only deliver `change`. The handler is idempotent, so double delivery is
-     harmless. */
+
   const onControlInput = (e) => {
     if (e.target && e.target.dataset && e.target.dataset.k) studioApplyInput(e.target);
   };
   controls.addEventListener('input', onControlInput);
   controls.addEventListener('change', onControlInput);
+
+  // Manual HEX text input handler
+  controls.addEventListener('input', (e) => {
+    const hexTarget = e.target.closest('input.st-hex[data-hex-input]');
+    if (!hexTarget) return;
+    const k = hexTarget.dataset.hexInput;
+    let val = hexTarget.value.trim();
+    if (!val.startsWith('#')) val = '#' + val;
+    if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      CustomTheme.draft[k] = val.toLowerCase();
+      const colorPicker = studioEl.querySelector(`input[type="color"][data-k="${k}"]`);
+      if (colorPicker) colorPicker.value = val.toLowerCase();
+      CustomTheme.apply(CustomTheme.draft);
+      studioRenderPreview();
+      CustomTheme.saveSoon();
+    }
+  });
+
   const nameInput = document.getElementById('studio-name');
   nameInput.addEventListener('input', () => {
     CustomTheme.draft.name = nameInput.value.slice(0, 40) || (typeof t === 'function' ? t('theme_custom') : 'Custom');
     CustomTheme.saveSoon();
     studioRenderChips();
   });
+
   studioEl.addEventListener('click', (e) => {
     if (e.target === studioEl) { closeThemeStudio(); return; }
+
+    // Swatch pill clicked
+    const swatch = e.target.closest('.st-swatch');
+    if (swatch) {
+      const container = swatch.closest('[data-swatch-for]');
+      if (container) {
+        const k = container.dataset.swatchFor;
+        const color = swatch.dataset.color;
+        CustomTheme.draft[k] = color;
+        const colorInput = studioEl.querySelector(`input[type="color"][data-k="${k}"]`);
+        const hexInput = studioEl.querySelector(`input.st-hex[data-hex-input="${k}"]`);
+        if (colorInput) colorInput.value = color;
+        if (hexInput) hexInput.value = color.toUpperCase();
+        CustomTheme.apply(CustomTheme.draft);
+        studioRenderPreview();
+        CustomTheme.saveSoon();
+      }
+      return;
+    }
+
+    // Weather scenario toggle in preview
+    const scenBtn = e.target.closest('.pv-scen');
+    if (scenBtn) {
+      studioScenario = scenBtn.dataset.scen || 'clear';
+      studioEl.querySelectorAll('.pv-scen').forEach(b => b.classList.toggle('active', b === scenBtn));
+      studioRenderPreview();
+      return;
+    }
+
     const chip = e.target.closest('[data-theme-id]');
     if (chip) {
       CustomTheme.setActive(chip.dataset.themeId);
       if (typeof applyTheme === 'function') applyTheme();
-      studioSyncControls(); studioRenderChips();
+      studioSyncControls(); studioRenderChips(); studioRenderPreview();
       return;
     }
     if (e.target.closest('[data-add]')) {
       CustomTheme.create();
       if (typeof applyTheme === 'function') applyTheme();
-      studioSyncControls(); studioRenderChips();
+      studioSyncControls(); studioRenderChips(); studioRenderPreview();
       nameInput.focus(); nameInput.select();
       return;
     }
@@ -568,34 +785,78 @@ function studioBind() {
       if (p) {
         CustomTheme.create(p, p.name);
         if (typeof applyTheme === 'function') applyTheme();
-        studioSyncControls(); studioRenderChips();
+        studioSyncControls(); studioRenderChips(); studioRenderPreview();
       }
       return;
     }
     const baseBtn = e.target.closest('#st-base button');
     if (baseBtn) {
       CustomTheme.draft.base = baseBtn.dataset.base;
-      /* A fresh base deserves fresh readable defaults for text + surfaces. */
       const d0 = studioDefaults(CustomTheme.draft.base);
-      ['bg0', 'bg1', 'card', 'cardAlpha', 'text1', 'text2', 'text3', 'shadow', 'aurora'].forEach(k => {
+      ['bg0', 'bg1', 'card', 'cardAlpha', 'strokeColor', 'strokeAlpha', 'text1', 'text2', 'text3', 'shadow', 'aurora', 'btnBg', 'btnText', 'iconAccent', 'chartLine', 'chartFill'].forEach(k => {
         CustomTheme.draft[k] = d0[k];
       });
-      CustomTheme.saveNow(); /* applyTheme re-clones the draft from storage */
+      CustomTheme.saveNow();
       if (typeof applyTheme === 'function') applyTheme();
       studioSyncControls();
+      studioRenderPreview();
       return;
     }
     if (e.target.closest('#st-duplicate')) {
       CustomTheme.duplicate();
       if (typeof applyTheme === 'function') applyTheme();
-      studioSyncControls(); studioRenderChips();
+      studioSyncControls(); studioRenderChips(); studioRenderPreview();
       return;
     }
     if (e.target.closest('#st-delete')) {
-      if (CustomTheme.removeActive()) {
+      if (CustomTheme.list.length <= 1) {
+        if (typeof toast === 'function') toast(t('studio_delete_only_one') || 'Нельзя удалить единственную тему', 'warn');
+        return;
+      }
+      const confirmed = typeof confirm !== 'function' || confirm(t('studio_delete_confirm') || 'Удалить эту тему?');
+      if (confirmed && CustomTheme.removeActive()) {
         if (typeof applyTheme === 'function') applyTheme();
-        studioSyncControls(); studioRenderChips();
-        if (typeof toast === 'function') toast(t('studio_deleted'));
+        studioSyncControls(); studioRenderChips(); studioRenderPreview();
+        if (typeof toast === 'function') toast(t('studio_deleted') || 'Тема удалена', 'info');
+      }
+      return;
+    }
+    // Export theme
+    if (e.target.closest('#st-export')) {
+      const json = CustomTheme.exportActive();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json).then(() => {
+          if (typeof toast === 'function') toast(t('studio_export_copied') || 'Код темы скопирован!', 'success');
+        }).catch(() => {
+          showIoPanel(json);
+        });
+      } else {
+        showIoPanel(json);
+      }
+      return;
+    }
+    // Import theme toggle
+    if (e.target.closest('#st-import-btn')) {
+      toggleIoPanel();
+      return;
+    }
+    if (e.target.closest('#st-io-cancel')) {
+      const p = document.getElementById('st-io-panel');
+      if (p) p.classList.add('hidden');
+      return;
+    }
+    if (e.target.closest('#st-io-apply')) {
+      const txt = document.getElementById('st-io-text');
+      if (txt && txt.value.trim()) {
+        const imported = CustomTheme.importTheme(txt.value.trim());
+        if (imported) {
+          if (typeof applyTheme === 'function') applyTheme();
+          studioSyncControls(); studioRenderChips(); studioRenderPreview();
+          document.getElementById('st-io-panel').classList.add('hidden');
+          if (typeof toast === 'function') toast('Тема успешно импортирована!', 'success');
+        } else {
+          if (typeof toast === 'function') toast(t('studio_import_err') || 'Ошибка импорта', 'error');
+        }
       }
       return;
     }
@@ -603,31 +864,50 @@ function studioBind() {
       CustomTheme.resetDraft();
       if (typeof applyTheme === 'function') applyTheme();
       studioSyncControls();
+      studioRenderPreview();
       return;
     }
     if (e.target.closest('#st-random')) {
       CustomTheme.randomize();
       studioSyncControls();
+      studioRenderPreview();
       return;
     }
     if (e.target.closest('#st-done') || e.target.closest('#studio-close')) { closeThemeStudio(); return; }
   });
+
   studioEl.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { e.stopPropagation(); closeThemeStudio(); }
   });
 }
 
+function showIoPanel(text) {
+  const p = document.getElementById('st-io-panel');
+  const t = document.getElementById('st-io-text');
+  if (p && t) {
+    p.classList.remove('hidden');
+    t.value = text || '';
+    t.select();
+  }
+}
+function toggleIoPanel() {
+  const p = document.getElementById('st-io-panel');
+  const t = document.getElementById('st-io-text');
+  if (p) {
+    p.classList.toggle('hidden');
+    if (!p.classList.contains('hidden') && t) {
+      t.value = '';
+      t.focus();
+    }
+  }
+}
+
 function openThemeStudio() {
   CustomTheme.ensureLoaded();
-  /* The studio always edits the custom theme — entering activates it.
-     Done directly (not gated on the previous state.theme) so activation
-     can never silently no-op: whatever path led here, the open studio
-     always ends with the draft painted. */
   state.theme = 'custom';
   try { store.set('livesky:theme', 'custom'); } catch (e) { /* ignore */ }
-  if (typeof applyTheme === 'function') { try { applyTheme(); } catch (e) { /* fall through to the local pass */ } }
+  if (typeof applyTheme === 'function') { try { applyTheme(); } catch (e) { /* local pass */ } }
   if (!document.documentElement.dataset.custom) {
-    /* ancient/mixed shell without a custom-aware applyTheme: do it here */
     const b = CustomTheme.base();
     document.documentElement.dataset.theme = b;
     if (document.body) document.body.dataset.theme = b;
@@ -641,7 +921,6 @@ function openThemeStudio() {
   studioRenderPreview();
   studioRenderChips();
   studioSyncControls();
-  /* belt-and-braces: whatever path led here, the open studio paints the draft */
   CustomTheme.apply(CustomTheme.draft);
   if (typeof applyTranslations === 'function') applyTranslations();
   const ph = studioEl.querySelector('[data-translate-ph]');
@@ -650,6 +929,7 @@ function openThemeStudio() {
   document.body.classList.add('no-scroll');
   if (typeof trapFocus === 'function') trapFocus(studioEl);
 }
+
 function closeThemeStudio() {
   if (!studioEl) return;
   CustomTheme.saveNow();
@@ -662,10 +942,6 @@ function closeThemeStudio() {
   } catch (e) { /* ignore */ }
 }
 
-/* Late-boot repair: 10-bootstrap's init() runs before this module is parsed,
-   so a stored custom theme is never painted at boot (dataset.theme is left
-   as the literal 'custom' with no variables). Repair it now — still
-   synchronously during page load. */
 try {
   if (typeof state !== 'undefined' && state.theme === 'custom' && typeof CustomTheme !== 'undefined') {
     const bootBase = CustomTheme.base();
@@ -674,4 +950,4 @@ try {
     document.documentElement.dataset.custom = '1';
     CustomTheme.applyActive();
   }
-} catch (e) { /* boot must never fail on theming */ }
+} catch (e) { /* boot must never fail */ }
