@@ -908,7 +908,7 @@ setTimeout(() => {
         'getMinVal resolves model-suffixed 15-minute series: ' + mp.slot1);
       assert(mp.source === 'minutely' && mp.resolved === true,
         'minute-precision nowcast is driven by the 15-minute block, not the hourly fallback');
-      assert(/\\d{2}:\\d{2}|мин/.test(mp.status || ''), 'rain status keeps minute precision: ' + mp.status);
+      assert(/\d{2}:\d{2}|мин/.test(mp.status || ''), 'rain status keeps minute precision: ' + mp.status);
     }
     /* Hazard engine: minute-aware multi-type alerts */
     {

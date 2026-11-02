@@ -40,11 +40,47 @@ let tempLat = null, tempLon = null;
    require a paid API key, so they are no longer usable here. */
 function mapStyle() {
   const light = state.theme === 'light' ||
-    (state.theme === 'adaptive' && typeof isDayNow === 'function' && isDayNow()) ||
     (state.theme === 'custom' && typeof CustomTheme !== 'undefined' && CustomTheme.isLight());
   return light
     ? 'https://tiles.openfreemap.org/styles/positron'
     : 'https://tiles.openfreemap.org/styles/dark';
+}
+/* Harmonize vector map layers with the active theme background & accents */
+function applyThemeToMap(map) {
+  if (!map || typeof map.getLayer !== 'function') return;
+  try {
+    const isLight = state.theme === 'light' ||
+      (state.theme === 'custom' && typeof CustomTheme !== 'undefined' && CustomTheme.isLight());
+    if (isLight) return;
+
+    const root = document.documentElement;
+    const isDay = state.theme === 'adaptive' && typeof isDayNow === 'function' && isDayNow();
+    const bg0 = root.style.getPropertyValue('--bg-0') || (isDay ? '#143862' : '#0a1020');
+    const bg1 = root.style.getPropertyValue('--bg-1') || '#05070f';
+    const landColor = isDay ? '#123458' : bg0;
+    const waterColor = isDay ? '#1a4979' : (bg1 || '#081426');
+
+    if (map.getLayer('background')) {
+      map.setPaintProperty('background', 'background-color', landColor);
+    }
+    if (map.getLayer('water')) {
+      map.setPaintProperty('water', 'fill-color', waterColor);
+    }
+    if (map.getLayer('waterway')) {
+      map.setPaintProperty('waterway', 'line-color', waterColor);
+    }
+    if (map.getLayer('landuse_residential')) {
+      map.setPaintProperty('landuse_residential', 'fill-color', isDay ? '#153b64' : '#0e182c');
+    }
+    if (map.getLayer('landcover_wood')) {
+      map.setPaintProperty('landcover_wood', 'fill-color', isDay ? '#16406c' : '#101c34');
+    }
+    if (map.getLayer('building')) {
+      map.setPaintProperty('building', 'fill-color', isDay ? '#194776' : '#13213c');
+    }
+  } catch (e) {
+    /* safely ignore if vector layers not yet loaded */
+  }
 }
 /* last-resort fallback if the vector style ever fails to load: plain OSM raster tiles. */
 function osmStyle() {
@@ -82,6 +118,8 @@ function initMap() {
       if (!smallMapFallback) { smallMapFallback = true; try { mapInst.setStyle(osmStyle()); } catch (e) { /* ignore */ } }
     });
     mapMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(mapInst);
+    mapInst.on('styledata', () => applyThemeToMap(mapInst));
+    mapInst.on('load', () => applyThemeToMap(mapInst));
     setTimeout(() => { if (mapInst) mapInst.resize(); }, 300);
   } catch (e) { console.warn('LiveSky: map init failed', e); }
 }
@@ -94,8 +132,14 @@ function updateMap() {
 function updateMapTiles() {
   if (!window.maplibregl) return;
   smallMapFallback = false; fullMapFallback = false;
-  if (mapInst) mapInst.setStyle(mapStyle());
-  if (fullMapInst) fullMapInst.setStyle(mapStyle());
+  if (mapInst) {
+    mapInst.setStyle(mapStyle());
+    mapInst.once('styledata', () => applyThemeToMap(mapInst));
+  }
+  if (fullMapInst) {
+    fullMapInst.setStyle(mapStyle());
+    fullMapInst.once('styledata', () => applyThemeToMap(fullMapInst));
+  }
 }
 
 function openFullMap() {
@@ -123,7 +167,9 @@ function openFullMap() {
         });
         fullMapInst.addControl(new maplibregl.NavigationControl({ showCompass: false, showZoom: true }), 'bottom-right');
         fullMarkEl = new maplibregl.Marker({ element: makePinEl() }).setLngLat([state.lon, state.lat]).addTo(fullMapInst);
+        fullMapInst.on('styledata', () => applyThemeToMap(fullMapInst));
         fullMapInst.on('load', () => {
+          applyThemeToMap(fullMapInst);
           fullMapInst.on('click', (e) => {
             if (fullMapInst._liveskyDragging) return;
             tempLat = e.lngLat.lat; tempLon = e.lngLat.lng;
