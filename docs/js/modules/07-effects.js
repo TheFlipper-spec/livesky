@@ -40,7 +40,7 @@ const LOGOS = {
 
 let lastBgKey = '';
 /* heavy effects are disabled when the user is in Eco mode or the FPS detector flagged a weak device */
-function effectsReduced() { return state.effects === 'eco' || (state.effects === 'auto' && state._perfLow); }
+function effectsReduced() { return state.effects === 'eco' || (state.effects === 'auto' && (state._perfLow || state._batteryLow)); }
 function setBackground(gradient, key) {
   if (key && key === lastBgKey) return;
   lastBgKey = key || '';
@@ -348,6 +348,14 @@ const FX = {
       this.build();
     }
   },
+  fpsLimit: (typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '')) ? 30 : 0,
+  lastFrameTime: 0,
+  pause() {
+    if (this.running) {
+      cancelAnimationFrame(this.raf);
+      this.running = false;
+    }
+  },
   start(kind) {
     if (kind === this.kind) return;
     if (!kind) { this.stop(); return; }
@@ -371,13 +379,25 @@ const FX = {
     if (ctx) ctx.clearRect(0, 0, this.w, this.h);
   },
   resume() {
-    if (!this.kind || this.running) return;
+    if (!this.kind || this.running || (typeof document !== 'undefined' && document.hidden)) return;
     this.running = true;
     this.last = performance.now();
     this.raf = requestAnimationFrame((t) => this.loop(t));
   },
   loop(t) {
     if (!this.running) return;
+    if (typeof document !== 'undefined' && document.hidden) {
+      this.pause();
+      return;
+    }
+    if (this.fpsLimit > 0) {
+      const minInterval = 1000 / this.fpsLimit;
+      if (t - this.lastFrameTime < minInterval - 2) {
+        this.raf = requestAnimationFrame((tt) => this.loop(tt));
+        return;
+      }
+    }
+    this.lastFrameTime = t;
     const dt = Math.min(0.05, (t - this.last) / 1000);
     this.last = t;
     const ctx = el.fxCanvas.getContext('2d');
@@ -541,3 +561,34 @@ const GlassFX = {
   init() {}, start() {}, stop() {}, resize() {}, resume() {}, pause() {},
   setIntensity() {}
 };
+/* ---------------- Battery & Power Awareness ---------------- */
+function initBatteryWatcher() {
+  if (typeof navigator === 'undefined' || typeof navigator.getBattery !== 'function') return;
+  navigator.getBattery().then((battery) => {
+    const updatePowerMode = () => {
+      const isLow = battery.level < 0.20 && !battery.charging;
+      if (isLow) {
+        FX.fpsLimit = 30;
+        if (state.effects === 'auto' && !state._batteryLow) {
+          state._batteryLow = true;
+          applyEffects();
+        }
+      } else {
+        FX.fpsLimit = (/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '')) ? 30 : 0;
+        if (state._batteryLow) {
+          state._batteryLow = false;
+          applyEffects();
+        }
+      }
+    };
+    updatePowerMode();
+    battery.addEventListener('levelchange', updatePowerMode);
+    battery.addEventListener('chargingchange', updatePowerMode);
+  }).catch(() => {});
+}
+
+try {
+  if (typeof window !== 'undefined') {
+    initBatteryWatcher();
+  }
+} catch (e) { /* ignore */ }

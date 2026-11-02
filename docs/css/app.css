@@ -2918,8 +2918,28 @@ html:not(.consent-locked) #consent-modal { display: none !important; }
     radial-gradient(150px 110px at 88% 22%, rgba(34, 211, 238, 0.65), transparent 70%),
     radial-gradient(170px 130px at 55% 95%, rgba(251, 113, 133, 0.6), transparent 70%),
     radial-gradient(110px 110px at 90% 88%, rgba(251, 191, 36, 0.5), transparent 70%),
-    linear-gradient(160deg, #1b1440, #0b1c33 55%, #2a1030);
+    linear-gradient(160deg, var(--bg-0, #1b1440), var(--bg-1, #0b1c33) 55%, #2a1030);
   box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.35);
+}
+[data-base="light"] .pv-stage,
+[data-theme="light"] .pv-stage,
+.pv-stage[data-base="light"] {
+  background:
+    radial-gradient(120px 90px at 12% 8%, rgba(168, 85, 247, 0.22), transparent 70%),
+    radial-gradient(150px 110px at 88% 22%, rgba(56, 189, 248, 0.25), transparent 70%),
+    radial-gradient(170px 130px at 55% 95%, rgba(251, 113, 133, 0.2), transparent 70%),
+    radial-gradient(110px 110px at 90% 88%, rgba(251, 191, 36, 0.22), transparent 70%),
+    linear-gradient(160deg, var(--bg-0, #eef4fb), var(--bg-1, #dfeaf7) 55%, #f4f8fd);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.06);
+  border-color: var(--stroke);
+}
+[data-base="light"] .studio-sheet,
+[data-theme="light"] .studio-sheet {
+  box-shadow: 0 30px 90px -18px rgba(15, 23, 42, 0.22), 0 0 40px -15px var(--glow-accent);
+}
+[data-base="light"] #studio-overlay,
+[data-theme="light"] #studio-overlay {
+  background: rgba(15, 23, 42, 0.4);
 }
 .pv-mini { display: flex; flex-direction: column; gap: 8px; max-width: 330px; margin: 0 auto; }
 .pv-bar { display: flex; align-items: center; gap: 7px; }

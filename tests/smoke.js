@@ -300,9 +300,9 @@ setTimeout(() => {
       const swSrc = fs.readFileSync(path.join(DOCS, 'sw.js'), 'utf8');
       assert(Buffer.byteLength(compatibilityLoader) < 2500, 'app.js remains a small compatibility loader');
       assert(!/src=\"js\/app\.js/.test(html), 'index.html does not load the legacy app.js bundle');
-      assert((appSrc.match(/try \{\n  init\(\);/g) || []).length === 1,
+      assert((appSrc.match(/try \{\r?\n\s*init\(\);/g) || []).length === 1,
         'the module sequence has exactly one application initialization call');
-      assert((lazySrc.match(/try \{\n  init\(\);/g) || []).length === 0 && !/\binit\(\)\s*;/.test(lazySrc),
+      assert((lazySrc.match(/try \{\r?\n\s*init\(\);/g) || []).length === 0 && !/\binit\(\)\s*;/.test(lazySrc),
         'the lazy map module never calls the application init()');
       assert(/LiveSkyMap\._register/.test(lazySrc) && /window\.LiveSkyMap/.test(appSrc),
         'lazy map module registers with the LiveSkyMap loader facade');
@@ -333,6 +333,7 @@ setTimeout(() => {
       const mm = cssSrc.match(/\.map-modal\s*\{[^}]*\}/s);
       assert(mm && /visibility:\s*hidden/.test(mm[0]) && /pointer-events:\s*none/.test(mm[0]), 'closed map modal is fully inert (visibility + pointer-events)');
       assert(/\.search-form input\s*\{[^}]*cursor:\s*text/s.test(cssSrc), 'search input uses a text cursor');
+      assert(/\[data-base="light"\]\s*\.pv-stage/.test(cssSrc), 'css: theme studio light theme preview stage background exists');
       /* The saved-forecast notice carries a full sentence — if it ever goes
          back to the nowrap pill it visibly overflows its frame. */
       const noticeRule = (cssSrc.match(/\.offline-banner\.notice\s*\{[^}]*\}/) || [''])[0];
@@ -1043,8 +1044,12 @@ setTimeout(() => {
     q('main-menu').querySelector('[data-effects="eco"]').click();
     assert(stateProbe().effects === 'eco', 'effects switch via segments');
     window.setEffects('auto');
+    assert(/fpsLimit/.test(appSrc) && /initBatteryWatcher/.test(appSrc), 'FX: battery & performance throttling features present');
 
     /* autocomplete keyboard navigation */
+    const resetLock = document.createElement('script');
+    resetLock.textContent = 'state.uiLockUntil = 0;';
+    document.body.appendChild(resetLock);
     q('fav-btn').click(); /* add current city to favorites so the list has items */
     q('city-input').focus();
     q('city-input').dispatchEvent(new window.Event('focus'));

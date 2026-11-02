@@ -162,6 +162,8 @@ const CustomTheme = {
     th = studioNormalize(th || this.draft || this.getActive());
     const root = document.documentElement;
     const light = th.base === 'light';
+    root.dataset.theme = th.base;
+    if (document.body) document.body.dataset.theme = th.base;
     const set = (k, v) => root.style.setProperty(k, v);
     set('--bg-0', th.bg0);
     set('--bg-1', th.bg1);
@@ -454,6 +456,11 @@ function studioSyncControls() {
     const val = studioEl.querySelector(`[data-val="${inp.dataset.k}"]`);
     if (val) val.textContent = v + (inp.dataset.unit || '');
   });
+  if (studioEl) {
+    studioEl.dataset.base = d.base;
+    const stage = studioEl.querySelector('.pv-stage');
+    if (stage) stage.dataset.base = d.base;
+  }
   studioEl.querySelectorAll('#st-base button').forEach(b => {
     b.classList.toggle('active', b.dataset.base === d.base);
   });

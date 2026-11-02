@@ -22,7 +22,7 @@ const FETCH_MS = window.LIVE_FETCH_TIMEOUT_MS || 15000;
    take over; later refreshes keep the longer timeout so a slow-but-alive API
    still delivers. */
 const FIRST_FETCH_MS = window.LIVE_FIRST_FETCH_TIMEOUT_MS || 8000;
-const UI_LOCK_MS = window.LIVE_UI_LOCK_MS || 800;          /* UI quiet period after closing overlays */
+const UI_LOCK_MS = window.LIVE_UI_LOCK_MS != null ? window.LIVE_UI_LOCK_MS : 800;          /* UI quiet period after closing overlays */
 const FAV_LIST_DELAY_MS = window.LIVE_FAV_DELAY_MS != null ? window.LIVE_FAV_DELAY_MS : 350; /* debounce before auto-opening favorites */
 
 /* ---------------- data endpoints (resilience) ----------------
