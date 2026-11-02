@@ -121,6 +121,7 @@ const SHELL_ASSETS = [
   './assets/vendor/phosphor/fill/Phosphor-Fill.woff',
   './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff2',
   './assets/vendor/phosphor/duotone/Phosphor-Duotone.woff',
+  './assets/brand-wind.png',
   './assets/flags/ru.svg',
   './assets/flags/gb.svg',
   './assets/flags/es.svg',

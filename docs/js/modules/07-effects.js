@@ -140,7 +140,7 @@ function applyWeatherTheme() {
   if (type === 'rain' || type === 'storm') fx = 'rain';
   else if (type === 'snow') fx = 'snow';
   else if (type === 'clear' && night) fx = 'stars';
-  else if (type === 'clear') fx = null;
+  else if (type === 'clear') fx = 'sunmotes';
   else if (type === 'fog') fx = 'fog';
   else if (type === 'cloudy') fx = 'clouds';
 
@@ -153,7 +153,7 @@ function applyWeatherTheme() {
   const liveCode = typeof currentWeatherCodeLive === 'function' ? currentWeatherCodeLive() : code;
   if (effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
   else {
-    FX.setOverlay(night && (liveCode === 0 || liveCode === 1 || liveCode === 2) ? 'fireflies' : null);
+    FX.setOverlay(night && (liveCode != null && liveCode <= 3) ? 'fireflies' : null);
     updateRainbowAftermath(liveCode, !night);
   }
   updateDuskBlend();
@@ -191,6 +191,21 @@ function updateRainbowAftermath(liveCode, day) {
     try { store.set('livesky:rain_ended_at', endedAt); } catch (e) { /* ignore */ }
   } else if (!endedAt) {
     try { endedAt = store.get('livesky:rain_ended_at', 0) || 0; } catch (e) { endedAt = 0; }
+    if (!endedAt && state.weather && state.weather.hourly) {
+      const h = state.weather.hourly;
+      const curIdx = state.nowIdx;
+      for (let offset = 1; offset <= 2; offset++) {
+        const pastIdx = curIdx - offset;
+        if (pastIdx >= 0) {
+          const pastCode = getVal(h, 'weathercode', pastIdx);
+          const pastPrecip = getVal(h, 'precipitation', pastIdx);
+          if ((pastCode != null && RAINBOW_RAIN_CODES.includes(pastCode)) || (pastPrecip != null && pastPrecip > 0.1)) {
+            endedAt = Date.now() - (offset * 12 * 60 * 1000);
+            break;
+          }
+        }
+      }
+    }
     state._rainEndedAt = endedAt;
   }
   const fresh = endedAt && (Date.now() - endedAt < RAINBOW_AFTER_MS);
@@ -336,7 +351,7 @@ const FX = {
   build() {
     this.parts = [];
     /* Base particle counts scaled by intensity (0-1) */
-    const base = { rain: 110, snow: 85, stars: 110, clouds: 5, fog: 6 }[this.kind] || 0;
+    const base = { rain: 110, snow: 85, stars: 110, clouds: 5, fog: 6, sunmotes: 32 }[this.kind] || 0;
     const n = Math.max(1, Math.round(base * this.intensity));
     for (let i = 0; i < n; i++) {
       if (this.kind === 'rain') {
@@ -351,6 +366,18 @@ const FX = {
         const a = 0.3 + this.intensity * (0.3 + Math.random() * 0.3);
         this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h, r, sp, ph: Math.random() * Math.PI * 2, sw: 18 + Math.random() * 22, a });
       } else if (this.kind === 'stars') this.parts.push({ x: Math.random() * this.w, y: Math.random() * this.h * 0.72, r: Math.random() * 1.5 + 0.4, tw: 0.6 + Math.random() * 2.2, ph: Math.random() * Math.PI * 2 });
+      else if (this.kind === 'sunmotes') {
+        this.parts.push({
+          x: Math.random() * this.w,
+          y: Math.random() * this.h,
+          r: 1.2 + Math.random() * 2.4,
+          spY: -6 - Math.random() * 14,
+          spX: 4 + Math.random() * 10,
+          ph: Math.random() * Math.PI * 2,
+          tw: 0.6 + Math.random() * 1.6,
+          a: 0.25 + Math.random() * 0.45
+        });
+      }
       else if (this.kind === 'clouds') this.parts.push({ x: Math.random() * this.w, y: 20 + Math.random() * this.h * 0.5, w: 220 + Math.random() * 320, sp: 8 + Math.random() * 16, a: 0.05 + Math.random() * 0.07 });
       else if (this.kind === 'fog') this.parts.push({ x: Math.random() * this.w, y: this.h * (0.3 + Math.random() * 0.6), w: this.w * (0.7 + Math.random() * 0.6), sp: 10 + Math.random() * 22, a: 0.05 + Math.random() * 0.05 });
     }
@@ -467,6 +494,23 @@ const FX = {
         ctx.stroke();
         if (s.life <= 0) this.shoot = null;
       }
+    } else if (this.kind === 'sunmotes') {
+      for (const p of this.parts) {
+        p.y += p.spY * dt;
+        p.ph += dt * p.tw;
+        p.x += Math.sin(p.ph) * 12 * dt + p.spX * dt;
+        if (p.y < -12) { p.y = this.h + 12; p.x = Math.random() * this.w; }
+        if (p.x > this.w + 12) { p.x = -12; }
+        const alpha = p.a * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(p.ph * 1.4)));
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r * 2.6);
+        g.addColorStop(0, `rgba(254, 240, 138, ${alpha})`);
+        g.addColorStop(0.45, `rgba(251, 191, 36, ${alpha * 0.45})`);
+        g.addColorStop(1, 'rgba(245, 158, 11, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r * 2.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
     } else if (this.kind === 'clouds') {
       for (const p of this.parts) {
         p.x += p.sp * dt;
@@ -534,10 +578,11 @@ const FX = {
     const g = c.getContext('2d');
     if (!g) return null;
     const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255, 246, 200, 1)');
-    grad.addColorStop(0.25, 'rgba(253, 230, 138, 0.85)');
-    grad.addColorStop(0.6, 'rgba(190, 242, 100, 0.25)');
-    grad.addColorStop(1, 'rgba(190, 242, 100, 0)');
+    grad.addColorStop(0, 'rgba(255, 255, 230, 1)');
+    grad.addColorStop(0.2, 'rgba(254, 240, 138, 0.95)');
+    grad.addColorStop(0.5, 'rgba(163, 230, 53, 0.45)');
+    grad.addColorStop(0.8, 'rgba(74, 222, 128, 0.15)');
+    grad.addColorStop(1, 'rgba(74, 222, 128, 0)');
     g.fillStyle = grad;
     g.fillRect(0, 0, 64, 64);
     this._fly = c;
@@ -559,10 +604,10 @@ const FX = {
       }
       /* faint lantern breathing: dim, slow, never a sharp flash */
       const pulse = still ? 0.4 : Math.sin(sec * p.blink * 2 + p.ph * 3);
-      const glow = 0.10 + 0.42 * Math.pow(Math.max(0, pulse), 2);
+      const glow = 0.12 + 0.55 * Math.pow(Math.max(0, pulse), 2);
       if (glow < 0.04) continue;
-      const s = p.r * (0.6 + glow * 0.5);
-      ctx.globalAlpha = Math.min(0.55, glow);
+      const s = p.r * (0.8 + glow * 0.7);
+      ctx.globalAlpha = Math.min(0.75, glow * 1.3);
       ctx.drawImage(spr, p.x - s, p.y - s, s * 2, s * 2);
     }
     ctx.restore();

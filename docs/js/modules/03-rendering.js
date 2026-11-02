@@ -189,10 +189,10 @@ function updateWindTile() {
   if (dirFull) parts.push(dirFull);
   if (gust != null && gust > 0.1) parts.push(t('wind_gusts') + ' ' + fmtWind(gust));
   el.mWindDir.textContent = parts.join(' · ');
-  /* The arrow points the direction the wind comes FROM — the same convention as
-     the adjacent text label (e.g. "N wind" → arrow points north), so arrow and
-     text can never contradict each other. */
-  el.mWindArrow.style.transform = `rotate(${(dir || 45) - 45}deg)`;
+  /* The arrow points in the compass direction the wind originates from (matching the text label).
+     Since ph-arrow-up points straight North (0°), rotate(deg) gives the exact heading. */
+  const deg = (dir != null && !isNaN(dir)) ? (Math.round(dir) % 360) : 0;
+  el.mWindArrow.style.transform = `rotate(${deg}deg)`;
   if (el.mWindArrow) {
     el.mWindArrow.title = (dirFull ? dirFull : t('wind')) + ' · ' + t('wind_dir_hint');
     el.mWindArrow.setAttribute('aria-label', (dirFull ? dirFull : t('wind')) + ' · ' + t('wind_dir_hint'));
