@@ -14,7 +14,7 @@ const ACCENTS = {
   storm:  { day: ['#a78bfa', '#818cf8'], night: ['#8b5cf6', '#6366f1'] }
 };
 const BGS = {
-  clear: { day: 'linear-gradient(180deg, #1273b5 0%, #2f9fe0 55%, #7cc0ec 100%)', night: 'linear-gradient(180deg, #020617 0%, #0b1a3a 55%, #12264f 100%)' },
+  clear: { day: 'linear-gradient(180deg, #165b96 0%, #2578b8 28%, #3f95d1 58%, #6db3e4 82%, #a8d5f2 100%)', night: 'linear-gradient(180deg, #020617 0%, #0b1a3a 55%, #12264f 100%)' },
   cloudy: { day: 'linear-gradient(180deg, #3d5873 0%, #5d7b96 55%, #7d99b0 100%)', night: 'linear-gradient(180deg, #0a0f1e 0%, #141d33 100%)' },
   rain: { day: 'linear-gradient(180deg, #33445a 0%, #42566e 60%, #5a7089 100%)', night: 'linear-gradient(180deg, #060b1d 0%, #101a36 100%)' },
   snow: { day: 'linear-gradient(180deg, #7f9cb8 0%, #a8c1d8 60%, #d5e5f2 100%)', night: 'linear-gradient(180deg, #0e1626 0%, #1c2b47 100%)' },
@@ -22,7 +22,7 @@ const BGS = {
   storm: { day: 'linear-gradient(180deg, #222c40 0%, #39455e 100%)', night: 'linear-gradient(180deg, #080a14 0%, #171c33 100%)' }
 };
 const BLOBS = {
-  clear: { day: ['rgba(251,191,36,0.16)', 'rgba(251,146,60,0.10)', 'rgba(125,211,252,0.10)'], night: ['rgba(129,140,248,0.13)', 'rgba(99,102,241,0.10)', 'rgba(59,130,246,0.09)'] },
+  clear: { day: ['rgba(254, 215, 102, 0.20)', 'rgba(56, 189, 248, 0.14)', 'rgba(253, 230, 138, 0.15)'], night: ['rgba(129,140,248,0.13)', 'rgba(99,102,241,0.10)', 'rgba(59,130,246,0.09)'] },
   cloudy: { day: ['rgba(148,163,184,0.14)', 'rgba(56,189,248,0.08)', 'rgba(203,213,225,0.07)'], night: ['rgba(129,140,248,0.12)', 'rgba(99,102,241,0.10)', 'rgba(148,163,184,0.08)'] },
   rain: { day: ['rgba(96,165,250,0.15)', 'rgba(56,189,248,0.10)', 'rgba(129,140,248,0.08)'], night: ['rgba(99,102,241,0.13)', 'rgba(96,165,250,0.09)', 'rgba(59,130,246,0.09)'] },
   snow: { day: ['rgba(186,230,253,0.18)', 'rgba(147,197,253,0.12)', 'rgba(224,242,254,0.09)'], night: ['rgba(147,197,253,0.13)', 'rgba(129,140,248,0.10)', 'rgba(186,230,253,0.08)'] },
@@ -57,6 +57,8 @@ function applyWeatherTheme() {
   const type = code != null ? wmo(code).type : 'cloudy';
   const night = code != null ? !isDayNow() : false;
   const time = night ? 'night' : 'day';
+  root.dataset.weatherTime = time;
+  root.dataset.weatherType = type;
   /* Custom themes ride the adaptive pipeline (weather FX + blobs) but keep
      the user's own page background and — unless weather-tint is on — accents. */
   const isCustomTheme = state.theme === 'custom' && typeof CustomTheme !== 'undefined';
@@ -92,14 +94,28 @@ function applyWeatherTheme() {
   root.style.setProperty('--accent', a1);
   root.style.setProperty('--accent-2', a2);
   state.accent = a1; state.accent2 = a2;
-  const blobs = (BLOBS[type] || BLOBS.cloudy)[time];
-  root.style.setProperty('--blob-1', blobs[0]);
-  root.style.setProperty('--blob-2', blobs[1]);
-  root.style.setProperty('--blob-3', blobs[2]);
+  if (!customFixedAccents) {
+    const blobs = (BLOBS[type] || BLOBS.cloudy)[time];
+    root.style.setProperty('--blob-1', blobs[0]);
+    root.style.setProperty('--blob-2', blobs[1]);
+    root.style.setProperty('--blob-3', blobs[2]);
+  }
   const logo = (LOGOS[type] || LOGOS.cloudy)[time];
   root.style.setProperty('--grad-logo', logo);
-  if (isCustomTheme) fadeBgLayers();
-  else setBackground((BGS[type] || BGS.cloudy)[time], `${type}-${time}`);
+  if (isCustomTheme) {
+    const th = CustomTheme.draft || CustomTheme.getActive();
+    if (th) {
+      const bgGrad = `linear-gradient(180deg, ${th.bg0} 0%, ${th.bg1} 100%)`;
+      setBackground(bgGrad, 'custom-' + th.id);
+      try {
+        document.body.style.background = bgGrad;
+        const bgC = document.getElementById('bg-container');
+        if (bgC) bgC.style.background = bgGrad;
+      } catch (e) { /* ignore */ }
+    }
+  } else {
+    setBackground((BGS[type] || BGS.cloudy)[time], `${type}-${time}`);
+  }
   if (customFixedAccents) CustomTheme.applyAccents();
   /* dusk glide source data (adaptive only — fixed/custom modes hide the veil) */
   if (isCustomTheme) { duskInfo = null; }
@@ -137,7 +153,7 @@ function applyWeatherTheme() {
   const liveCode = typeof currentWeatherCodeLive === 'function' ? currentWeatherCodeLive() : code;
   if (effectsReduced()) { FX.setOverlay(null); updateRainbowAftermath(null, false); }
   else {
-    FX.setOverlay(!night && (liveCode === 0 || liveCode === 1 || liveCode === 2) ? 'fireflies' : null);
+    FX.setOverlay(night && (liveCode === 0 || liveCode === 1 || liveCode === 2) ? 'fireflies' : null);
     updateRainbowAftermath(liveCode, !night);
   }
   updateDuskBlend();

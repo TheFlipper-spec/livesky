@@ -20,7 +20,7 @@ function renderAll() {
   SECTION_MANAGER.renderSection('daily');
   renderAlerts();
   updateFavIcon();
-  document.title = `${state.locationName} · LiveSky`;
+  document.title = `${cleanCityTitle(state.locationName)} · LiveSky`;
 
   /* Update FX intensity based on actual weather data */
   updateFXIntensity();
@@ -75,8 +75,30 @@ function updateFXIntensity() {
   FX.setIntensity(intensity);
 }
 
+function cleanCityTitle(name) {
+  if (!name || typeof name !== 'string') return name || '';
+  let s = name.trim();
+  const prefixes = [
+    /^городское поселение\s+/i,
+    /^сельское поселение\s+/i,
+    /^городской округ\s+/i,
+    /^муниципальный район\s+/i,
+    /^муниципальный округ\s+/i,
+    /^город\s+/i,
+    /^посёлок городского типа\s+/i,
+    /^пгт\.?\s+/i
+  ];
+  for (const re of prefixes) {
+    if (re.test(s)) {
+      s = s.replace(re, '');
+      break;
+    }
+  }
+  return s ? (s.charAt(0).toUpperCase() + s.slice(1)) : name;
+}
+
 function updateHero() {
-  el.location.textContent = state.locationName;
+  el.location.textContent = cleanCityTitle(state.locationName);
   const heroFlag = flagUrl(state.countryCode);
   el.locationFlag.classList.toggle('hidden', !heroFlag);
   if (heroFlag) {

@@ -493,6 +493,10 @@ function animateNumber(node, to) {
 function setBigIcon(iconClass) {
   if (el.bigIcon.dataset.icon === iconClass) return;
   el.bigIcon.dataset.icon = iconClass;
+  const isSun = /ph-sun\b/.test(iconClass);
+  const isMoon = /ph-moon\b/.test(iconClass);
+  el.bigIcon.classList.toggle('is-sun', isSun);
+  el.bigIcon.classList.toggle('is-moon', isMoon);
   const icon = el.bigIcon.querySelector('i');
   if (icon && !motionReduce) {
     icon.classList.add('swap-out');

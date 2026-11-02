@@ -40,6 +40,7 @@ let tempLat = null, tempLon = null;
    require a paid API key, so they are no longer usable here. */
 function mapStyle() {
   const light = state.theme === 'light' ||
+    (state.theme === 'adaptive' && typeof isDayNow === 'function' && isDayNow()) ||
     (state.theme === 'custom' && typeof CustomTheme !== 'undefined' && CustomTheme.isLight());
   return light
     ? 'https://tiles.openfreemap.org/styles/positron'

@@ -76,6 +76,7 @@ const STUDIO_VARS = [
   '--btn-bg', '--btn-text',
   '--icon-accent',
   '--chart-line', '--chart-fill',
+  '--blob-1', '--blob-2', '--blob-3',
   '--glass-blur', '--radius-lg', '--radius-md', '--radius-sm',
   '--shadow-card', '--shadow-pop', '--aurora-o'
 ];
@@ -194,7 +195,16 @@ const CustomTheme = {
 
     set('--bg-0', th.bg0);
     set('--bg-1', th.bg1);
-    try { document.body.style.background = `linear-gradient(180deg, ${th.bg0} 0%, ${th.bg1} 100%)`; } catch (e) { /* ignore */ }
+    const bgGrad = `linear-gradient(180deg, ${th.bg0} 0%, ${th.bg1} 100%)`;
+    try {
+      document.body.style.background = bgGrad;
+      const bgC = document.getElementById('bg-container');
+      if (bgC) bgC.style.background = bgGrad;
+      if (typeof el !== 'undefined') {
+        if (el.bg1) el.bg1.style.background = bgGrad;
+        if (el.bg2) el.bg2.style.background = bgGrad;
+      }
+    } catch (e) { /* ignore */ }
     const a = th.cardAlpha / 100;
     set('--surface', studioRgba(th.card, a));
     const tile = studioMix(th.card, th.text1, 0.12);
@@ -254,6 +264,9 @@ const CustomTheme = {
     set('--glow-accent', studioRgba(th.accent, 0.35));
     set('--grad-logo', `linear-gradient(135deg, ${th.accent}, ${th.accent2})`);
     set('--accent-contrast', studioLum(th.accent) > 0.45 ? '#04101f' : '#ffffff');
+    set('--blob-1', studioRgba(th.accent, 0.16));
+    set('--blob-2', studioRgba(th.accent2, 0.12));
+    set('--blob-3', studioRgba(studioMix(th.accent, th.accent2, 0.5), 0.10));
     try { state.accent = th.accent; state.accent2 = th.accent2; } catch (e) { /* ignore */ }
   },
   applyActive() {
