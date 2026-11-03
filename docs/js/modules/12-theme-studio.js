@@ -108,12 +108,12 @@ function studioDefaults(base) {
   };
 }
 const STUDIO_PRESETS = [
-  { name: 'Neon Night', base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55, strokeColor: '#94a3b8', strokeAlpha: 13, text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5', accent: '#38bdf8', accent2: '#818cf8', btnBg: '#38bdf8', btnText: '#04101f', iconAccent: '#38bdf8', chartLine: '#38bdf8' },
-  { name: 'Sunset Rose', base: 'dark', bg0: '#170b12', bg1: '#251016', card: '#2b1420', cardAlpha: 60, strokeColor: '#fb7185', strokeAlpha: 16, text1: '#fff5f0', text2: '#e8c4b8', text3: '#a07a70', accent: '#fb7185', accent2: '#fbbf24', btnBg: '#fb7185', btnText: '#251016', iconAccent: '#fbbf24', chartLine: '#fb7185' },
-  { name: 'Emerald Forest', base: 'dark', bg0: '#04120c', bg1: '#07231a', card: '#0a2a1e', cardAlpha: 60, strokeColor: '#34d399', strokeAlpha: 14, text1: '#eefbf3', text2: '#bfe3cf', text3: '#7ba58f', accent: '#34d399', accent2: '#a3e635', btnBg: '#34d399', btnText: '#04120c', iconAccent: '#34d399', chartLine: '#34d399' },
-  { name: 'Pure Light', base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72, strokeColor: '#0f172a', strokeAlpha: 9, text1: '#16202f', text2: '#33415a', text3: '#8b98ab', accent: '#7c3aed', accent2: '#06b6d4', btnBg: '#7c3aed', btnText: '#ffffff', iconAccent: '#7c3aed', chartLine: '#7c3aed' },
-  { name: 'Sakura Blossom', base: 'light', bg0: '#fdf0f4', bg1: '#fff7fa', card: '#ffffff', cardAlpha: 70, strokeColor: '#ec4899', strokeAlpha: 10, text1: '#3d2233', text2: '#7a4a63', text3: '#b08aa0', accent: '#ec4899', accent2: '#8b5cf6', btnBg: '#ec4899', btnText: '#ffffff', iconAccent: '#ec4899', chartLine: '#ec4899' },
-  { name: 'Midnight Amethyst', base: 'dark', bg0: '#0b061a', bg1: '#140c2e', card: '#1b103d', cardAlpha: 65, strokeColor: '#a855f7', strokeAlpha: 18, text1: '#faf5ff', text2: '#d8b4fe', text3: '#9333ea', accent: '#c084fc', accent2: '#38bdf8', btnBg: '#a855f7', btnText: '#ffffff', iconAccent: '#c084fc', chartLine: '#c084fc' }
+  { name: 'Тёмная', base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55, strokeColor: '#94a3b8', strokeAlpha: 13, text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5', accent: '#38bdf8', accent2: '#818cf8', btnBg: '#38bdf8', btnText: '#04101f', iconAccent: '#38bdf8', chartLine: '#38bdf8' },
+  { name: 'Тёплый вечер', base: 'dark', bg0: '#170b12', bg1: '#251016', card: '#2b1420', cardAlpha: 60, strokeColor: '#fb7185', strokeAlpha: 16, text1: '#fff5f0', text2: '#e8c4b8', text3: '#a07a70', accent: '#fb7185', accent2: '#fbbf24', btnBg: '#fb7185', btnText: '#251016', iconAccent: '#fbbf24', chartLine: '#fb7185' },
+  { name: 'Зелёная', base: 'dark', bg0: '#04120c', bg1: '#07231a', card: '#0a2a1e', cardAlpha: 60, strokeColor: '#34d399', strokeAlpha: 14, text1: '#eefbf3', text2: '#bfe3cf', text3: '#7ba58f', accent: '#34d399', accent2: '#a3e635', btnBg: '#34d399', btnText: '#04120c', iconAccent: '#34d399', chartLine: '#34d399' },
+  { name: 'Светлая', base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72, strokeColor: '#0f172a', strokeAlpha: 9, text1: '#16202f', text2: '#33415a', text3: '#8b98ab', accent: '#7c3aed', accent2: '#06b6d4', btnBg: '#7c3aed', btnText: '#ffffff', iconAccent: '#7c3aed', chartLine: '#7c3aed' },
+  { name: 'Светлая розовая', base: 'light', bg0: '#fdf0f4', bg1: '#fff7fa', card: '#ffffff', cardAlpha: 70, strokeColor: '#ec4899', strokeAlpha: 10, text1: '#3d2233', text2: '#7a4a63', text3: '#b08aa0', accent: '#ec4899', accent2: '#8b5cf6', btnBg: '#ec4899', btnText: '#ffffff', iconAccent: '#ec4899', chartLine: '#ec4899' },
+  { name: 'Тёмная фиолетовая', base: 'dark', bg0: '#0b061a', bg1: '#140c2e', card: '#1b103d', cardAlpha: 65, strokeColor: '#a855f7', strokeAlpha: 18, text1: '#faf5ff', text2: '#d8b4fe', text3: '#9333ea', accent: '#c084fc', accent2: '#38bdf8', btnBg: '#a855f7', btnText: '#ffffff', iconAccent: '#c084fc', chartLine: '#c084fc' }
 ];
 function studioNewId() {
   return 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
@@ -433,11 +433,11 @@ function studioBuild() {
         
         <!-- Weather scenario switchers -->
         <div class="pv-scenarios" id="pv-scenarios">
-          <button type="button" class="pv-scen active" data-scen="clear">☀️ Ясно</button>
-          <button type="button" class="pv-scen" data-scen="rain">🌧️ Дождь</button>
-          <button type="button" class="pv-scen" data-scen="storm">⚡ Гроза</button>
-          <button type="button" class="pv-scen" data-scen="snow">❄️ Снег</button>
-          <button type="button" class="pv-scen" data-scen="night">🌙 Ночь</button>
+          <button type="button" class="pv-scen active" data-scen="clear">Ясно</button>
+          <button type="button" class="pv-scen" data-scen="rain">Дождь</button>
+          <button type="button" class="pv-scen" data-scen="storm">Гроза</button>
+          <button type="button" class="pv-scen" data-scen="snow">Снег</button>
+          <button type="button" class="pv-scen" data-scen="night">Ночь</button>
         </div>
 
         <div class="pv-stage"><div class="pv-mini" id="pv-mini"></div></div>

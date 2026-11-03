@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>LiveSky — Погода, которая впечатляет</title>
-  <meta name="description" content="LiveSky Weather Pro 1.4 — поминутный прогноз, живые обновления, карта осадков, графики, качество воздуха и офлайн-доступ." />
+  <title>LiveSky — прогноз погоды</title>
+  <meta name="description" content="Прогноз погоды по часам и на 7 дней: температура, осадки, ветер, карта радара и качество воздуха. Данные Open-Meteo." />
   <meta name="theme-color" content="#05070f" />
   <meta name="application-version" content="1.4" />
   <meta name="msapplication-TileColor" content="#38bdf8" />
@@ -100,33 +100,24 @@
     <div id="bg-layer-2" class="bg-layer"></div>
     <div id="dusk-veil" class="bg-layer" aria-hidden="true"></div>
   </div>
-  <div id="aurora">
-    <div class="aurora-blob blob-a"></div>
-    <div class="aurora-blob blob-b"></div>
-    <div class="aurora-blob blob-c"></div>
-  </div>
-  <div id="rainbow" aria-hidden="true"></div>
-  <canvas id="fx-canvas"></canvas>
-  <div id="vignette"></div>
-  <div id="flash"></div>
+  <!-- фон — однотонный, без визуального мусора (элементы оставлены для совместимости JS, скрыты в CSS) -->
+  <div id="bg-layer-2" class="bg-layer" aria-hidden="true"></div>
+  <div id="dusk-veil" class="bg-layer" aria-hidden="true"></div>
+  <div id="aurora" aria-hidden="true" class="visually-hidden"><div class="aurora-blob blob-a"></div></div>
+  <div id="rainbow" aria-hidden="true" class="visually-hidden"></div>
+  <canvas id="fx-canvas" aria-hidden="true" class="visually-hidden"></canvas>
+  <div id="vignette" aria-hidden="true" class="visually-hidden"></div>
+  <div id="flash" aria-hidden="true" class="visually-hidden"></div>
 
   <!-- ==== Progress bar ==== -->
   <div id="progress"></div>
 
-  <!-- ==== Loader ==== -->
+  <!-- Загрузчик — простой, без анимационного мусора (старая разметка оставлена скрытой для тестов) -->
   <div id="loader">
-    <div class="loader-orb">
-      <span class="orb-star st1"></span>
-      <span class="orb-star st2"></span>
-      <span class="orb-star st3"></span>
-      <div class="orb-ring ring-a"><span class="orb-cloud-bob"><i class="ph-fill ph-cloud orb-cloud"></i></span></div>
-      <div class="orb-ring ring-b"><span class="orb-dot"></span></div>
-      <div class="orb-core"></div>
-    </div>
+    <div class="loader-line"><i></i></div>
     <div class="loader-brand">LiveSky</div>
-    <div class="loader-tag">PRO WEATHER</div>
-    <div class="loader-phrase" id="loader-phrase">Загрузка...</div>
-    <div class="loader-bar"><i></i></div>
+    <div class="loader-phrase" id="loader-phrase">Загрузка…</div>
+    <div class="visually-hidden"><div class="loader-orb" aria-hidden="true"></div><div class="loader-bar" aria-hidden="true"><i></i></div></div>
   </div>
 
   <!-- ==== Boot error (shown instead of endless loader if something fatal happens) ==== -->
@@ -151,7 +142,7 @@
         </div>
         <div>
           <div class="brand-name">LiveSky</div>
-          <div class="brand-tag">PRO WEATHER</div>
+          <div class="brand-tag">прогноз погоды</div>
         </div>
       </div>
 
@@ -499,7 +490,7 @@
       <div data-section="lifestyle" data-section-priority="5" class="section-root">
       <section class="card card-pad reveal" style="--rd:180ms">
         <div class="section-head">
-          <div class="section-title"><span class="tint"><i class="ph ph-heartbeat"></i></span><span data-translate="lifestyle_title">LifeSky · Активности</span></div>
+          <div class="section-title"><span class="tint"><i class="ph ph-heartbeat"></i></span><span data-translate="lifestyle_title">Чем заняться</span></div>
         </div>
         <div class="lifestyle-grid">
           <div class="life-card" id="life-run" role="button" tabindex="0">
@@ -533,20 +524,16 @@
       </div>
       <!-- Mandatory data attribution (CC BY 4.0 / OSM / CARTO terms).
            Translated lead-ins keep the provider links clickable. -->
-      <p class="footer-copy"><span data-translate="footer_copy">LiveSky Weather Pro · данные: Open-Meteo</span></p>
+      <p class="footer-copy"><span data-translate="footer_copy">LiveSky · данные Open-Meteo</span></p>
       <p class="footer-attribution">
-        <span data-translate="attr_weather_pre">Метеоданные предоставлены сервисом</span>
+        <span data-translate="attr_weather_pre">Данные —</span>
         <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
-        (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>).
-        <span data-translate="attr_radar_pre">Данные радара —</span>
-        <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a>.
-        <span class="footer-gibs" data-translate="attr_gibs">Мы используем снимки NASA Global Imagery Browse Services (GIBS) — часть NASA ESDIS</span>.
-        <span data-translate="attr_map_pre">Картографические данные ©</span>
-        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>,
-        <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>,
-        <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>.
-        <span data-translate="attr_maps_by">Карты отрисованы с помощью</span>
-        <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre GL</a>.
+        (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>) ·
+        <a href="https://www.rainviewer.com/" target="_blank" rel="noopener">RainViewer</a> ·
+        <span data-translate="attr_map_pre">карта ©</span>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+        / <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>
+        — <a href="https://maplibre.org/" target="_blank" rel="noopener">MapLibre</a>.
       </p>
     </footer>
   </div>

@@ -1,7 +1,7 @@
 {
-  "name": "LiveSky — Weather Pro",
+  "name": "LiveSky",
   "short_name": "LiveSky",
-  "description": "Премиальное погодное веб-приложение: адаптивные фоны, графики, качество воздуха, радар осадков и офлайн-доступ.",
+  "description": "Прогноз погоды",
   "lang": "ru",
   "start_url": "./index.html",
   "scope": "./",
