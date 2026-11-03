@@ -87,7 +87,13 @@ function applyWeatherTheme() {
   const customFixedAccents = isCustomTheme && !CustomTheme.weatherTint();
 
   if (mode === 'light') {
+    const veil = document.getElementById('dusk-veil');
+    if (veil) { veil.style.transition = 'none'; veil.style.opacity = '0'; }
     setBackground('linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)', 'light');
+    if (el.bg1 && el.bg2) {
+      el.bg1.style.background = 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)';
+      el.bg2.style.background = 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)';
+    }
     root.style.setProperty('--accent', '#000000');
     root.style.setProperty('--accent-2', '#334155');
     syncAccentDerivedVars(root, '#000000', 'light');
@@ -96,6 +102,8 @@ function applyWeatherTheme() {
     state.accent = '#000000'; state.accent2 = '#334155';
     duskInfo = null;
   } else if (mode === 'dark') {
+    const veil = document.getElementById('dusk-veil');
+    if (veil) { veil.style.transition = 'none'; veil.style.opacity = '0'; }
     setBackground('linear-gradient(180deg, #070b16 0%, #04060d 100%)', 'dark');
     root.style.setProperty('--accent', '#38bdf8');
     root.style.setProperty('--accent-2', '#818cf8');
@@ -304,10 +312,14 @@ function updateDuskBlend() {
   const veil = document.getElementById('dusk-veil');
   if (!veil) return;
   if (!duskInfo || state.theme !== 'adaptive' || !state.weather) {
-    if (veil.style.opacity !== '0' && veil.style.opacity !== '') veil.style.opacity = '0';
+    if (veil.style.opacity !== '0' && veil.style.opacity !== '') {
+      veil.style.transition = 'none';
+      veil.style.opacity = '0';
+    }
     duskSnapped = false; duskZone = ''; duskLogoSide = '';
     return;
   }
+  veil.style.transition = 'opacity 16s linear';
   const f = Math.max(0, Math.min(1, duskFactor()));
   veil.style.opacity = f.toFixed(3);
   const root = document.documentElement;

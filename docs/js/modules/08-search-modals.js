@@ -229,32 +229,53 @@ function showSunDetails() {
     const code = getVal(h, 'weathercode', i);
     const night = hourIsNight(i);
     return `
-      <div class="m-tile" style="grid-column:1/-1">
-        <div class="m-label"><i class="ph-fill ph-sun-horizon" style="color:${color}"></i>${escHtml(title)} · ${hhmm(iso)}</div>
-        <div style="display:flex;align-items:center;gap:14px;margin-top:4px">
-          <i class="ph-duotone ${wmoIcon(code, night)}" style="font-size:34px;color:var(--text-2)"></i>
-          <span style="font-family:var(--font-display);font-weight:600">${fmtTempDeg(temp)}</span>
-          <span style="font-size:13px;color:var(--text-3);display:inline-flex;align-items:center;gap:6px"><i class="ph ph-wind"></i>${fmtWind(wind)}</span>
-          <span style="font-size:13px;color:var(--text-3)">${wmoLabel(code)}</span>
+      <div class="m-tile sun-detail-card">
+        <div class="sun-detail-header">
+          <span class="sun-detail-tag" style="--tag-color:${color}">
+            <i class="ph-fill ph-sun-horizon"></i>
+            <span>${escHtml(title)}</span>
+          </span>
+          <span class="sun-detail-time">${hhmm(iso)}</span>
+        </div>
+        <div class="sun-detail-body">
+          <div class="sun-detail-main">
+            <i class="ph-duotone ${wmoIcon(code, night)} sun-detail-ico w-${wmo(code).type}"></i>
+            <span class="sun-detail-temp">${fmtTempDeg(temp)}</span>
+          </div>
+          <div class="sun-detail-meta">
+            <span class="sun-detail-metric"><i class="ph ph-wind"></i> ${fmtWind(wind)}</span>
+            <span class="sun-detail-desc">${wmoLabel(code)}</span>
+          </div>
         </div>
       </div>`;
   };
 
   const body = `
-    <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;background:linear-gradient(100deg,rgba(251,146,60,.14),rgba(129,140,248,.14));border:1px solid var(--stroke);border-radius:20px;padding:20px;text-align:center;margin-bottom:14px">
-      <div><div style="font-family:var(--font-display);font-size:22px;font-weight:600">${hhmm(srIso)}</div><div style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-top:4px">${t('sunrise')}</div></div>
-      <div><div style="font-family:var(--font-display);font-size:15px;font-weight:600;color:var(--accent)">${fmtDur(Math.max(0, minOfDay(ssIso) - minOfDay(srIso)), true)}</div><div style="font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-4);margin-top:4px">${t('day_len')}</div></div>
-      <div><div style="font-family:var(--font-display);font-size:22px;font-weight:600">${hhmm(ssIso)}</div><div style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);margin-top:4px">${t('sunset')}</div></div>
-    </div>
-    <div class="m-grid">
+    <div class="sun-modal-flow">
+      <div class="sun-hero-card">
+        <div class="sun-hero-item">
+          <div class="sun-hero-time">${hhmm(srIso)}</div>
+          <div class="sun-hero-label">${t('sunrise')}</div>
+        </div>
+        <div class="sun-hero-mid">
+          <div class="sun-hero-dur">${fmtDur(Math.max(0, minOfDay(ssIso) - minOfDay(srIso)), true)}</div>
+          <div class="sun-hero-mid-label">${t('day_len')}</div>
+        </div>
+        <div class="sun-hero-item">
+          <div class="sun-hero-time">${hhmm(ssIso)}</div>
+          <div class="sun-hero-label">${t('sunset')}</div>
+        </div>
+      </div>
       ${block(t('sunrise'), srIso, srIdx, '#fb923c')}
       ${block(t('sunset'), ssIso, ssIdx, '#818cf8')}
-    </div>
-    <div class="m-tile" style="grid-column:1/-1;margin-top:2px">
-      <div class="m-label"><i class="ph ph-moon-stars"></i>${t('moon_phase_label')}</div>
-      <div class="m-val" style="font-size:15px;font-family:var(--font-body)">${moonPhaseInfo(new Date()).label}</div>
-    </div>
-    <div class="m-note"><i class="ph-fill ph-camera"></i><p><b>${t('golden_title')}.</b> ${t('golden_desc')}</p></div>`;
+      <div class="m-tile sun-moon-card">
+        <div class="sun-moon-info">
+          <div class="sun-moon-label"><i class="ph ph-moon-stars"></i>${t('moon_phase_label')}</div>
+          <div class="sun-moon-val">${moonPhaseInfo(new Date()).label}</div>
+        </div>
+      </div>
+      <div class="m-note sun-note-card"><i class="ph-fill ph-camera"></i><p><b>${t('golden_title')}.</b> ${t('golden_desc')}</p></div>
+    </div>`;
   openModal(t('sun_modal_title'), state.locationName, body);
 }
 
