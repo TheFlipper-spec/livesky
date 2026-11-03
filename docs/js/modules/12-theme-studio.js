@@ -81,7 +81,7 @@ const STUDIO_VARS = [
   '--shadow-card', '--shadow-pop', '--aurora-o'
 ];
 
-const SWATCH_PALETTE = ['#38bdf8', '#6366f1', '#a855f7', '#ec4899', '#ef4444', '#f59e0b', '#10b981', '#06b6d4', '#64748b', '#ffffff', '#0f172a'];
+const SWATCH_PALETTE = ['#2563eb', '#0284c7', '#059669', '#d97706', '#e11d48', '#dc2626', '#0d9488', '#4f46e5', '#475569', '#ffffff', '#0f172a'];
 
 function studioDefaults(base) {
   const dark = base !== 'light';
@@ -99,21 +99,21 @@ function studioDefaults(base) {
     base: 'light', bg0: '#eef4fb', bg1: '#f7fafd',
     card: '#ffffff', cardAlpha: 72,
     strokeColor: '#0f172a', strokeAlpha: 9,
-    text1: '#16202f', text2: '#33415a', text3: '#8b98ab',
-    accent: '#7c3aed', accent2: '#06b6d4', weatherTint: false,
-    btnBg: '#7c3aed', btnText: '#ffffff',
-    iconAccent: '#7c3aed',
-    chartLine: '#7c3aed', chartFill: '#7c3aed',
+    text1: '#16202f', text2: '#33415a', text3: '#64748b',
+    accent: '#2563eb', accent2: '#0284c7', weatherTint: false,
+    btnBg: '#2563eb', btnText: '#ffffff',
+    iconAccent: '#2563eb',
+    chartLine: '#2563eb', chartFill: '#2563eb',
     blur: 18, radius: 28, shadow: 60, aurora: 55
   };
 }
 const STUDIO_PRESETS = [
-  { name: 'Neon Night', base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55, strokeColor: '#94a3b8', strokeAlpha: 13, text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5', accent: '#38bdf8', accent2: '#818cf8', btnBg: '#38bdf8', btnText: '#04101f', iconAccent: '#38bdf8', chartLine: '#38bdf8' },
+  { name: 'Arctic Sky', base: 'dark', bg0: '#05070f', bg1: '#0a1020', card: '#0d1528', cardAlpha: 55, strokeColor: '#94a3b8', strokeAlpha: 13, text1: '#f4f7fb', text2: '#c7d2e0', text3: '#8ca0b5', accent: '#38bdf8', accent2: '#0284c7', btnBg: '#38bdf8', btnText: '#04101f', iconAccent: '#38bdf8', chartLine: '#38bdf8' },
   { name: 'Sunset Rose', base: 'dark', bg0: '#170b12', bg1: '#251016', card: '#2b1420', cardAlpha: 60, strokeColor: '#fb7185', strokeAlpha: 16, text1: '#fff5f0', text2: '#e8c4b8', text3: '#a07a70', accent: '#fb7185', accent2: '#fbbf24', btnBg: '#fb7185', btnText: '#251016', iconAccent: '#fbbf24', chartLine: '#fb7185' },
-  { name: 'Emerald Forest', base: 'dark', bg0: '#04120c', bg1: '#07231a', card: '#0a2a1e', cardAlpha: 60, strokeColor: '#34d399', strokeAlpha: 14, text1: '#eefbf3', text2: '#bfe3cf', text3: '#7ba58f', accent: '#34d399', accent2: '#a3e635', btnBg: '#34d399', btnText: '#04120c', iconAccent: '#34d399', chartLine: '#34d399' },
-  { name: 'Pure Light', base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72, strokeColor: '#0f172a', strokeAlpha: 9, text1: '#16202f', text2: '#33415a', text3: '#8b98ab', accent: '#7c3aed', accent2: '#06b6d4', btnBg: '#7c3aed', btnText: '#ffffff', iconAccent: '#7c3aed', chartLine: '#7c3aed' },
-  { name: 'Sakura Blossom', base: 'light', bg0: '#fdf0f4', bg1: '#fff7fa', card: '#ffffff', cardAlpha: 70, strokeColor: '#ec4899', strokeAlpha: 10, text1: '#3d2233', text2: '#7a4a63', text3: '#b08aa0', accent: '#ec4899', accent2: '#8b5cf6', btnBg: '#ec4899', btnText: '#ffffff', iconAccent: '#ec4899', chartLine: '#ec4899' },
-  { name: 'Midnight Amethyst', base: 'dark', bg0: '#0b061a', bg1: '#140c2e', card: '#1b103d', cardAlpha: 65, strokeColor: '#a855f7', strokeAlpha: 18, text1: '#faf5ff', text2: '#d8b4fe', text3: '#9333ea', accent: '#c084fc', accent2: '#38bdf8', btnBg: '#a855f7', btnText: '#ffffff', iconAccent: '#c084fc', chartLine: '#c084fc' }
+  { name: 'Emerald Forest', base: 'dark', bg0: '#04120c', bg1: '#07231a', card: '#0a2a1e', cardAlpha: 60, strokeColor: '#34d399', strokeAlpha: 14, text1: '#eefbf3', text2: '#bfe3cf', text3: '#7ba58f', accent: '#34d399', accent2: '#10b981', btnBg: '#34d399', btnText: '#04120c', iconAccent: '#34d399', chartLine: '#34d399' },
+  { name: 'Pure Daylight', base: 'light', bg0: '#eef4fb', bg1: '#f7fafd', card: '#ffffff', cardAlpha: 72, strokeColor: '#0f172a', strokeAlpha: 9, text1: '#16202f', text2: '#33415a', text3: '#64748b', accent: '#2563eb', accent2: '#0284c7', btnBg: '#2563eb', btnText: '#ffffff', iconAccent: '#2563eb', chartLine: '#2563eb' },
+  { name: 'Warm Sand', base: 'light', bg0: '#faf6f0', bg1: '#fdfbf7', card: '#ffffff', cardAlpha: 80, strokeColor: '#78350f', strokeAlpha: 10, text1: '#292524', text2: '#57534e', text3: '#78716c', accent: '#d97706', accent2: '#ea580c', btnBg: '#d97706', btnText: '#ffffff', iconAccent: '#d97706', chartLine: '#d97706' },
+  { name: 'Alpine Slate', base: 'light', bg0: '#f1f5f9', bg1: '#f8fafc', card: '#ffffff', cardAlpha: 82, strokeColor: '#0f172a', strokeAlpha: 10, text1: '#0f172a', text2: '#334155', text3: '#64748b', accent: '#059669', accent2: '#0d9488', btnBg: '#059669', btnText: '#ffffff', iconAccent: '#059669', chartLine: '#059669' }
 ];
 function studioNewId() {
   return 'c' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
@@ -159,7 +159,8 @@ const CustomTheme = {
       list = [seed];
     }
     this.list = list;
-    this.activeId = (rec && rec.activeId && list.some(x => x.id === rec.activeId)) ? rec.activeId : list[0].id;
+    const savedActive = rec && (rec.activeId || rec.active);
+    this.activeId = (savedActive && list.some(x => x.id === savedActive)) ? savedActive : list[0].id;
     this.draft = studioClone(this.getActive());
   },
   persist() {
@@ -180,9 +181,17 @@ const CustomTheme = {
     this.ensureLoaded();
     return this.list.find(x => x.id === this.activeId) || this.list[0];
   },
-  base() { return this.getActive().base === 'light' ? 'light' : 'dark'; },
+  base() {
+    this.ensureLoaded();
+    const src = this.draft || this.getActive();
+    return src && src.base === 'light' ? 'light' : 'dark';
+  },
   isLight() { return this.base() === 'light'; },
-  weatherTint() { return this.getActive().weatherTint !== false; },
+  weatherTint() {
+    this.ensureLoaded();
+    const src = this.draft || this.getActive();
+    return Boolean(src && src.weatherTint);
+  },
 
   /* Push a theme onto the page as inline custom properties */
   apply(th) {
@@ -190,7 +199,11 @@ const CustomTheme = {
     const root = document.documentElement;
     const light = th.base === 'light';
     root.dataset.theme = th.base;
-    if (document.body) document.body.dataset.theme = th.base;
+    root.dataset.custom = '1';
+    if (document.body) {
+      document.body.dataset.theme = th.base;
+      document.body.dataset.custom = '1';
+    }
     const set = (k, v) => root.style.setProperty(k, v);
 
     set('--bg-0', th.bg0);
@@ -250,6 +263,12 @@ const CustomTheme = {
     set('--shadow-pop', `0 18px 50px -12px rgba(${ink}, ${sa})`);
     set('--aurora-o', (th.aurora / 100 * (light ? 0.55 : 0.9)).toFixed(2));
     try { studioRenderDiag(); } catch (e) { /* studio may be closed */ }
+    try {
+      if (typeof state !== 'undefined' && state.weather) {
+        if (typeof renderSunArc === 'function') renderSunArc();
+        if (typeof renderAir === 'function') renderAir();
+      }
+    } catch (e) { /* ignore */ }
     return th;
   },
 
@@ -279,8 +298,10 @@ const CustomTheme = {
   clear() {
     const root = document.documentElement;
     STUDIO_VARS.forEach(k => root.style.removeProperty(k));
+    root.removeAttribute('data-custom');
     try {
       document.body.style.removeProperty('background');
+      document.body.removeAttribute('data-custom');
       const bgC = document.getElementById('bg-container');
       if (bgC) bgC.style.removeProperty('background');
       if (typeof lastBgKey !== 'undefined') lastBgKey = '';
@@ -433,11 +454,11 @@ function studioBuild() {
         
         <!-- Weather scenario switchers -->
         <div class="pv-scenarios" id="pv-scenarios">
-          <button type="button" class="pv-scen active" data-scen="clear">☀️ Ясно</button>
-          <button type="button" class="pv-scen" data-scen="rain">🌧️ Дождь</button>
-          <button type="button" class="pv-scen" data-scen="storm">⚡ Гроза</button>
-          <button type="button" class="pv-scen" data-scen="snow">❄️ Снег</button>
-          <button type="button" class="pv-scen" data-scen="night">🌙 Ночь</button>
+          <button type="button" class="pv-scen active" data-scen="clear"><i class="ph-fill ph-sun"></i> Ясно</button>
+          <button type="button" class="pv-scen" data-scen="rain"><i class="ph-fill ph-cloud-rain"></i> Дождь</button>
+          <button type="button" class="pv-scen" data-scen="storm"><i class="ph-fill ph-cloud-lightning"></i> Гроза</button>
+          <button type="button" class="pv-scen" data-scen="snow"><i class="ph-fill ph-snowflake"></i> Снег</button>
+          <button type="button" class="pv-scen" data-scen="night"><i class="ph-fill ph-moon-stars"></i> Ночь</button>
         </div>
 
         <div class="pv-stage"><div class="pv-mini" id="pv-mini"></div></div>
@@ -459,7 +480,7 @@ function studioBuild() {
               <button type="button" class="st-btn st-btn-primary" id="st-io-apply" style="height:32px;font-size:11.5px">Импортировать</button>
             </div>
           </div>`)}
-        ${studioGroup('ph-sparkle', 'studio_presets', `<div class="st-presets" id="st-presets"></div>`)}
+        ${studioGroup('ph-grid-four', 'studio_presets', `<div class="st-presets" id="st-presets"></div>`)}
         ${studioGroup('ph-circle-half', 'studio_base', `
           <div class="st-seg" id="st-base">
             <button type="button" data-base="dark"><i class="ph ph-moon"></i><span data-translate="studio_dark"></span></button>
@@ -490,7 +511,7 @@ function studioBuild() {
         ${studioGroup('ph-cursor-click', 'studio_buttons', `
           ${studioColorRow('btnBg', 'studio_btn_bg', true)}
           ${studioColorRow('btnText', 'studio_btn_text', false)}`)}
-        ${studioGroup('ph-sparkle', 'studio_icons', `
+        ${studioGroup('ph-bezier-curve', 'studio_icons', `
           ${studioColorRow('iconAccent', 'studio_icon_accent', true)}
           ${studioColorRow('chartLine', 'studio_chart_line', false)}`)}
         ${studioGroup('ph-sliders-horizontal', 'studio_shape',
@@ -648,7 +669,7 @@ function studioSyncControls() {
     b.classList.toggle('active', b.dataset.base === d.base);
   });
   const sw = studioEl.querySelector('[data-k="weatherTint"]');
-  if (sw) sw.checked = d.weatherTint !== false;
+  if (sw) sw.checked = Boolean(d.weatherTint);
   const name = document.getElementById('studio-name');
   if (name && document.activeElement !== name) name.value = d.name || '';
 
@@ -660,7 +681,7 @@ function studioSyncControls() {
     const ratio = studioContrast(cardBg, textCol);
     const rNum = ratio.toFixed(1);
     crBadge.className = 'st-contrast-badge ' + (ratio >= 7 ? 'good' : (ratio >= 4.5 ? 'warn' : 'bad'));
-    const verdict = ratio >= 7 ? 'AAA · Отлично' : (ratio >= 4.5 ? 'AA · Хорошо' : '⚠️ Слабый контраст');
+    const verdict = ratio >= 7 ? 'AAA · Отлично' : (ratio >= 4.5 ? 'AA · Хорошо' : 'Слабый контраст');
     crBadge.textContent = `${rNum}:1 · ${verdict}`;
   }
 
@@ -679,12 +700,28 @@ function studioRenderDiag() {
     `custom=${root.dataset.custom || '—'} · surface=${gv('--surface')} · text=${gv('--text-1')}`;
 }
 
+function studioSyncLinkedAccent(d, prevAccent, nextAccent) {
+  if (!d || !nextAccent) return;
+  const prev = prevAccent ? studioHex(prevAccent) : '';
+  const next = studioHex(nextAccent);
+  if (!d.btnBg || studioHex(d.btnBg) === prev) {
+    d.btnBg = next;
+    d.btnText = studioLum(next) > 0.45 ? '#04101f' : '#ffffff';
+  }
+  if (!d.iconAccent || studioHex(d.iconAccent) === prev) d.iconAccent = next;
+  if (!d.chartLine || studioHex(d.chartLine) === prev) d.chartLine = next;
+  if (!d.chartFill || studioHex(d.chartFill) === prev) d.chartFill = next;
+}
+
 function studioApplyInput(node) {
   const k = node.dataset.k;
   if (!k) return;
   const d = CustomTheme.draft;
+  const prevVal = d[k];
   if (node.type === 'color') {
     d[k] = studioHex(node.value);
+    if (k === 'accent') studioSyncLinkedAccent(d, prevVal, d[k]);
+    if (k === 'accent' || k === 'accent2') d.weatherTint = false;
     const hexInput = studioEl.querySelector(`input.st-hex[data-hex-input="${k}"]`);
     if (hexInput && document.activeElement !== hexInput) hexInput.value = d[k].toUpperCase();
   } else if (node.type === 'range') {
@@ -701,6 +738,7 @@ function studioApplyInput(node) {
   } else {
     CustomTheme.apply(d);
   }
+  if (k === 'accent' || k === 'accent2') studioSyncControls();
   if (k === 'weatherTint' && typeof applyWeatherTheme === 'function') applyWeatherTheme();
   if ((k === 'accent' || k === 'accent2' || k === 'chartLine') && typeof SECTION_MANAGER !== 'undefined') {
     clearTimeout(studioChartT);
@@ -709,6 +747,7 @@ function studioApplyInput(node) {
     }, 600);
   }
   studioRenderPreview();
+  studioRenderChips();
   CustomTheme.saveSoon();
 }
 
@@ -731,11 +770,16 @@ function studioBind() {
     let val = hexTarget.value.trim();
     if (!val.startsWith('#')) val = '#' + val;
     if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+      const prevVal = CustomTheme.draft[k];
       CustomTheme.draft[k] = val.toLowerCase();
+      if (k === 'accent') studioSyncLinkedAccent(CustomTheme.draft, prevVal, CustomTheme.draft[k]);
+      if (k === 'accent' || k === 'accent2') CustomTheme.draft.weatherTint = false;
       const colorPicker = studioEl.querySelector(`input[type="color"][data-k="${k}"]`);
       if (colorPicker) colorPicker.value = val.toLowerCase();
       CustomTheme.apply(CustomTheme.draft);
+      if (k === 'accent' || k === 'accent2') studioSyncControls();
       studioRenderPreview();
+      studioRenderChips();
       CustomTheme.saveSoon();
     }
   });
@@ -757,13 +801,18 @@ function studioBind() {
       if (container) {
         const k = container.dataset.swatchFor;
         const color = swatch.dataset.color;
+        const prevVal = CustomTheme.draft[k];
         CustomTheme.draft[k] = color;
+        if (k === 'accent') studioSyncLinkedAccent(CustomTheme.draft, prevVal, color);
+        if (k === 'accent' || k === 'accent2') CustomTheme.draft.weatherTint = false;
         const colorInput = studioEl.querySelector(`input[type="color"][data-k="${k}"]`);
         const hexInput = studioEl.querySelector(`input.st-hex[data-hex-input="${k}"]`);
         if (colorInput) colorInput.value = color;
         if (hexInput) hexInput.value = color.toUpperCase();
         CustomTheme.apply(CustomTheme.draft);
+        studioSyncControls();
         studioRenderPreview();
+        studioRenderChips();
         CustomTheme.saveSoon();
       }
       return;
@@ -813,12 +862,14 @@ function studioBind() {
     if (baseBtn) {
       CustomTheme.draft.base = baseBtn.dataset.base;
       const d0 = studioDefaults(CustomTheme.draft.base);
-      ['bg0', 'bg1', 'card', 'cardAlpha', 'strokeColor', 'strokeAlpha', 'text1', 'text2', 'text3', 'shadow', 'aurora', 'btnBg', 'btnText', 'iconAccent', 'chartLine', 'chartFill'].forEach(k => {
+      ['bg0', 'bg1', 'card', 'cardAlpha', 'strokeColor', 'strokeAlpha', 'text1', 'text2', 'text3', 'accent', 'accent2', 'weatherTint', 'shadow', 'aurora', 'btnBg', 'btnText', 'iconAccent', 'chartLine', 'chartFill'].forEach(k => {
         CustomTheme.draft[k] = d0[k];
       });
       CustomTheme.saveNow();
       if (typeof applyTheme === 'function') applyTheme();
+      CustomTheme.apply(CustomTheme.draft);
       studioSyncControls();
+      studioRenderChips();
       studioRenderPreview();
       return;
     }

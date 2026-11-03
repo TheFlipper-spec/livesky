@@ -252,7 +252,7 @@ function showSunDetails() {
     </div>
     <div class="m-tile" style="grid-column:1/-1;margin-top:2px">
       <div class="m-label"><i class="ph ph-moon-stars"></i>${t('moon_phase_label')}</div>
-      <div class="m-val" style="font-size:15px;font-family:var(--font-body)">${moonPhaseInfo(new Date()).emoji} ${moonPhaseInfo(new Date()).label}</div>
+      <div class="m-val" style="font-size:15px;font-family:var(--font-body)">${moonPhaseInfo(new Date()).label}</div>
     </div>
     <div class="m-note"><i class="ph-fill ph-camera"></i><p><b>${t('golden_title')}.</b> ${t('golden_desc')}</p></div>`;
   openModal(t('sun_modal_title'), state.locationName, body);
@@ -1267,7 +1267,7 @@ function setAppIconColor(color, persist = true) {
     return;
   }
 
-  const isLightTheme = document.documentElement.dataset.theme === 'light';
+  const isLightTheme = typeof isMonoTheme === 'function' ? isMonoTheme() : document.documentElement.dataset.theme === 'light';
   const brandImgs = document.querySelectorAll('.brand-wind-img, .pv-wind-img');
 
   if (color === 'auto' || isLightTheme) {
@@ -1285,7 +1285,7 @@ function setAppIconColor(color, persist = true) {
 
   loadLiveSkyIconImg().then(img => {
     if (!img) return;
-    const nowLight = document.documentElement.dataset.theme === 'light';
+    const nowLight = typeof isMonoTheme === 'function' ? isMonoTheme() : document.documentElement.dataset.theme === 'light';
     const activeColor = state.appIconColor || 'auto';
     if (activeColor === 'auto') return;
 

@@ -6,12 +6,12 @@
    ============================================================ */
 /* ---------- air quality (plain-language) ---------- */
 const AQI_LEVELS = [
-  { max: 20, color: '#34d399', label: 'aqi_good', emoji: '😊' },
-  { max: 40, color: '#84cc16', label: 'aqi_fair', emoji: '🙂' },
-  { max: 60, color: '#fbbf24', label: 'aqi_moderate', emoji: '😐' },
-  { max: 80, color: '#fb923c', label: 'aqi_poor', emoji: '😷' },
-  { max: 100, color: '#f87171', label: 'aqi_very_poor', emoji: '😨' },
-  { max: Infinity, color: '#c084fc', label: 'aqi_extreme', emoji: '☠️' }
+  { max: 20, color: '#34d399', label: 'aqi_good' },
+  { max: 40, color: '#84cc16', label: 'aqi_fair' },
+  { max: 60, color: '#fbbf24', label: 'aqi_moderate' },
+  { max: 80, color: '#fb923c', label: 'aqi_poor' },
+  { max: 100, color: '#f87171', label: 'aqi_very_poor' },
+  { max: Infinity, color: '#c084fc', label: 'aqi_extreme' }
 ];
 /* Human labels for pollutants — no chemical jargon on the card. */
 const AIR_POLLS = [
@@ -46,7 +46,7 @@ function renderAir() {
   if (idx < 0) return;
   const aqi = getVal(h, 'european_aqi', idx);
   const lvl = aqiLevel(aqi);
-  const isLight = document.documentElement.dataset.theme === 'light';
+  const isLight = isMonoTheme();
   const mainCol = isLight ? '#000000' : lvl.color;
   const C = 263.9;
   el.aqiRing.style.stroke = mainCol;
@@ -72,7 +72,7 @@ function renderAir() {
 /* Simple 24h quality bars — one coloured pill per hour, no abstract graphs. */
 function airDayStrip(series) {
   if (!series.length) return '';
-  const isLight = document.documentElement.dataset.theme === 'light';
+  const isLight = isMonoTheme();
   const cells = series.map((s, k) => {
     const lvl = aqiLevel(s.aqi == null ? 999 : s.aqi);
     const title = `${s.time.slice(11, 16)} · ${t(lvl.label)}`;
@@ -89,7 +89,7 @@ function airLevelBar(val, good, bad, color) {
   const max = Math.max(bad * 1.25, v, 1);
   const pct = Math.min(100, (v / max) * 100);
   const okPct = Math.min(100, (good / max) * 100);
-  const isLight = document.documentElement.dataset.theme === 'light';
+  const isLight = isMonoTheme();
   const barCol = isLight ? '#000000' : color;
   return `<div class="air-bar" aria-hidden="true">
     <i class="air-bar-ok" style="width:${okPct.toFixed(1)}%"></i>
@@ -124,7 +124,7 @@ function showAirDetails() {
   const nowS = series[0];
   const aqi = nowS.aqi || 0;
   const lvl = aqiLevel(aqi);
-  const isLight = document.documentElement.dataset.theme === 'light';
+  const isLight = isMonoTheme();
   const mainCol = isLight ? '#000000' : lvl.color;
   const healthKey = lvl.label.replace('aqi_', 'air_health_');
   const C = 263.9;
@@ -163,7 +163,7 @@ function showAirDetails() {
         <div class="aqi-center"><b style="color:${mainCol}">${Math.round(aqi)}</b><span>${t(lvl.label)}</span></div>
       </div>
       <div class="air-hero-info">
-        <div class="ah-title">${lvl.emoji || ''} ${t(lvl.label)}</div>
+        <div class="ah-title">${t(lvl.label)}</div>
         <div class="ah-sub">${t('air_score_plain').replace('{n}', String(Math.round(aqi)))}</div>
         <div class="ah-advice">${t(healthKey)}</div>
       </div>

@@ -223,7 +223,7 @@ function renderSunArc() {
   const nowMin = now.hour * 60 + now.minute;
   const p = (nowMin - srMin) / (dayLen || 1);
   const isDay = p >= 0 && p <= 1;
-  const isLight = document.documentElement.dataset.theme === 'light';
+  const isLight = isMonoTheme();
   const sunStop1 = isLight ? '#000000' : '#fde68a';
   const sunStop2 = isLight ? '#334155' : '#fb923c';
   const arcStop1 = isLight ? '#000000' : '#fb923c';
@@ -275,7 +275,7 @@ function renderSunArc() {
   /* moon phase chip (night only) */
   const moon = moonPhaseInfo(new Date());
   if (!isDay) {
-    el.moonChip.textContent = `${moon.emoji} ${moon.label}`;
+    el.moonChip.innerHTML = `<i class="ph-fill ph-moon-stars"></i> ${escHtml(moon.label)}`;
     el.moonChip.classList.remove('hidden');
   } else {
     el.moonChip.classList.add('hidden');

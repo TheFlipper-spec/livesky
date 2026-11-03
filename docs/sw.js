@@ -3,10 +3,12 @@
    ============================================================ */
 'use strict';
 
-const VERSION = 'livesky-v1.4-alpha-v37';
+const VERSION = 'livesky-v1.4-alpha-v38';
 const SHELL_CACHE = `${VERSION}-shell`;
 const FORECAST_CACHE = 'livesky-forecast-cache-v1';
 const CUSTOM_ICON_CACHE = 'livesky-custom-icons-v1';
+const RADAR_TILE_CACHE = 'livesky-radar-tiles-v1';
+const MAP_TILE_CACHE = 'livesky-map-tiles-v1';
 
 /* index.html loads the shell with cache-buster query strings (?v=25, ?v=21…).
    We store every same-origin asset under a query-free key so all versions of a
@@ -20,15 +22,18 @@ function trimCacheUrl(url) {
   u.hash = '';
   return u.href;
 }
-/* Keep the forecast mirror bounded — each city/model is a different URL. */
-async function trimForecastCache(maxEntries) {
+/* Keep bounded caches so offline storage never grows unbounded. */
+async function trimNamedCache(cacheName, maxEntries) {
   try {
-    const cache = await caches.open(FORECAST_CACHE);
+    const cache = await caches.open(cacheName);
     const keys = await cache.keys();
     if (keys.length > maxEntries) {
       await Promise.all(keys.slice(0, keys.length - maxEntries).map(k => cache.delete(k)));
     }
   } catch (e) { /* non-critical */ }
+}
+async function trimForecastCache(maxEntries) {
+  return trimNamedCache(FORECAST_CACHE, maxEntries);
 }
 
 /* App shell — everything needed to boot the page offline.
@@ -137,12 +142,18 @@ const SHELL_ASSETS = [
 ];
 
 /* Weather hosts whose responses we mirror into the forecast cache
-   so the last loaded forecast stays available offline. */
+   so the last loaded forecast and RainViewer frame index stay available offline. */
 function isDataApi(url) {
-  return /(api|air-quality-api|geocoding-api|historical-forecast-api|seasonal-api|ensemble-api)\.open-meteo\.com|api\.met\.no/.test(url.host + url.pathname);
+  return /(api|air-quality-api|geocoding-api|historical-forecast-api|seasonal-api|ensemble-api)\.open-meteo\.com|api\.met\.no|api\.rainviewer\.com/.test(url.host + url.pathname);
 }
 function isForecastApi(url) {
-  return /(api|air-quality-api|historical-forecast-api|seasonal-api|ensemble-api)\.open-meteo\.com|api\.met\.no/.test(url.host + url.pathname);
+  return /(api|air-quality-api|historical-forecast-api|seasonal-api|ensemble-api)\.open-meteo\.com|api\.met\.no|api\.rainviewer\.com/.test(url.host + url.pathname);
+}
+function isRadarTileHost(url) {
+  return /tilecache\.rainviewer\.com|gibs\.earthdata\.nasa\.gov/.test(url.host);
+}
+function isMapTileHost(url) {
+  return /tiles\.openfreemap\.org|tile\.openstreetmap\.org/.test(url.host);
 }
 async function matchForecastCache(req, url) {
   const direct = await caches.match(req);
@@ -177,9 +188,10 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  const KEEP = new Set([CUSTOM_ICON_CACHE, FORECAST_CACHE, RADAR_TILE_CACHE, MAP_TILE_CACHE]);
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => !k.startsWith(VERSION) && k !== CUSTOM_ICON_CACHE && k !== FORECAST_CACHE).map((k) => caches.delete(k)))
+      Promise.all(keys.filter((k) => !k.startsWith(VERSION) && !KEEP.has(k)).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -263,9 +275,47 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  /* Cross-origin non-API (basemap / radar tiles). Fonts, icon fonts and all
-     libraries are same-origin now (./assets), so this branch only serves the
-     post-consent map stack: network first, cache fallback. */
+  /* Radar & satellite tiles (RainViewer / NASA GIBS IMERG): immutable per-timestamp
+     URLs, so serve cache-first and store in RADAR_TILE_CACHE for instant timeline
+     scrubbing and offline playback. */
+  if (isRadarTileHost(url)) {
+    event.respondWith(
+      caches.open(RADAR_TILE_CACHE).then((cache) =>
+        cache.match(req).then((cached) => {
+          if (cached) return cached;
+          return fetch(req).then((res) => {
+            if (res && (res.ok || res.type === 'opaque')) {
+              const clone = res.clone();
+              cache.put(req, clone).then(() => trimNamedCache(RADAR_TILE_CACHE, 180));
+            }
+            return res;
+          });
+        })
+      ).catch(() => caches.match(req).then((hit) => hit || Response.error()))
+    );
+    return;
+  }
+
+  /* Basemap vector/raster tiles & styles (OpenFreeMap / OSM): network-first with
+     persistent MAP_TILE_CACHE fallback so the map grid never stays blank on 3G/offline. */
+  if (isMapTileHost(url)) {
+    event.respondWith(
+      caches.open(MAP_TILE_CACHE).then((cache) =>
+        fetch(req)
+          .then((res) => {
+            if (res && (res.ok || res.type === 'opaque')) {
+              const clone = res.clone();
+              cache.put(req, clone).then(() => trimNamedCache(MAP_TILE_CACHE, 200));
+            }
+            return res;
+          })
+          .catch(() => cache.match(req).then((hit) => hit || Response.error()))
+      )
+    );
+    return;
+  }
+
+  /* Cross-origin non-API fallback: network first, cache fallback. */
   event.respondWith(
     fetch(req).catch(() => caches.match(req).then((hit) => hit || Response.error()))
   );

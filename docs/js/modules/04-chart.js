@@ -202,7 +202,7 @@ function renderChart() {
   const hatchStroke = Math.max(0.35, 1.6 / sx); /* ~1.6px on screen */
 
   let rainDefs = '';
-  const isLight = document.documentElement.dataset.theme === 'light';
+  const isLight = isMonoTheme();
   /* One shared hatch pattern per kind (aspect-corrected). */
   const hatchKinds = isLight ? {
     rain: 'rgba(15, 23, 42, 0.55)',

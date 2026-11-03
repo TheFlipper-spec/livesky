@@ -155,7 +155,7 @@ function applyWeatherTheme() {
     }
   }
 
-  const isLight = mode === 'light' || document.documentElement.dataset.theme === 'light';
+  const isLight = mode === 'light' || isMonoTheme();
   let fx = null;
   if (!isLight) {
     if (type === 'rain' || type === 'storm') fx = 'rain';
@@ -436,7 +436,7 @@ const FX = {
     }
   },
   start(kind) {
-    if (document.documentElement.dataset.theme === 'light' || state.theme === 'light') kind = null;
+    if (isMonoTheme() || state.theme === 'light') kind = null;
     if (kind === this.kind) return;
     if (!kind) {
       this.kind = null;
@@ -631,7 +631,7 @@ const FX = {
   },
   /* ---- ambient overlays: fireflies at night or wind ribbons when breezy ---- */
   setOverlay(kind) {
-    if (document.documentElement.dataset.theme === 'light' || state.theme === 'light') kind = null;
+    if (isMonoTheme() || state.theme === 'light') kind = null;
     if (kind && effectsReduced()) kind = null;
     if (this.overlay === kind) return;
     this.overlay = kind;

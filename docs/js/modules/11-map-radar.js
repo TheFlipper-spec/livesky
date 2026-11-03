@@ -302,8 +302,8 @@ function precipLowDevice() {
 const PRECIP_LOW = precipLowDevice();
 
 const tileCache = new Map(); /* url -> Promise<{data: ImageBitmap}> */
-/* Phones must not hold ~50 MB of decoded 256px bitmaps. */
-const TILE_CACHE_MAX = PRECIP_LOW ? 48 : 96;
+/* Expanded tile cache so pre-buffered timeline frames stay decoded in RAM. */
+const TILE_CACHE_MAX = PRECIP_LOW ? 96 : 192;
 function cacheGet(url) { return tileCache.get(url); }
 function cachePut(url, promise) {
   if (tileCache.size >= TILE_CACHE_MAX) {
@@ -596,6 +596,8 @@ const RADAR = {
   loadGen: 0, styleHooked: false,
   source: 'auto', /* auto | sat | radar */
   timeline: [],
+  frameStatus: [],
+  _bufferJobs: null,
   etaGen: 0,
 
   /* steps: wall-clock now − 6 h … now + 6 h, every 30 min.
@@ -625,23 +627,47 @@ const RADAR = {
     const gen = ++this.loadGen;
     if (!silent) this.showLoading(true);
     try {
-      /* RainViewer availability is independent of IMERG. */
+      /* RainViewer availability is independent of IMERG. Persist metadata in
+         localStorage so offline / flaky 3G sessions can still mount cached radar tiles. */
+      const applyRvMeta = (d) => {
+        if (!d || typeof d !== 'object') return false;
+        const past = (d.radar && d.radar.past) || d.past || [];
+        const nowcast = (d.radar && d.radar.nowcast) || d.nowcast || [];
+        if (!past.length && !nowcast.length) return false;
+        this.host = d.host || this.host;
+        this.frames = past.concat(nowcast).map((f, i) => ({
+          time: f.time, path: f.path,
+          url: (d.host || this.host) + f.path,
+          kind: i < past.length ? (i === past.length - 1 ? 'now' : 'past') : 'forecast'
+        }));
+        this.nowIdx = Math.max(0, past.length - 1);
+        return true;
+      };
       try {
         const rv = await fetchWithTimeout('https://api.rainviewer.com/public/weather-maps.json', 12000);
         if (rv.ok && gen === this.loadGen) {
           const d = await rv.json();
           if (gen !== this.loadGen) return;
-          const past = (d.radar && d.radar.past) || [];
-          const nowcast = (d.radar && d.radar.nowcast) || [];
-          this.host = d.host || this.host;
-          this.frames = past.concat(nowcast).map((f, i) => ({
-            time: f.time, path: f.path,
-            url: (d.host || this.host) + f.path,
-            kind: i < past.length ? (i === past.length - 1 ? 'now' : 'past') : 'forecast'
-          }));
-          this.nowIdx = Math.max(0, past.length - 1);
+          if (applyRvMeta(d)) {
+            try {
+              store.set('livesky:radar_meta_v1', {
+                ts: Date.now(),
+                host: this.host,
+                past: (d.radar && d.radar.past) || [],
+                nowcast: (d.radar && d.radar.nowcast) || []
+              });
+            } catch (e) { /* ignore quota */ }
+          }
         }
-      } catch (e) { /* RainViewer down — IMERG still covers the world */ }
+      } catch (e) {
+        /* RainViewer unreachable — restore last cached radar frame index if < 12h old */
+        try {
+          const cachedRv = store.get('livesky:radar_meta_v1', null);
+          if (cachedRv && (Date.now() - (cachedRv.ts || 0) < 12 * 3600 * 1000)) {
+            applyRvMeta(cachedRv);
+          }
+        } catch (err) { /* ignore */ }
+      }
 
       /* IMERG discovery drives the global timeline, but the timeline itself
          is wall-clock — if the satellite service is briefly unavailable the
@@ -684,11 +710,138 @@ const RADAR = {
     const steps = [];
     for (let t = start; t <= end + 1; t += stepMs) steps.push(t);
     this.timeline = steps.map(t => ({ t: t / 1000, epochMs: t }));
+    this.frameStatus = this.timeline.map(() => 'idle');
+    this._bufferJobs = new Map();
     if (el.radarSlider) {
       el.radarSlider.max = String(Math.max(0, this.timeline.length - 1));
       el.radarSlider.value = String(Math.max(0, this.idx));
     }
+    this.renderTimelineTicks();
     this.updateTime();
+  },
+
+  /* Render per-frame buffer status segments inside #radar-ticks */
+  renderTimelineTicks() {
+    if (!el.radarTicks || !this.timeline.length) return;
+    const nowIdx = this.nowTickIndex();
+    el.radarTicks.classList.add('has-segs');
+    el.radarTicks.innerHTML = this.timeline.map((step, k) => {
+      const st = this.frameStatus[k] || 'idle';
+      const cls = [
+        'radar-tick-seg',
+        k > nowIdx ? 'is-forecast' : 'is-past',
+        k === nowIdx ? 'is-now' : '',
+        k === this.idx ? 'is-active' : '',
+        st === 'loading' ? 'is-loading' : (st === 'buffered' ? 'is-buffered' : '')
+      ].filter(Boolean).join(' ');
+      return `<span class="${cls}" data-step-idx="${k}"></span>`;
+    }).join('');
+  },
+  syncTimelineTicks() {
+    if (!el.radarTicks) return;
+    const segs = el.radarTicks.querySelectorAll('.radar-tick-seg');
+    if (segs.length !== this.timeline.length) {
+      this.renderTimelineTicks();
+      return;
+    }
+    const nowIdx = this.nowTickIndex();
+    segs.forEach((seg, k) => {
+      const st = this.frameStatus[k] || 'idle';
+      seg.classList.toggle('is-active', k === this.idx);
+      seg.classList.toggle('is-now', k === nowIdx);
+      seg.classList.toggle('is-forecast', k > nowIdx);
+      seg.classList.toggle('is-loading', st === 'loading');
+      seg.classList.toggle('is-buffered', st === 'buffered');
+    });
+  },
+  /* Compute the 4 visible tile coordinates around the current viewport / pin at zoom z */
+  viewportCoords(maxZ) {
+    let lat = state.lat || 55.7558, lon = state.lon || 37.6173, z = 5;
+    try {
+      if (fullMapInst && typeof fullMapInst.getCenter === 'function') {
+        const c = fullMapInst.getCenter();
+        if (c && isFinite(c.lat) && isFinite(c.lng)) { lat = c.lat; lon = c.lng; }
+        const mz = fullMapInst.getZoom();
+        if (isFinite(mz)) z = Math.round(mz);
+      }
+    } catch (e) { /* ignore */ }
+    z = Math.max(1, Math.min(maxZ || 6, z));
+    const n = Math.pow(2, z);
+    const fx = ((lon + 180) / 360) * n;
+    const latRad = Math.max(-85, Math.min(85, lat)) * Math.PI / 180;
+    const fy = ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+    const cx = Math.min(n - 1, Math.max(0, Math.floor(fx)));
+    const cy = Math.min(n - 1, Math.max(0, Math.floor(fy)));
+    const dx = (fx - cx) >= 0.5 ? 1 : -1;
+    const dy = (fy - cy) >= 0.5 ? 1 : -1;
+    const coords = [[cx, cy]];
+    const nx = (cx + dx + n) % n;
+    const ny = Math.min(n - 1, Math.max(0, cy + dy));
+    if (nx !== cx) coords.push([nx, cy]);
+    if (ny !== cy) coords.push([cx, ny]);
+    if (nx !== cx && ny !== cy) coords.push([nx, ny]);
+    return { z, coords };
+  },
+  /* Pre-buffer viewport tiles for a timeline step and update its timeline indicator */
+  prefetchStep(stepIdx) {
+    if (!this.timeline.length || stepIdx < 0 || stepIdx >= this.timeline.length) return Promise.resolve();
+    if (this.frameStatus[stepIdx] === 'buffered') return Promise.resolve();
+    if (!this._bufferJobs) this._bufferJobs = new Map();
+    if (this._bufferJobs.has(stepIdx)) return this._bufferJobs.get(stepIdx);
+
+    const step = this.timeline[stepIdx];
+    const out = this.frameOut(step);
+    if (!out.base && !out.radar) {
+      this.frameStatus[stepIdx] = 'buffered';
+      this.syncTimelineTicks();
+      return Promise.resolve();
+    }
+
+    this.frameStatus[stepIdx] = 'loading';
+    this.syncTimelineTicks();
+
+    const tasks = [];
+    const queueTarget = (kind, key, maxZ) => {
+      if (!key || key === 'null') return;
+      const vp = this.viewportCoords(maxZ);
+      for (const [x, y] of vp.coords) {
+        const u = `precip://${kind}/${encodeURIComponent(key)}/${vp.z}/${x}/${y}`;
+        tasks.push(precipHandler({ url: u }).catch(() => null));
+      }
+    };
+    if (out.radar) queueTarget('radar', out.radar.key, 6);
+    if (out.base) queueTarget(out.base.kind, out.base.key, this.tileMaxZoom(out.base.kind));
+
+    const job = Promise.all(tasks).then(() => {
+      if (this.frameStatus[stepIdx] === 'loading') {
+        this.frameStatus[stepIdx] = 'buffered';
+        this.syncTimelineTicks();
+      }
+    }).catch(() => {
+      if (this.frameStatus[stepIdx] === 'loading') {
+        this.frameStatus[stepIdx] = 'idle';
+        this.syncTimelineTicks();
+      }
+    }).finally(() => {
+      if (this._bufferJobs) this._bufferJobs.delete(stepIdx);
+    });
+
+    this._bufferJobs.set(stepIdx, job);
+    return job;
+  },
+  /* Proactively buffer the active frame plus the next/prev frames on the timeline */
+  bufferAround(centerIdx) {
+    if (!this.timeline.length || centerIdx < 0 || centerIdx >= this.timeline.length) return;
+    const len = this.timeline.length;
+    const next1 = (centerIdx + 1) % len;
+    const next2 = (centerIdx + 2) % len;
+    const prev1 = (centerIdx - 1 + len) % len;
+    this.prefetchStep(centerIdx).then(() => {
+      if (!this.active) return;
+      this.prefetchStep(next1);
+      if (this.playing) this.prefetchStep(next2);
+      else this.prefetchStep(prev1);
+    });
   },
 
   /* Resolve a timeline step to the frames actually shown.
@@ -921,6 +1074,7 @@ const RADAR = {
       this.layerReady = false;
     }
     this.updateChrome();
+    this.bufferAround(this.idx);
   },
   setLayersOpacity(lids, op) {
     if (!fullMapInst) return;
@@ -979,6 +1133,7 @@ const RADAR = {
     if (el.radarTicks && this.timeline.length > 1) {
       const nowPct = (this.nowTickIndex() / Math.max(1, this.timeline.length - 1)) * 100;
       el.radarTicks.style.setProperty('--radar-now-pct', nowPct.toFixed(2) + '%');
+      this.syncTimelineTicks();
     }
     this.updateEta(step, out);
   },

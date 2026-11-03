@@ -556,6 +556,13 @@ function isDayNow() {
   return !hourIsNight(state.nowIdx);
 }
 function wmo(code) { return WMO[code] || WMO[0]; }
+/* The stock light theme is strictly black & white. A custom theme built on the
+   light base shares data-theme="light" (for contrast-related overrides) but
+   must keep the user's colours, so colour-forcing code asks this instead. */
+function isMonoTheme() {
+  const r = document.documentElement;
+  return r.dataset.theme === 'light' && !r.hasAttribute('data-custom');
+}
 function wmoLabel(code) {
   const w = wmo(code);
   return w.label[state.lang] || w.label.en;
