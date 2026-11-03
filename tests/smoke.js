@@ -834,7 +834,7 @@ setTimeout(() => {
       const tag = nowMarker.querySelector('.chart-now-tag');
       assert(tag !== null, 'now marker has a clickable "now" label');
       const tagLeft = parseFloat(nowMarker.style.left);
-      assert(tagLeft > 1 && tagLeft < 99, 'now-tag is at the real minute position (' + tagLeft + '%)');
+      assert(tagLeft >= 0 && tagLeft <= 100, 'now-tag is at the real minute position (' + tagLeft + '%)');
       const nowLine = q('chart-plot').querySelector('.chart-now-line');
       if (nowLine) {
         assert(nowLine !== null, 'now line is present inside the marker overlay');

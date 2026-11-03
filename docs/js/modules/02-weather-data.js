@@ -575,15 +575,19 @@ function startClock() {
 /* ---------------- number animation ---------------- */
 let countRaf = 0;
 function animateNumber(node, to) {
-  if (motionReduce || node.dataset.v == null) { node.textContent = to + '°'; node.dataset.v = to; return; }
-  const from = parseFloat(node.dataset.v) || 0;
+  if (motionReduce || node.dataset.v == null || !Number.isFinite(to)) {
+    node.textContent = to + '°';
+    node.dataset.v = to;
+    return;
+  }
+  const from = parseFloat(node.dataset.v);
   node.dataset.v = to;
-  if (from === to) { node.textContent = to + '°'; return; }
+  if (!Number.isFinite(from) || from === to) { node.textContent = to + '°'; return; }
   cancelAnimationFrame(countRaf);
-  const t0 = performance.now(), dur = 800;
+  const t0 = performance.now(), dur = 700;
   const step = (now) => {
     const k = Math.min(1, (now - t0) / dur);
-    const e = 1 - Math.pow(1 - k, 3);
+    const e = 1 - Math.pow(1 - k, 4);
     node.textContent = Math.round(from + (to - from) * e) + '°';
     if (k < 1) countRaf = requestAnimationFrame(step);
   };
@@ -599,7 +603,14 @@ function setBigIcon(iconClass) {
   const icon = el.bigIcon.querySelector('i');
   if (icon && !motionReduce) {
     icon.classList.add('swap-out');
-    setTimeout(() => { el.bigIcon.innerHTML = `<i class="ph-duotone ${iconClass}"></i>`; }, 280);
+    setTimeout(() => {
+      el.bigIcon.innerHTML = `<i class="ph-duotone ${iconClass} swap-in"></i>`;
+      const nextIcon = el.bigIcon.querySelector('i');
+      if (nextIcon) {
+        void nextIcon.offsetWidth;
+        nextIcon.classList.remove('swap-in');
+      }
+    }, 220);
   } else {
     el.bigIcon.innerHTML = `<i class="ph-duotone ${iconClass}"></i>`;
   }

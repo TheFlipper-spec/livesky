@@ -427,7 +427,7 @@ const FX = {
       this.build();
     }
   },
-  fpsLimit: (typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '')) ? 30 : 0,
+  fpsLimit: 0,
   lastFrameTime: 0,
   pause() {
     if (this.running) {
@@ -494,6 +494,12 @@ const FX = {
 
     if (this.kind === 'rain') {
       const slant = 32 + this.intensity * 24;
+      const rainColFg = isLight ? 'rgba(37, 99, 235, 0.42)' : 'rgba(186, 220, 255, 0.38)';
+      const rainColBg = isLight ? 'rgba(37, 99, 235, 0.22)' : 'rgba(186, 220, 255, 0.18)';
+
+      ctx.lineWidth = 1.35;
+      ctx.strokeStyle = rainColFg;
+      ctx.beginPath();
       for (const p of this.parts) {
         p.y += p.sp * dt; p.x -= slant * dt;
         if (p.y > this.h - 6) {
@@ -502,34 +508,50 @@ const FX = {
           }
           p.y = -30; p.x = Math.random() * (this.w + 100);
         }
-        ctx.lineWidth = p.w || 1.1;
-        ctx.strokeStyle = isLight ? `rgba(37, 99, 235, ${Math.min(0.45, p.a * 1.15)})` : `rgba(186, 220, 255, ${p.a})`;
-        ctx.beginPath();
-        ctx.moveTo(p.x, p.y); ctx.lineTo(p.x - 4.2, p.y + p.len);
-        ctx.stroke();
+        if (p.w > 1.1) {
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - 4.2, p.y + p.len);
+        }
       }
-      for (let i = this.splashes.length - 1; i >= 0; i--) {
-        const sp = this.splashes[i];
-        sp.r += 22 * dt;
-        const k = 1 - sp.r / sp.maxR;
-        if (k <= 0) { this.splashes.splice(i, 1); continue; }
+      ctx.stroke();
+
+      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = rainColBg;
+      ctx.beginPath();
+      for (const p of this.parts) {
+        if (p.w <= 1.1) {
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x - 4.2, p.y + p.len);
+        }
+      }
+      ctx.stroke();
+
+      if (this.splashes.length) {
         ctx.lineWidth = 1;
-        ctx.strokeStyle = isLight ? `rgba(37, 99, 235, ${sp.a * k})` : `rgba(191, 219, 254, ${sp.a * k})`;
+        ctx.strokeStyle = isLight ? 'rgba(37, 99, 235, 0.38)' : 'rgba(191, 219, 254, 0.48)';
         ctx.beginPath();
-        ctx.ellipse(sp.x, sp.y, sp.r, sp.r * 0.32, 0, 0, Math.PI * 2);
+        for (let i = this.splashes.length - 1; i >= 0; i--) {
+          const sp = this.splashes[i];
+          sp.r += 22 * dt;
+          const k = 1 - sp.r / sp.maxR;
+          if (k <= 0) { this.splashes.splice(i, 1); continue; }
+          ctx.moveTo(sp.x + sp.r, sp.y);
+          ctx.ellipse(sp.x, sp.y, sp.r, sp.r * 0.32, 0, 0, Math.PI * 2);
+        }
         ctx.stroke();
       }
     } else if (this.kind === 'snow') {
+      ctx.fillStyle = isLight ? 'rgba(59, 130, 246, 0.48)' : 'rgba(240, 246, 255, 0.72)';
+      ctx.beginPath();
       for (const p of this.parts) {
         p.y += p.sp * dt;
         p.ph += dt * 1.4;
         p.x += Math.sin(p.ph) * p.sw * dt;
         if (p.y > this.h + 8) { p.y = -8; p.x = Math.random() * this.w; }
-        ctx.fillStyle = isLight ? `rgba(59, 130, 246, ${Math.min(0.55, p.a * 0.75)})` : `rgba(240, 246, 255, ${p.a})`;
-        ctx.beginPath();
+        ctx.moveTo(p.x + p.r, p.y);
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fill();
       }
+      ctx.fill();
     } else if (this.kind === 'stars') {
       for (const p of this.parts) {
         const a = p.a = 0.35 + 0.60 * (0.5 + 0.5 * Math.sin(t / 1000 * p.tw + p.ph));
@@ -770,7 +792,7 @@ function initBatteryWatcher() {
           applyEffects();
         }
       } else {
-        FX.fpsLimit = (/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '')) ? 30 : 0;
+        FX.fpsLimit = (state && state._perfLow) ? 30 : 0;
         if (state._batteryLow) {
           state._batteryLow = false;
           applyEffects();
