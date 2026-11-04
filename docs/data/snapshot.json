@@ -1,5 +1,5 @@
 {
-  "generated": "2026-11-04T01:24:32Z",
+  "generated": "2026-11-04T09:17:16Z",
   "generator": "livesky-weather-snapshot/1",
   "source": "Open-Meteo (CC BY 4.0)",
   "cities": [
@@ -10,7 +10,7 @@
       "lat": 55.7558,
       "lon": 37.6173,
       "slug": "moskva",
-      "generated": "2026-11-04T01:24:31Z",
+      "generated": "2026-11-04T09:17:15Z",
       "file": "data/snapshot/moskva.json"
     },
     {
@@ -20,7 +20,7 @@
       "lat": 59.9386,
       "lon": 30.3141,
       "slug": "sankt-peterburg",
-      "generated": "2026-11-04T01:24:31Z",
+      "generated": "2026-11-04T09:17:15Z",
       "file": "data/snapshot/sankt-peterburg.json"
     },
     {
@@ -30,7 +30,7 @@
       "lat": 55.7963,
       "lon": 49.1088,
       "slug": "kazan",
-      "generated": "2026-11-04T01:24:32Z",
+      "generated": "2026-11-04T09:17:16Z",
       "file": "data/snapshot/kazan.json"
     }
   ]
